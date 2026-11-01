@@ -271,7 +271,9 @@ test('V2 saves initial cast schedules in the existing beat calls without a separ
   let calls=0;
   promptRunner.runStructuredPrompt=async({asset,promptInput})=>{
     calls++;
-    assert.equal(asset.version,'v10');
+    assert.equal(asset.version,'v11');
+    assert.ok(asset.repairPolicy.guidance.includes('青禾'));
+    assert.ok(asset.repairPolicy.guidance.includes('qing'));
     return {output:asset.outputSchema.parse({beatKey:promptInput.targetBeat.key,beatLabel:promptInput.targetBeat.label,
       chapterCount:promptInput.targetBeatChapterCount,chapters:Array.from({length:promptInput.targetBeatChapterCount},(_,i)=>({
         title:(promptInput.targetBeat.key==='open_hook'?'药铺开门':'医馆封门')+i,summary:'青禾主动选择救治伤者，打破官差追捕的僵局并承担药方暴露的代价。',

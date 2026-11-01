@@ -483,11 +483,19 @@ export function createVolumeChapterBeatBlockSchema(config: {
     (raw) => normalizeChapterListItemPayload(raw), z.object({
       title: z.string().trim().min(1).max(32), summary: z.string().trim().min(1).max(240),
       beatKey: z.string().trim().min(1).max(64),
-      plannedCharacterIds: z.array(z.string().trim().min(1)).max(config.characterIds.length).superRefine((ids, ctx) => {
-        if (new Set(ids).size !== ids.length || ids.some(id => !config.characterIds!.includes(id))) {
-          ctx.addIssue({code:z.ZodIssueCode.custom,message:"出场安排只能使用角色目录中的 ID，不能重复或使用其他书籍角色。"});
-        }
-      }),
+      // Native structured output and JSON repair must see the same ID allowlist as Zod.
+      plannedCharacterIds: z.array(config.characterIds.length > 0
+        ? z.enum(config.characterIds as [string, ...string[]])
+        : z.string()).max(config.characterIds.length)
+        .describe("本章现场出场角色的目录 ID；每个 ID 只能出现一次，空目录只能输出 []。")
+        .superRefine((ids, ctx) => {
+          if (new Set(ids).size !== ids.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "同一章的 plannedCharacterIds 不能重复；每个角色 ID 只保留一次。",
+            });
+          }
+        }),
     }));
   return z.preprocess(
     (raw) => normalizeChapterBeatBlockPayload(raw, { expectedBeatKey, expectedBeatLabel }),

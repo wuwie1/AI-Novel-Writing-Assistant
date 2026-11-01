@@ -275,9 +275,9 @@ async function generateBeatChapterBlock(params: {
       reservedChapterTitles: params.targetVolume.chapters
         .filter((chapter) => chapter.beatKey !== params.beatPlan.beat.key)
         .map((chapter) => chapter.title),
-      characterIds: params.options.entrypoint === "director_next" ? params.novel.characters.map(character => {
+      characterCatalog: params.options.entrypoint === "director_next" ? params.novel.characters.map(character => {
         if (!character.id) throw new Error("角色出场初排缺少角色 ID。");
-        return character.id;
+        return { id: character.id, name: character.name, role: character.role, castRole: character.castRole };
       }) : undefined,
     }),
     promptInput,
