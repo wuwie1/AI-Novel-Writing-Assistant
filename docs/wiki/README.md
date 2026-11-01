@@ -39,6 +39,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [导演 V2 角色计划出场与正文出场](./workflows/director-v2-character-appearances.md)
 - [通用角色主体与跨来源角色对话](./workflows/universal-character-conversation.md)
 - [拆书工作流](./workflows/book-analysis-workflow.md)
+- [参考创作的证据覆盖与费用核对](./workflows/reference-creation-evidence-and-cost.md)
 - [图片生成确认与统一运行时](./workflows/image-generation-confirmation-runtime.md)
 - [Creative Hub 边界](./workflows/creative-hub-boundary.md)
 
