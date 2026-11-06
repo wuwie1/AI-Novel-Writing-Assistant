@@ -228,7 +228,7 @@ flowchart LR
 - 每个 `mode + backendIdentity` 使用独立持久 WKWebView 数据存储。本地 identity 使用仓库真实路径和已校验测试库标识，远端 identity 使用 SSH 目标、部署目录和服务器目标端口，规范化后取哈希，不包含凭据。本机 UI/隧道端口不参与 identity；修改真实后端身份创建新存储，保留旧草稿但不自动搬运。不同后端不得共享 localStorage、IndexedDB、cookie 或查询缓存。
 - 创建一份有版本的 Mac bridge 合同，列出 `rendererReady`、`requestSave`、`requestClose`、`closeDecision`、`openExternal`、文件选择/下载需要的消息。请求带 requestId，验证可信主框架、消息类型和字段上限；原生凭据、任意路径读写和 shell 执行都不暴露给页面。
 - 现有章节草稿仅使用 `sessionStorage`，且只监听 `beforeunload`；这不足以保证关闭原生窗口后恢复。对原有 hook 增加可选的草稿存储/离开保护适配器，Web 默认不变；Mac 将未保存草稿存入该后端独立存储，保留 savedUpdatedAt 并复用现有冲突判断，不能自动覆盖服务器新内容。
-- 离开保护由共享前端注册 dirty/busy 状态及已有 save 回调；native、路由切换和命令退出共用该入口，不通过抓取 DOM 文本判断是否未保存。所有本轮复用的可编辑页面登记其保护能力，不能只保护章节编辑器。
+- 离开保护由共享前端注册 dirty/busy 状态及已有 save 回调；native、路由切换和命令退出共用该入口，不通过抓取 DOM 文本判断是否未保存。所有本轮复用的可编辑页面登记其保护能力，不能只保护章节编辑器。 静态路由能力不能当作未保存状态；未编辑或保存完成的页面不得强制确认。未接入真实状态的表单在 route-parity.md 明确记录，沿用页内保存，不用通用弹窗冒充保护。
 - 关闭协议：原生 `NSApplication`/窗口 delegate 延后退出 → 页面返回允许退出，或显示“保存并退出 / 放弃未保存修改 / 取消” → 保存成功才允许关窗。保存失败或取消保留应用与辅助进程；busy 状态按已有工作流处理，不代替用户取消后端任务。
 - 命令通过仅当前用户可访问的 Unix socket 请求 native 正常退出，不用 SIGTERM 模拟用户确认。socket 放在 `/tmp/ai-novel-mac-<uid>/<repoHash16>.sock`，父目录 `0700`，校验所有者及非符号链接，避免长仓库路径超过 macOS socket 长度限制。最多等待 60 秒，超时退出非零并保留窗口；不得在超时后强杀。后台 helper 的停止只有在 native 已确认退出后发生。
 - `⌘Q` 与 `stop_app` 都退出本仓库 App 会话；红色关闭按钮只关窗口，App 保留且 Dock 可重新打开，窗口重新创建时从同一隔离存储恢复页面/草稿。launchd 不把用户主动退出的 App 无限拉起。
@@ -292,7 +292,7 @@ flowchart LR
 | 设置 | `/settings`、`/settings/models`、`/settings/model-routes`、`/settings/director`、`/settings/knowledge`、`/settings/maintenance`、`/settings/appearance` |
 | 兼容跳转 | `/chat`、`/writing-formula`、`/auto-director/follow-up-center`、`/auto-director/followup-center`、未知路径回退 |
 
-导航固定为：顶部新建、书架、创作中枢、自动导演、运行记录；素材与其他工作台进入可展开的功能菜单；当前书籍选择器及书内目录保持上下文；设置与帮助放底部。图标以项目现有 lucide 为基础，尺寸和交互对齐 wukong，不照搬 wukong 的业务命名。现有深链接仍可直接访问，不因入口收纳丢失功能。
+导航固定为：顶部新建、书架、创作中枢、自动导演、运行记录；素材与其他工作台进入可展开的功能菜单；次级列表随当前菜单显示作品、对话、创作记录、状态筛选、项目或分类；当前书籍选择器及章节目录仅在书内页面保留；设置与帮助放底部。图标以项目现有 lucide 为基础，尺寸和交互对齐 wukong，不照搬 wukong 的业务命名。现有深链接仍可直接访问，不因入口收纳丢失功能。
 
 样式验收至少使用 1440×900、1024×768、390×600 三种窗口尺寸，逐项检查：导航/顶栏尺寸、颜色和字体、列表密度、写作区、Portal 弹层、focus/hover、错误/空状态。页面不得横向整体溢出，表格可在自己的区域滚动。对照由用户手动完成；不能用源码 token 相同推断实际视觉已一致。
 
