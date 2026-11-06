@@ -1,17 +1,18 @@
 import { Suspense, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { BookOpen, CircleHelp, FilePlus2, FolderOpen, MoreHorizontal, Settings2, Sparkles, Workflow, X, ScrollText } from "lucide-react";
+import { BookOpen, CircleHelp, Plus, PanelLeft, MoreHorizontal, Settings2, Sparkles, Workflow, X, ScrollText } from "lucide-react";
 import { macEnvironment } from "../platform/native";
 import { moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
 import { MacSidebarContent } from "./sidebar";
 
-const primaryIcons = [FilePlus2, BookOpen, Sparkles, Workflow, ScrollText];
+const primaryIcons = [Plus, BookOpen, Sparkles, Workflow, ScrollText];
 
 export function MacAppLayout() {
   const location = useLocation();
   const context = resolveMacNavigation(location.pathname);
   const [moreOpen, setMoreOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [listSearch, setListSearch] = useState("");
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 960px)").matches);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const collapseKey = context.chapterId ? "chapter-editor" : context.section;
@@ -30,6 +31,7 @@ export function MacAppLayout() {
     setMoreOpen(false);
     setDrawerOpen(false);
   }, [location.key]);
+  useEffect(() => { setListSearch(""); }, [context.key]);
   useEffect(() => {
     if (!moreOpen && !drawerOpen) return;
     const close = (event: KeyboardEvent) => {
@@ -45,10 +47,11 @@ export function MacAppLayout() {
         {primaryLinks.map(([to, label], index) => {
           const Icon = primaryIcons[index];
           const active = context.primary === to;
-          return <Link key={to} to={to} className={`mac-rail-link${active ? " is-active" : ""}`} aria-label={label} aria-current={active ? "page" : undefined} title={label}><Icon size={17} strokeWidth={1.7}/></Link>;
+          return <Link key={to} to={to} className={`mac-rail-link${index === 0 ? " mac-rail-create" : ""}${active ? " is-active" : ""}`} aria-label={label} aria-current={active ? "page" : undefined} data-tooltip={label}><Icon size={16} strokeWidth={1.5}/></Link>;
         })}
+        <div className="mac-rail-divider" role="separator"/>
         <div className="mac-more-wrap">
-          <button className={`mac-rail-link${moreOpen || context.primary === "more" ? " is-active" : ""}`} aria-label="更多功能" aria-expanded={moreOpen} title="更多功能" onClick={() => setMoreOpen((open) => !open)}><MoreHorizontal size={18}/></button>
+          <button className={`mac-rail-link${moreOpen || context.primary === "more" ? " is-active" : ""}`} aria-label="更多功能" aria-expanded={moreOpen} data-tooltip="更多功能" onClick={() => setMoreOpen((open) => !open)}><MoreHorizontal size={16} strokeWidth={1.5}/></button>
           {moreOpen ? <>
             <button className="mac-dismiss" aria-label="关闭更多功能菜单" onClick={() => setMoreOpen(false)}/>
             <div className="mac-more-menu" role="menu" aria-label="更多功能">{moreLinks.map(([to, label]) => <Link key={to} role="menuitem" to={to} className={pathIsWithin(location.pathname, to) ? "is-active" : ""}>{label}</Link>)}</div>
@@ -56,26 +59,31 @@ export function MacAppLayout() {
         </div>
       </div>
       <div className="mac-rail-bottom">
-        <Link to="/settings" className={`mac-rail-link${context.primary === "/settings" ? " is-active" : ""}`} aria-label="设置" aria-current={context.primary === "/settings" ? "page" : undefined} title="设置"><Settings2 size={17} strokeWidth={1.7}/></Link>
-        <Link to="/help" className={`mac-rail-link${context.primary === "/help" ? " is-active" : ""}`} aria-label="帮助" aria-current={context.primary === "/help" ? "page" : undefined} title="帮助"><CircleHelp size={17} strokeWidth={1.7}/></Link>
+        <Link to="/settings" className={`mac-rail-link${context.primary === "/settings" ? " is-active" : ""}`} aria-label="设置" aria-current={context.primary === "/settings" ? "page" : undefined} data-tooltip="设置"><Settings2 size={16} strokeWidth={1.5}/></Link>
+        <Link to="/help" className={`mac-rail-link${context.primary === "/help" ? " is-active" : ""}`} aria-label="帮助" aria-current={context.primary === "/help" ? "page" : undefined} data-tooltip="帮助"><CircleHelp size={16} strokeWidth={1.5}/></Link>
       </div>
     </nav>
+    <header className="mac-toolbar">
+      <div className="mac-toolbar-library">
+        <button className="mac-icon-button mac-drawer-toggle" aria-label={`${(narrow ? !drawerOpen : collapsed) ? "展开" : "收起"}${context.sidebarTitle}`} title={context.sidebarTitle} aria-expanded={narrow ? drawerOpen : !collapsed} onClick={() => {
+          if (narrow) setDrawerOpen((open) => !open);
+          else setCollapsedSections((current) => ({ ...current, [collapseKey]: !collapsed }));
+        }}><PanelLeft size={16} strokeWidth={1.5}/></button>
+        <div className="mac-toolbar-title">{context.title}</div>
+      </div>
+      <span className={`mac-mode-indicator${mode === "local" ? " is-local" : ""}`}><span/>{mode === "local" ? "本地测试" : mode === "remote" ? "服务器" : "桌面"}</span>
+    </header>
     <aside className={`mac-secondary${drawerOpen ? " is-open" : ""}`} aria-label={context.sidebarTitle} inert={narrow ? !drawerOpen : collapsed} aria-hidden={narrow ? !drawerOpen : collapsed}>
-      <div className="mac-secondary-head"><span>{context.sidebarTitle}</span><button className="mac-icon-button mac-secondary-close" aria-label={`关闭${context.sidebarTitle}`} onClick={() => setDrawerOpen(false)}><X size={16}/></button></div>
+      <div className="mac-list-tools">
+        <input type="search" aria-label={`搜索${context.sidebarTitle}`} placeholder={`搜索${context.sidebarTitle}`} value={listSearch} onChange={(event) => setListSearch(event.target.value)}/>
+        <button className="mac-icon-button mac-secondary-close" aria-label={`关闭${context.sidebarTitle}`} onClick={() => setDrawerOpen(false)}><X size={16} strokeWidth={1.5}/></button>
+      </div>
       <div className="mac-context-list" key={context.key}>
-        {!collapsed || drawerOpen ? <MacSidebarContent context={context}/> : null}
+        {!collapsed || drawerOpen ? <MacSidebarContent context={context} search={listSearch}/> : null}
       </div>
     </aside>
     {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${context.sidebarTitle}`} onClick={() => setDrawerOpen(false)}/> : null}
     <main className="mac-workspace">
-      <header className="mac-toolbar">
-        <button className="mac-icon-button mac-drawer-toggle" aria-label={`${(narrow ? !drawerOpen : collapsed) ? "展开" : "收起"}${context.sidebarTitle}`} title={context.sidebarTitle} aria-expanded={narrow ? drawerOpen : !collapsed} onClick={() => {
-          if (narrow) setDrawerOpen((open) => !open);
-          else setCollapsedSections((current) => ({ ...current, [collapseKey]: !collapsed }));
-        }}><FolderOpen size={16}/></button>
-        <div className="mac-toolbar-title">{context.title}</div>
-        <span className={`mac-mode-indicator${mode === "local" ? " is-local" : ""}`}><span/>{mode === "local" ? "本地测试" : mode === "remote" ? "服务器" : "桌面"}</span>
-      </header>
       <section className="mac-canvas" aria-label={context.title}><Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><Outlet/></Suspense></section>
     </main>
   </div>;

@@ -22,7 +22,7 @@
 | 5 命令与部署 | engineering_done | 只读远端预演完成；真实部署未执行 |
 | 6 集成验收 | engineering_done | 已合入本地 beta；UI 为 user_acceptance_pending，不晋级 main、不推送、不上传 |
 
-UI 均为 `user_acceptance_pending`。没有默认运行浏览器、截图、Playwright、原生窗口或真实 AI 生成。工程检查不能代替视觉与操作验收。
+完整 UI 验收仍为 `user_acceptance_pending`。初始实施阶段没有默认运行浏览器、截图、Playwright、原生窗口或真实 AI 生成；后续应用户要求进行的实机观察见文末记录，不能代替全部页面与创作链验收。
 
 ## 工程验证记录
 
@@ -112,3 +112,18 @@ main 基线 `2b33ff04a3c6b56be61d57579ef6b9bc9bcd27ed`；Mac 基线继承 main �
 - Mac 显式声明 JSDOM 测试依赖，复用锁文件已有 27.4.0 包与快照；已核对声明和锁文件一致，`pnpm --filter @ai-novel/desktop-mac install --lockfile-only --offline --frozen-lockfile --ignore-scripts` 通过，其他 workspace 的依赖版本不变。
 - 未改 client、server、shared、旧 desktop 源码；原生壳、进程与部署脚本未变，复用上一阶段启动/聚焦/退出及生命周期测试证据，不重复构建原生壳或全量 Web/Windows。
 - 未执行浏览器、截图或人工 UI 验证，未重启用户正在使用的窗口，未访问或改动本机/服务器小说数据。界面验收步骤已补入 acceptance.md；服务器模式需 `make restart_app` 重建后查看。
+
+## Wukong 视觉细节对齐（2026-11-06）
+
+从本地 beta `b4e22927` 建立 `codex/mac-visual-alignment`。用户明确要求结合运行中的 wukong 与源码优化，因此本阶段执行了原生窗口截图及只读交互检查。经用户单独授权，Luna 子代理只读比较样式；主代理复核完整 CSS 级联，特别补齐 `demo.css` 的灵感列表覆盖。
+
+范围为 Mac renderer、针对性测试及文档：两行工具栏布局、16px/1.5px 图标、244px 浅灰中栏、32px 搜索框、浅蓝选中与细蓝指示条、外侧 16px 顶角、UI 字重与写作字体回退。中栏可搜索已加载条目，切换功能清空查询；书架工作区搜索限制最大宽度。`client/`、`server/`、`shared/`、旧 `desktop/`、原生壳和生命周期代码均无本轮改动。
+
+验证与边界：
+
+- Mac TypeScript 检查通过，日志 `/tmp/mac-visual-typecheck.log`；Node/JSDOM 组件回归 7 项通过，日志 `/tmp/mac-visual-tests.log`，新增搜索/清空/章节序号用例，既有保存保护与菜单回归通过。
+- 实际 `make app` 完成 Vite 与原生编译并返回 `started/remote`，运行构建 `e9750d330ff92494720c14d1f18ff36ee7438205bdccf2685e860944f6157663`；日志 `/tmp/mac-visual-launch.log`。未单独重复全量 Web、Windows、后端或打包验证，这些源码未改。
+- 与运行中的 wukong 灵感页对照，观察新版书架和设置页；验证中栏搜索空结果、切换分类自动清空、普通导航无确认、折叠后圆角转移、展开及更多菜单/Escape。最终窗口保留在服务器模式书架，搜索为空。
+- 初次 `make restart_app` 对旧构建的退出请求超时并保留窗口，未强制结束应用。随后通过原生应用菜单正常退出；发现旧专用界面代理仍占用 15175，核实完整命令、PID、仓库和 launchd 归属后仅卸载该代理，再正常启动新版。该次超时原因未在本阶段确定，不能将其记为 restart 回归通过；保留 `/tmp/mac-visual-restart.log` 作为现场记录。
+- 实机操作限于书架与设置概览的浏览、搜索和布局切换；未编辑正文、改变设置、发起 AI 生成或部署服务器，既有 borrowed SSH 通道保留。正文输入法、窄窗及全部复杂业务页面仍需用户验收。
+- 视觉的长期维护规则已补入 wiki 和 mac.md；README 与发布记录同步用户可见变化。本阶段通过后进入本地 beta，尚不晋级 main 或推送发布。

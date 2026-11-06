@@ -82,6 +82,11 @@ before(async () => {
           edit:async patch=>flush(()=>setGuard(current=>({...current,...patch}))),
           failSave:()=>{failSave=true},
           go:async to=>flush(()=>{void router.navigate(to)}),
+          search:async value=>flush(()=>{
+            const input=document.querySelector('.mac-list-tools input');
+            Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(input,value);
+            input.dispatchEvent(new window.Event('input',{bubbles:true}));
+          }),
           click:async text=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent===text);if(!button)throw Error('Missing button '+text);await flush(()=>{button.click()})},
           close:async()=>flush(()=>window.dispatchEvent(new window.CustomEvent('ai-novel-mac',{detail:{protocolVersion:1,type:'requestClose',requestId:'close-test'}}))),
           cleanup:async()=>{await flush(()=>{root.unmount();router.dispose()});client.clear();delete window.__AI_NOVEL_MAC__},
@@ -172,7 +177,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     await h.edit({ dirty: false });
     await h.flush(() => h.sidebar.querySelector('.mac-current-book').click());
     assert.ok(!h.sidebar.textContent.includes('测试章节'));
-    await h.flush(() => [...h.sidebar.querySelectorAll('a')].find((link) => link.textContent === '测试作品').click());
+    await h.flush(() => [...h.sidebar.querySelectorAll('a')].find((link) => link.querySelector('strong')?.textContent === '测试作品').click());
     assert.equal(h.pathname, '/novels/book-a/edit');
     assert.match(h.sidebar.textContent, /测试章节/);
     const chapterReads = h.requests.filter(({url}) => url.endsWith('/chapters')).length;
@@ -221,5 +226,30 @@ test('chapter sidebar can expand, and cancelling navigation retains its chapter 
     assert.equal(h.pathname, '/novels/book-a/chapters/chapter-a');
     assert.equal(h.sidebar.getAttribute('aria-label'), '小说与章节');
     assert.match(h.sidebar.textContent, /测试章节/);
+  } finally { await h.cleanup(); }
+});
+
+test('context search filters loaded rows, keeps selection and resets when changing menus', async () => {
+  const h = await mount('/novels');
+  try {
+    await h.search('找不到的作品');
+    assert.ok(!h.sidebar.textContent.includes('测试作品'));
+    assert.match(h.sidebar.textContent, /未找到匹配的小说/);
+    await h.search('测试');
+    assert.match(h.sidebar.textContent, /测试作品/);
+    await h.go('/settings/models');
+    assert.equal(h.sidebar.querySelector('input').value, '');
+    await h.search('模型');
+    assert.ok(h.sidebar.querySelectorAll('a').length > 0);
+    assert.ok([...h.sidebar.querySelectorAll('a')].every(link => link.textContent.includes('模型')));
+    assert.ok(h.sidebar.querySelector('[aria-current="page"]'));
+    await h.go('/novels/book-a/chapters/chapter-a');
+    await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
+    await h.search('1');
+    assert.match(h.sidebar.textContent, /测试章节/);
+    await h.search('2');
+    assert.ok(!h.sidebar.textContent.includes('测试章节'));
+    assert.equal(h.dialog, null);
+    assert.ok(h.requests.every(({method}) => method === 'get'));
   } finally { await h.cleanup(); }
 });
