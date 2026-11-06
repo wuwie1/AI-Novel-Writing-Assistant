@@ -1,0 +1,35 @@
+/* The conversation, resource context and thread directory own their scrolling.
+   Use the canvas height, not vh: the native shell already owns its toolbar. */
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] { height:100%; min-height:0; padding:14px 18px; container-type:inline-size; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] > div { height:100%; min-height:0; display:flex; flex-direction:column; gap:10px; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] > div > * { margin-top:0; flex-shrink:0; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] [data-ui="workspace-header"] { padding-bottom:0; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] section[aria-label="创作中枢后续开发说明"] { padding:8px 12px; background:#f0f0ee; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] section[aria-label="创作中枢后续开发说明"] h2 { font-size:12px; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] section[aria-label="创作中枢后续开发说明"] p { font-size:11px; line-height:1.5; margin-top:3px; max-width:none; }
+html[data-app-shell="mac"] [data-mac-page="creative-hub"] .grid:has(> #creative-hub-activity) {
+  flex:1; min-height:320px; height:auto; gap:12px;
+  grid-template-columns:190px minmax(300px,1fr) 260px; grid-template-rows:minmax(0,1fr);
+}
+html[data-app-shell="mac"] #creative-hub-activity { grid-column:2; grid-row:1; }
+html[data-app-shell="mac"] #creative-hub-context { grid-column:3; grid-row:1; overflow:auto; }
+html[data-app-shell="mac"] #creative-hub-context + div { grid-column:1; grid-row:1; }
+html[data-app-shell="mac"] #creative-hub-activity > [data-ui="card"] { background:transparent; border-radius:0; }
+html[data-app-shell="mac"] #creative-hub-activity [aria-live="polite"] { border:0; background:transparent; padding:12px; }
+html[data-app-shell="mac"] #creative-hub-activity .border-dashed { border:0; padding:20px 12px; margin-top:20px; }
+html[data-app-shell="mac"] #creative-hub-activity form { flex-shrink:0; border-color:var(--mac-line); border-radius:7px; padding:10px; }
+html[data-app-shell="mac"] #root #creative-hub-activity textarea { min-height:70px; max-height:160px; border:0; padding:4px; background:transparent; font-size:13px; line-height:1.7; }
+html[data-app-shell="mac"] #creative-hub-context [data-ui="card"] { background:#f3f3f1; }
+html[data-app-shell="mac"] #creative-hub-context .rounded-md.border-border { border:0; border-radius:0; padding:10px 0; background:transparent; }
+html[data-app-shell="mac"] #creative-hub-context .rounded-md.border-border + .rounded-md.border-border { border-top:1px solid #e0e0dc; }
+html[data-app-shell="mac"] #creative-hub-context + div [data-ui="card"] { background:var(--mac-list); }
+html[data-app-shell="mac"] #creative-hub-context + div .border-primary { border-color:transparent; background:var(--mac-list-selected); box-shadow:inset 3px 0 var(--mac-list-indicator); }
+@container (max-width:1050px) {
+  html[data-app-shell="mac"] [data-mac-page="creative-hub"] .grid:has(> #creative-hub-activity) { grid-template-columns:180px minmax(280px,1fr); grid-template-rows:minmax(350px,1fr) auto; overflow:auto; }
+  html[data-app-shell="mac"] #creative-hub-context { grid-column:1 / -1; grid-row:2; overflow:visible; }
+}
+@container (max-width:600px) {
+  html[data-app-shell="mac"] [data-mac-page="creative-hub"] .grid:has(> #creative-hub-activity) { grid-template-columns:minmax(0,1fr); grid-template-rows:440px auto auto; }
+  html[data-app-shell="mac"] #creative-hub-activity { grid-column:1; }
+  html[data-app-shell="mac"] #creative-hub-context + div { grid-column:1; grid-row:3; }
+}

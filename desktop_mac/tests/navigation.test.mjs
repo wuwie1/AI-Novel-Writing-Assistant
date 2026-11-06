@@ -191,11 +191,32 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     ]) {
       await h.go(route);
       assert.equal(h.sidebar.getAttribute('aria-label'), title);
+      if (route === '/creative-hub') {
+        assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
+        await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
+      }
       assert.ok(h.sidebar.textContent.includes(content), route);
       assert.ok(!h.sidebar.textContent.includes('测试章节'), route);
     }
     assert.equal(h.requests.filter(({url}) => url.endsWith('/chapters')).length, chapterReads);
     assert.ok(h.requests.every(({method}) => method === 'get'));
+  } finally { await h.cleanup(); }
+});
+
+test('self-contained workbenches remember their own directory preference without hiding other menus', async () => {
+  const h = await mount('/lab/director/book-a');
+  try {
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
+    await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
+    await h.go('/creative-hub');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
+    await h.go('/knowledge');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
+    await h.go('/lab/director/book-a');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
+    await h.go('/novels/book-a/chapters/chapter-a');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
   } finally { await h.cleanup(); }
 });
 

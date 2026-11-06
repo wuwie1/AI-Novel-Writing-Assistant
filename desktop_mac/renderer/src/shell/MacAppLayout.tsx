@@ -15,8 +15,13 @@ export function MacAppLayout() {
   const [listSearch, setListSearch] = useState("");
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 960px)").matches);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
-  const collapseKey = context.chapterId ? "chapter-editor" : context.section;
-  const collapsed = collapsedSections[collapseKey] ?? Boolean(context.chapterId);
+  // These workbenches own their document/thread directory. Keep one directory
+  // visible initially, while allowing the user to reopen the global navigator.
+  const workbench = context.chapterId ? "chapter-editor"
+    : context.section === "creative" ? "creative-workbench"
+    : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
+  const collapseKey = workbench ?? context.section;
+  const collapsed = collapsedSections[collapseKey] ?? Boolean(workbench);
   const mode = macEnvironment()?.mode;
 
   useEffect(() => {
