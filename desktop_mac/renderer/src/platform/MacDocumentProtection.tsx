@@ -14,7 +14,6 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const active = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.dirty || item.busy), []);
-  const manual = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.manualReview), []);
   const platform = useMemo<ClientPlatform>(() => {
     const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
     return {
@@ -40,8 +39,7 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const confirmLeave = useCallback(async () => {
     // Let a successful mutation publish its saved state before judging its navigation.
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const dirtyDocuments = active();
-    const documents = dirtyDocuments.length ? dirtyDocuments : manual();
+    const documents = active();
     if (!documents.length) return true;
     if (documents.some((item) => item.busy)) {
       toast.info("请等待当前保存或生成操作完成，再离开页面。");
@@ -51,9 +49,9 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     setPrompt(documents);
     setError("");
     return new Promise<boolean>((resolve) => { answer.current = resolve; });
-  }, [active, manual]);
+  }, [active]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && (active().length > 0 || (currentLocation.pathname !== nextLocation.pathname && manual().length > 0)),
+    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && active().length > 0,
   );
   const blockerRef = useRef(blocker);
   blockerRef.current = blocker;
@@ -75,7 +73,6 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       } else if (message.type === "requestSave") {
         void (async () => {
           const items = active();
-          if (!items.length && manual().length) toast.info("请使用页面内的保存操作完成修改。");
           if (items.some((item) => item.busy)) throw new Error("请等待当前操作完成。");
           for (const item of items) if (item.dirty && item.save) await item.save();
         })().catch((failure: unknown) => toast.error(failure instanceof Error ? failure.message : "保存失败，请重试。"));
@@ -87,7 +84,7 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       answer.current?.(false);
       answer.current = null;
     };
-  }, [active, confirmLeave, manual]);
+  }, [active, confirmLeave]);
 
   async function saveAndLeave() {
     setSaving(true);
@@ -98,8 +95,7 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (active().length) throw new Error("还有未保存的修改，请检查后再退出。");
-      if (manual().length) setPrompt(manual());
-      else finish(true);
+      finish(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "保存失败，修改仍保留在页面中。");
     } finally { setSaving(false); }
@@ -109,15 +105,13 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     {children}
     <Dialog open={prompt !== null} onOpenChange={(open) => { if (!open && !saving) finish(false); }}>
       <DialogContent aria-describedby="mac-close-description">
-        <DialogTitle>{prompt?.every((item) => item.manualReview) ? "离开前确认修改已保存" : "保存修改后离开？"}</DialogTitle>
-        <DialogDescription id="mac-close-description">{prompt?.every((item) => item.manualReview) ? "请先完成页面内的保存或提交操作。未提交的表单输入会随页面关闭。" : `${prompt?.map((item) => item.label).join("、")}有未保存的修改。`}</DialogDescription>
+        <DialogTitle>保存修改后离开？</DialogTitle>
+        <DialogDescription id="mac-close-description">{prompt?.map((item) => item.label).join("、")}有未保存的修改。</DialogDescription>
         {error ? <p role="alert">{error}</p> : null}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" disabled={saving} onClick={() => finish(false)}>取消</Button>
-          {prompt?.every((item) => item.manualReview) ? <Button onClick={() => finish(true)}>确认已保存，离开</Button> : <>
-            <Button variant="outline" disabled={saving || prompt?.some((item) => !item.discard)} onClick={() => { for (const item of active()) item.discard?.(); if (manual().length) setPrompt(manual()); else finish(true); }}>放弃未保存修改</Button>
-            <Button disabled={saving || prompt?.some((item) => !item.save)} onClick={() => void saveAndLeave()}>{saving ? "保存中…" : "保存并离开"}</Button>
-          </>}
+          <Button variant="outline" disabled={saving || prompt?.some((item) => !item.discard)} onClick={() => { for (const item of active()) item.discard?.(); finish(true); }}>放弃未保存修改</Button>
+          <Button disabled={saving || prompt?.some((item) => !item.save)} onClick={() => void saveAndLeave()}>{saving ? "保存中…" : "保存并离开"}</Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -92,3 +92,23 @@ main 基线 `2b33ff04a3c6b56be61d57579ef6b9bc9bcd27ed`；Mac 基线继承 main �
 - 此次仅验证启动、聚焦、退出和就绪信号，没有截图或页面编辑操作；视觉、输入法和真实 AI 创作仍待用户验收。没有执行部署或推送。
 
 验证期间曾将新建 helper 的身份误记为 xpcproxy；修复后，先保存 `.runtime/desktop_mac/state.before-identity-recovery.json`，核对该 helper 的 PID、启动时间、launchd 标签/目录/完整参数，再只修正本次自有进程的身份记录并正常退出。未强杀或停止借用通道。
+
+
+## 导航与离开提醒修复（2026-11-06）
+
+基线为本地 beta `94f7b975`，修复分支 `codex/mac-navigation-fix`。用户反馈的两个现象分别来自静态路由 manualReview 永久拦截，以及跨页面沿用 selectedNovelId。前者与真实编辑状态无关，后者使全局工具错误展示旧小说章节。
+
+处理范围：
+
+- 删除按路由永久确认的规则，只让注册编辑器的 dirty/busy 控制路由切换和原生退出；保存成功不再追加页面确认。覆盖表明确标记未接入统一保护的表单，仍需页内保存，不宣称已保护所有输入。
+- 以当前路由统一决定主菜单选中、标题、列表内容及展开按钮。书架/对话/导演记录/状态筛选/项目/设置分类分别读取或展示自身内容；只有作品页面显示章节。进入章节编辑默认折叠，可主动展开；全局菜单不读取之前小说的章节。
+- 运行记录状态进入 URL，侧栏、页内筛选及历史导航同步；列表仍只读。隐藏的侧栏不接受键盘焦点，移动抽屉与桌面折叠分别处理。
+- 参考 `/Users/likai/go/src/write/wukong/web/src/app/AppShell.jsx` 的 view/hasLibrary 合同及 NavigationSidebar 的选中逻辑；已在用户指定目录核实参考源码，没有修改 wukong。
+
+验证：
+
+- `node --test desktop_mac/tests/navigation.test.mjs`：6 项通过，涵盖干净页面导航/原生退出、有修改时取消及保存、保存失败/忙碌、各菜单侧栏隔离、只读筛选和历史返回、章节目录展开及取消导航；日志 `/tmp/mac-navigation-tests.log`。这是 Node/JSDOM 隔离组件测试，API 与原生桥为模拟，无真实业务写入。
+- 直接执行已安装的 TypeScript `tsc -p desktop_mac/tsconfig.json --noEmit` 通过；Vite renderer 生产构建通过。日志 `/tmp/mac-navigation-typecheck.log`、`/tmp/mac-navigation-build.log`。初次 pnpm 包装命令受其自身版本签名联网校验限制，因此验证使用同一已安装编译器入口，没有把包装命令失败记为类型错误。正常网络权限下 `pnpm --version` 已确认返回 10.6.0。
+- Mac 显式声明 JSDOM 测试依赖，复用锁文件已有 27.4.0 包与快照；已核对声明和锁文件一致，`pnpm --filter @ai-novel/desktop-mac install --lockfile-only --offline --frozen-lockfile --ignore-scripts` 通过，其他 workspace 的依赖版本不变。
+- 未改 client、server、shared、旧 desktop 源码；原生壳、进程与部署脚本未变，复用上一阶段启动/聚焦/退出及生命周期测试证据，不重复构建原生壳或全量 Web/Windows。
+- 未执行浏览器、截图或人工 UI 验证，未重启用户正在使用的窗口，未访问或改动本机/服务器小说数据。界面验收步骤已补入 acceptance.md；服务器模式需 `make restart_app` 重建后查看。

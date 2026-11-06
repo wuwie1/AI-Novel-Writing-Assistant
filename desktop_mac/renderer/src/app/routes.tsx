@@ -1,7 +1,6 @@
 import { lazy, type ReactNode } from "react";
 import { Link, type RouteObject } from "react-router-dom";
 import MacNovelShelf from "../features/novels/MacNovelShelf";
-import { useDocumentGuard } from "@/platform";
 const MacTaskRecords = lazy(() => import("../features/tasks/MacTaskRecords"));
 const MacSettings = lazy(() => import("../features/settings/MacSettings"));
 const MacAppearance = lazy(() => import("../features/settings/MacSettings").then((module) => ({ default: module.MacAppearance })));
@@ -12,11 +11,8 @@ export const macPageOverrides = {
   "settings/appearance": <MacAppearance/>, "settings/maintenance": <MacMaintenance/>,
 };
 
-const readOnlyPages = new Set(["home", "novels", "tasks", "help", "settings", "settings/appearance", "settings/maintenance", "novels/:id/preview", "novels/:id/ai-usage", "chat", "writing-formula", "auto-director/follow-up-center", "auto-director/followup-center", "*"]);
-const fullyRegisteredPages = new Set(["novels/:id/chapters/:chapterId", "novels/create"]);
 function MacFeature({ id, children }: { id: string; children: ReactNode }) {
-  // Explicit coverage metadata, not a guess based on DOM input or button labels.
-  useDocumentGuard({ label: "页面表单", dirty: false, manualReview: !readOnlyPages.has(id) && !fullyRegisteredPages.has(id) });
+  // Editors own unsaved state; visiting a route is not evidence of an edit.
   return <div className="mac-feature" data-mac-page={id}>{children}</div>;
 }
 
