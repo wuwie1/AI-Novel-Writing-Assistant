@@ -20,7 +20,7 @@
 | 3 创作链 | engineering_done | 用测试小说完成创建→规划→正文→导出待验收 |
 | 4 页面适配 | engineering_done | 47 个路由入口登记；复杂表单、窄窗与输入法待验收 |
 | 5 命令与部署 | engineering_done | 只读远端预演完成；真实部署未执行 |
-| 6 集成验收 | in_progress | 准备本地 beta；不晋级 main、不推送、不上传 |
+| 6 集成验收 | engineering_done | 已合入本地 beta；UI 为 user_acceptance_pending，不晋级 main、不推送、不上传 |
 
 UI 均为 `user_acceptance_pending`。没有默认运行浏览器、截图、Playwright、原生窗口或真实 AI 生成。工程检查不能代替视觉与操作验收。
 
@@ -67,4 +67,8 @@ UI 均为 `user_acceptance_pending`。没有默认运行浏览器、截图、Pla
 
 main 基线 `2b33ff04a3c6b56be61d57579ef6b9bc9bcd27ed`；Mac 基线继承 main 尚未包含的 10 个 ai 提交（服务器运维、长节奏段章节额度、角色出场计划及相应文档）。这些不是本次新增后端修改。已补充 server build 和上述 27 项针对性回归；服务器实际更新仍需发布候选自己的验证记录。
 
-远端 beta 只读核查和本地集成结果将在集成提交中记录。保留功能分支等待 UI 反馈，相关验收通过前不晋级 main。
+`git ls-remote --heads origin beta` 返回空，未发现远端 beta；本地也无该分支。从已核对 main 创建本地 beta，合并工程提交 `9a699824`，集成提交为 `295a4c03`。main 与 ai 各有一个等价的技能说明提交，历史并非直接祖先关系；合并无冲突，`git diff codex/mac-desktop..beta` 为空，产物对应的源树完全相同。因此复用上述 Mac/Web/Windows renderer 构建及针对性检查，不重复昂贵构建。
+
+提交后的代理断流处理单独运行 transport 3 项通过；仅空白和文档更新不使其他检查失效。README 最新更新与完整发布历史同步为 2026-11-06 的 Mac 源码预览说明；wiki 已记录长期边界。集成记录提交仅更新进度文档，没有额外用户可见行为，不重复添加发布说明。
+
+当前交付分支为本地 beta。功能分支 `codex/mac-desktop` 保留等待 UI 反馈；main 保持 `2b33ff04`，未推送、未发布、未部署。用户验收步骤见 acceptance.md；收到反馈后在功能分支修正，再进入 beta。
