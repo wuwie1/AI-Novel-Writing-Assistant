@@ -22,6 +22,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [当前模型选择与厂商默认模型边界](./architecture/model-selection.md)
 - [配置项归属与可见性规范](./architecture/configuration-conventions.md)
 - [私有服务器部署与本地访问边界](./architecture/server-deployment.md)
+- [Mac 桌面运行与呈现边界](./architecture/mac-desktop.md)
 
 ### Workflows
 

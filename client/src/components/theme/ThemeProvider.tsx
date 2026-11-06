@@ -27,10 +27,10 @@ interface ThemeContextValue extends ThemePreference {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function readPreference(): ThemePreference {
+function readPreference(storageKey = STORAGE_KEY): ThemePreference {
   if (typeof window === "undefined") return DEFAULT_PREFERENCE;
   try {
-    const value = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<ThemePreference> | null;
+    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "null") as Partial<ThemePreference> | null;
     return {
       mode: value?.mode === "light" || value?.mode === "dark" || value?.mode === "system" ? value.mode : DEFAULT_PREFERENCE.mode,
       palette: value?.palette === "ink" || value?.palette === "paper" || value?.palette === "night" ? value.palette : DEFAULT_PREFERENCE.palette,
@@ -45,14 +45,22 @@ function getSystemMode(): "light" | "dark" {
   return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreference] = useState<ThemePreference>(readPreference);
+export interface ThemeProviderProps {
+  children: ReactNode;
+  storageKey?: string;
+  /** Alternate hosts can constrain their own theme without changing web defaults. */
+  lockedPreference?: Partial<ThemePreference>;
+}
+
+export function ThemeProvider({ children, storageKey = STORAGE_KEY, lockedPreference }: ThemeProviderProps) {
+  const [storedPreference, setPreference] = useState<ThemePreference>(() => readPreference(storageKey));
+  const preference = useMemo(() => ({ ...storedPreference, ...lockedPreference }), [storedPreference, lockedPreference]);
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemMode);
   const resolvedMode = preference.mode === "system" ? systemMode : preference.mode;
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preference));
-  }, [preference]);
+    window.localStorage.setItem(storageKey, JSON.stringify(preference));
+  }, [preference, storageKey]);
 
   useEffect(() => {
     const root = document.documentElement;

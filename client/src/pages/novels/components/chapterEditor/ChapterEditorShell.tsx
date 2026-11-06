@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDocumentGuard } from "@/platform";
 import { flushSync } from "react-dom";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -477,6 +478,16 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   const isBusy = saveMutation.isPending || previewMutation.isPending || continuationMutation.isPending
     || acceptMutation.isPending || reviewMutation.isPending || resolveDiagnosticMutation.isPending;
+  useDocumentGuard({
+    label: chapter?.title ?? "章节正文",
+    dirty: isDirty || session.status === "ready",
+    busy: isBusy,
+    save: async () => {
+      if (session.status === "ready") throw new Error("请先采纳或关闭 AI 候选，再保存并退出。");
+      if (isDirty) await saveMutation.mutateAsync(contentDraft);
+    },
+    discard: () => { draft.loadSavedVersion(); setSession(EMPTY_SESSION); },
+  });
   useEffect(() => {
     props.onEditingStateChange?.({ isDirty, isBusy, hasCandidate: session.status === "ready" });
   }, [props.onEditingStateChange, isDirty, isBusy, session.status]);

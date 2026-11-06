@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html[data-app-shell="mac"] [data-mac-document] { min-height: 100%; }
+html[data-app-shell="mac"] .mac-page { padding: 22px 28px 32px; min-width: 0; }
+html[data-app-shell="mac"] .mac-page-heading { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+html[data-app-shell="mac"] .mac-page-heading h1 { font-size:18px; font-weight:600; margin:0; }
+html[data-app-shell="mac"] .mac-page-heading p { color:var(--mac-muted); font-size:12px; margin:5px 0 0; }
+html[data-app-shell="mac"] .mac-page-heading > :first-child { flex:1; min-width:0; }
+html[data-app-shell="mac"] .mac-connection-screen { height:100%; display:grid; place-content:center; gap:12px; padding:32px; color:var(--mac-muted); }
+html[data-app-shell="mac"] .mac-connection-screen h1 { color:var(--mac-text); font-size:18px; }
+html[data-app-shell="mac"] .mac-connection-banner { position:fixed; z-index:60; bottom:16px; left:80px; max-width:calc(100vw - 100px); padding:10px 16px; border-radius:8px; background:#fff5da; color:#79551c; }
+@media (max-width:640px) { html[data-app-shell="mac"] .mac-page { padding:16px; } }

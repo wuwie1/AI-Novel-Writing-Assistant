@@ -1,4 +1,5 @@
 import { lazy } from "react";
+import type { ReactNode } from "react";
 import type { RouteObject } from "react-router-dom";
 import { Navigate, useRoutes } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
@@ -108,6 +109,26 @@ const routes: RouteObject[] = [
     ],
   },
 ];
+
+export interface AppRouteOptions {
+  layout?: ReactNode;
+  pageOverrides?: Readonly<Record<string, ReactNode>>;
+}
+
+/** The path is the stable page id; the index page uses `home`. */
+export const appPageIds = Object.freeze(routes[0].children!.map((route) => route.index ? "home" : route.path!));
+
+export function createAppRoutes(options: AppRouteOptions = {}): RouteObject[] {
+  return routes.map((root): RouteObject => root.index ? root : ({
+    ...root,
+    id: "workspace",
+    element: options.layout ?? root.element,
+    children: root.children?.map((route) => {
+      const id = route.index ? "home" : route.path!;
+      return { ...route, id, element: options.pageOverrides?.[id] ?? route.element };
+    }),
+  }));
+}
 
 export default function AppRouter() {
   return useRoutes(routes);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DirectorContinuationMode } from "@ai-novel/shared/types/novelDirector";
 import type {
   DirectorBookAutomationAction,
@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDirectorBookAutomationProjection } from "@/api/novelDirector";
 import { continueNovelWorkflow } from "@/api/novelWorkflow";
-import { deleteNovel, downloadNovelExport, getNovelList } from "@/api/novel";
+import { deleteNovel, downloadNovelExport, getNovelList, type NovelListItem } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
 import AICockpit from "@/components/autoDirector/AICockpit";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,32 @@ function createDownload(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-export default function NovelList() {
+export interface NovelListPresentation {
+  novels: NovelListItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+  isPending: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+  status: StatusFilter;
+  setStatus: (value: StatusFilter) => void;
+  narrativeForm: "all" | "short_story" | "long_novel";
+  setNarrativeForm: (value: "all" | "short_story" | "long_novel") => void;
+  setPage: (page: number) => void;
+  refetch: () => void;
+  openNovel: (id: string) => void;
+  openCockpit: (id: string) => void;
+  openCover: (id: string) => void;
+  download: (input: { novelId: string; novelTitle: string }) => void;
+  remove: (id: string, title: string) => void;
+  downloadPendingId: string | null;
+  deletePendingId: string | null;
+}
+
+export default function NovelList({ render }: { render?: (model: NovelListPresentation) => ReactNode } = {}) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -72,9 +97,9 @@ export default function NovelList() {
   const [coverNovelId, setCoverNovelId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const { candidateCount: recoveryCandidateCount, openDialog: openRecoveryDialog } = useTaskRecovery();
-  const effectiveSearch = view === "shelf" ? search : "";
-  const effectiveNarrativeForm = view === "shelf" ? narrativeForm : "all";
-  const effectiveSort = view === "shelf" ? sort : "updated";
+  const effectiveSearch = render || view === "shelf" ? search : "";
+  const effectiveNarrativeForm = render || view === "shelf" ? narrativeForm : "all";
+  const effectiveSort = render || view === "shelf" ? sort : "updated";
 
   const novelListQuery = useQuery({
     queryKey: [...queryKeys.novels.list(page, NOVEL_LIST_PAGE_SIZE), view, effectiveSearch, status, writingMode, effectiveNarrativeForm, effectiveSort],
@@ -282,7 +307,17 @@ export default function NovelList() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className={render ? "mac-novel-feature" : "space-y-5"}>
+      {render ? render({
+        novels, total: totalNovels, page, totalPages,
+        isPending: novelListQuery.isPending, isError: novelListQuery.isError, isFetching: novelListQuery.isFetching,
+        search: searchInput, setSearch: setSearchInput, status, setStatus, narrativeForm, setNarrativeForm,
+        setPage, refetch: () => { void novelListQuery.refetch(); }, openNovel: openNovelEditor,
+        openCockpit: setCockpitNovelId, openCover: setCoverNovelId,
+        download: downloadNovelMutation.mutate, remove: handleDelete,
+        downloadPendingId: downloadNovelMutation.isPending ? downloadNovelMutation.variables?.novelId ?? null : null,
+        deletePendingId: deleteNovelMutation.isPending ? deleteNovelMutation.variables ?? null : null,
+      }) : <>
       <NovelListHeader
         page={page}
         totalPages={totalPages}
@@ -375,6 +410,8 @@ export default function NovelList() {
           />
         </>
       )}
+
+      </>}
 
       {coverNovel && coverBasicForm ? (
         <NovelCoverDialog
