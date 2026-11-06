@@ -72,3 +72,23 @@ main 基线 `2b33ff04a3c6b56be61d57579ef6b9bc9bcd27ed`；Mac 基线继承 main �
 提交后的代理断流处理单独运行 transport 3 项通过；仅空白和文档更新不使其他检查失效。README 最新更新与完整发布历史同步为 2026-11-06 的 Mac 源码预览说明；wiki 已记录长期边界。集成记录提交仅更新进度文档，没有额外用户可见行为，不重复添加发布说明。
 
 当前交付分支为本地 beta。功能分支 `codex/mac-desktop` 保留等待 UI 反馈；main 保持 `2b33ff04`，未推送、未发布、未部署。用户验收步骤见 acceptance.md；收到反馈后在功能分支修正，再进入 beta。
+
+
+## 启动问题修复与实机信号验证（2026-11-06）
+
+用户首次运行暴露的主因是 SSH 别名身份比较缺陷；dev_app 同时缺少本地配置和数据库。只读确认 15173 的 `/usr/bin/ssh` 使用 `my-server`，`ssh -G` 将其解析为 `root@152.136.155.200:22`，转发目标为服务器 `127.0.0.1:18080`。补充精确 argv 与解析后身份匹配，不取消未知进程保护。
+
+实际启动复验还发现并修正了三个运行契约缺口：focus 回复缺少身份字段、launchd 的 xpcproxy 过渡 PID 被过早记录，以及原生窗口先于 Vite HTTP 就绪而首次加载失败。补充对应回归验证。
+
+用户明确选择新建独立空测试库后，创建 `.runtime/desktop_mac/local/test.sqlite` 和私有 `server/.env`，均为忽略的本机运行数据。创建前确认目标不存在，初始化仅作用于全新空 SQLite；没有迁移或改写已有小说库。当前 Prisma CLI 对不存在的 SQLite 报空 Schema engine error；底层只读探测确认是 P1003，先独占创建空 SQLite 文件后再初始化成功。完整性检查为 ok、Novel 数量为 0。首次后端启动仅补齐其原有内置创作素材。模型密钥未从服务器导入，RAG 暂按未配置检索服务关闭。
+
+验证结果：
+
+- 实际 `make app` 返回 `started/remote`，原生 rendererReady、HTTP/API 健康通过；重复执行返回 `focused`。
+- 实际 `make dev_app` 返回 `started/local`，本机 API 3000、Vite 15174 和原生 rendererReady 通过；重复执行返回 `focused`。
+- 修复后 `make stop_app` 返回 `stopped` 且 retained 为空；重复停止成功。自有 API/Vite/窗口已退出，原有 borrowed 隧道 PID 15678 保留且 health 为 200。
+- Node 针对性测试 29 项通过，日志 `/tmp/mac-startup-tests.log`；两种实际启动日志分别为 `/tmp/mac-app-startup-check.log`、`/tmp/mac-dev-startup-check.log`。原生 Swift 在上述启动检查中重新编译通过。
+- Web/client/server 源码和依赖锁文件此次均未改动，复用前一阶段的构建证据；未重复 Web/Windows 全量构建。
+- 此次仅验证启动、聚焦、退出和就绪信号，没有截图或页面编辑操作；视觉、输入法和真实 AI 创作仍待用户验收。没有执行部署或推送。
+
+验证期间曾将新建 helper 的身份误记为 xpcproxy；修复后，先保存 `.runtime/desktop_mac/state.before-identity-recovery.json`，核对该 helper 的 PID、启动时间、launchd 标签/目录/完整参数，再只修正本次自有进程的身份记录并正常退出。未强杀或停止借用通道。

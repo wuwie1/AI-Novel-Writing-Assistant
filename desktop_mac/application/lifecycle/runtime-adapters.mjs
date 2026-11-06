@@ -6,12 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
-import { createLaunchdPlist, launchAgent, launchdLabel, printAgent, stopAgent } from '../../infrastructure/processes/launchd.mjs';
+import { createLaunchdPlist, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
 import { inspectProcess, processMatches, stableHash } from '../../infrastructure/processes/identity.mjs';
 import { nativeSocketPath, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
 import { backendIdentity as makeBackendIdentity } from '../../infrastructure/processes/identity.mjs';
 import { inspectSqliteQuiescence, resolveLocalDatabasePath } from '../../infrastructure/processes/quiescence.mjs';
 import { selectServerNode } from '../../infrastructure/processes/launchers/server-node.mjs';
+import { tunnelMatches } from '../../infrastructure/transport/ssh-identity.mjs';
 
 const exec = promisify(execFile);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -99,18 +100,17 @@ export function createRuntimeAdapters(config) {
     await writeFile(outPath, '', { flag: 'a', mode: 0o600 }); await writeFile(errPath, '', { flag: 'a', mode: 0o600 });
     const plistPath = path.join(agents, `${label}.plist`);
     const supervisor = path.join(repoRoot, 'desktop_mac/infrastructure/processes/launchers/supervisor.mjs');
-    const plist = createLaunchdPlist({ label, executable: process.execPath, args: [supervisor, role, outPath, errPath, executable, ...args], repoRealPath: repoRoot, logPath: '/dev/null', errorPath: errPath, pathValue, environment: { ...environment, MAC_LAUNCHD_LABEL: label } });
+    const supervisorArgs = [supervisor, role, outPath, errPath, executable, ...args];
+    const plist = createLaunchdPlist({ label, executable: process.execPath, args: supervisorArgs, repoRealPath: repoRoot, logPath: '/dev/null', errorPath: errPath, pathValue, environment: { ...environment, MAC_LAUNCHD_LABEL: label } });
     await writeFile(plistPath, plist, { mode: 0o600 });
     try { await launchAgent(plistPath); } catch (error) { throw internalError(`Failed to start ${role}; inspect ${errPath} and retry (${error.code ?? 'launchd'})`); }
-    let info; let pid;
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      try { info = await printAgent(label); pid = parsePid(info.stdout); if (pid) break; } catch {}
-      await delay(100);
+    let processInfo;
+    try { processInfo = await waitForAgentIdentity(label, [process.execPath, ...supervisorArgs]); }
+    catch {
+      await stopAgent(label).catch(() => {});
+      throw internalError(`Failed to verify ${role} process identity; inspect ${errPath} and retry`);
     }
-    if (!pid) { await stopAgent(label).catch(() => {}); await appendRoleLog(logs, role, `launchd job did not expose a process; inspect ${errPath}`); throw internalError(`Failed to confirm ${role}; inspect ${errPath} and retry`); }
-    const processInfo = await inspectProcess(pid);
-    if (!processInfo) throw internalError(`Failed to verify ${role} process identity; inspect ${errPath} and retry`, 4);
+    const pid = processInfo.pid;
     const record = { ownership: 'owned', role, mode, repoRealPath: repoRoot, pid, startTime: processInfo.startTime, command: processInfo.command, commandIdentity: stableHash(processInfo.command), label, logPath: outPath, errorLogPath: errPath, plistPath };
     createdRecords.add(record);
     return record;
@@ -238,8 +238,7 @@ export function createRuntimeAdapters(config) {
           if (pids.length > 1) throw internalError(`Several processes own tunnel port ${config.tunnelPort}; inspect the listeners`, 4);
           if (pids.length === 1) {
             const pid = pids[0]; const info = await inspectProcess(pid);
-            const target = `127.0.0.1:${config.tunnelPort}:127.0.0.1:${config.remoteWebPort}`;
-            if (!info || !info.command.includes(config.sshTarget) || !info.command.includes(target)) throw internalError(`Port ${config.tunnelPort} belongs to an SSH process whose complete tunnel target could not be verified (pid ${pid})`, 4);
+            if (!info || !await tunnelMatches({ pid, sshTarget: config.sshTarget, localPort: config.tunnelPort, remotePort: config.remoteWebPort })) throw internalError(`Port ${config.tunnelPort} belongs to an SSH process whose complete tunnel target could not be verified (pid ${pid}); inspect the SSH destination or choose another TUNNEL_PORT`, 4);
             processes.tunnel = { ownership: 'borrowed', role: 'tunnel', mode, repoRealPath: repoRoot, pid, startTime: info.startTime, command: info.command, commandIdentity: stableHash(info.command), sshTarget: config.sshTarget, localPort: config.tunnelPort, remotePort: config.remoteWebPort };
           } else {
             const sshArgs = ['-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30', '-L', `127.0.0.1:${config.tunnelPort}:127.0.0.1:${config.remoteWebPort}`, config.sshTarget];
@@ -324,9 +323,9 @@ export function createRuntimeAdapters(config) {
       await this.cleanupWindowHelpers(current);
       const connection = await this.ensureConnection({ mode: current.runningMode, config, current });
       const helpers = await this.startHelpers({ mode: current.runningMode, development: current.previousSuccessfulBuild.development === true, config, paths: { repoRoot, runtimeDir: runtime }, build: current.previousSuccessfulBuild, connection });
+      await this.waitHealthy({ mode: current.runningMode, development: current.previousSuccessfulBuild.development === true, config, timeoutMs: 120_000 });
       const windowInfo = await this.openNative({ mode: current.runningMode, config, paths: { repoRoot, runtimeDir: runtime }, build: current.previousSuccessfulBuild, connection, helpers });
       await this.waitRendererReady(windowInfo, 30_000);
-      await this.waitHealthy({ mode: current.runningMode, development: current.previousSuccessfulBuild.development === true, config, timeoutMs: 120_000 });
       const watcher = await this.watchNativeExit(windowInfo, { mode: current.runningMode, backendIdentity: connection.backendIdentity });
       return { ...current, runningMode: current.runningMode, backendIdentity: connection.backendIdentity, buildFingerprint: current.previousSuccessfulBuild.fingerprint, processes: { ...connection.processes, ...helpers.processes, app: windowInfo.process, 'native-watcher': watcher } };
     },

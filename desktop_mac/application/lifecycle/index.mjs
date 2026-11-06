@@ -54,9 +54,10 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         build ??= await adapters.prepare({ mode, development, config, paths });
         const connection = await adapters.ensureConnection({ mode, config, current: snapshot });
         const helpers = await adapters.startHelpers({ mode, development, config, paths, build, connection });
+        // A running launchd wrapper does not mean Vite/the proxy is listening yet.
+        await adapters.waitHealthy({ mode, development, config, timeoutMs: 120_000 });
         const windowInfo = await adapters.openNative({ mode, config, paths, build, connection, helpers });
         await adapters.waitRendererReady(windowInfo, 30_000);
-        await adapters.waitHealthy({ mode, development, config, timeoutMs: 120_000 });
         const priorProcesses = await adapters.cleanupPreviousHelpers?.({ current: snapshot, nextProcesses: { ...connection.processes, ...helpers.processes, app: windowInfo.process } }) ?? {};
         const next = {
           ...snapshot,

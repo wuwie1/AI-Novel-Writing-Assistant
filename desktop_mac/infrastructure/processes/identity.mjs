@@ -10,7 +10,7 @@ export async function inspectProcess(pid, { exec = execFileAsync } = {}) {
   try {
     const [{ stdout: started }, { stdout: command }] = await Promise.all([
       exec('/bin/ps', ['-p', String(pid), '-o', 'lstart=']),
-      exec('/bin/ps', ['-p', String(pid), '-o', 'command=']),
+      exec('/bin/ps', ['-ww', '-p', String(pid), '-o', 'command=']),
     ]);
     return { pid: Number(pid), startTime: started.trim(), command: command.trim() };
   } catch { return null; }

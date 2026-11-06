@@ -129,12 +129,12 @@ test('process signal requires matching repository, role, mode, start time and co
   assert.equal(signals, 0);
 });
 
-test('failed health check preserves a new window that refuses close and does not roll another window over it', async (t) => {
+test('failed renderer startup preserves a new window that refuses close and does not roll another window over it', async (t) => {
   let failHealth = false;
   let lastMode;
   const ctx = await setup(t, {
     openNative: async ({ mode }) => { lastMode = mode; return { process: { ownership: 'owned', mode } }; },
-    waitHealthy: async () => { if (failHealth) throw new Error('health failed'); },
+    waitRendererReady: async () => { if (failHealth) throw new Error('renderer failed'); },
     cleanupFailedStart: async () => ({ app: { ownership: 'owned', mode: lastMode, backendIdentity: `identity-${lastMode}` }, proxy: { ownership: 'owned', mode: lastMode } }),
     restorePrevious: async () => { throw new Error('must not replace the retained native window'); },
   });
@@ -157,4 +157,15 @@ test('stop cleans a retained owned tunnel even when no window or local API remai
   });
   await ctx.lifecycle.stop();
   assert.ok(ctx.calls.includes('stop:tunnel'));
+});
+
+test('the renderer host must be healthy before the native window opens', async (t) => {
+  const events=[];
+  const ctx=await setup(t,{
+    waitHealthy:async()=>events.push('http-ready'),
+    openNative:async({mode})=>{events.push('open-window');return {process:{ownership:'owned',mode}};},
+    waitRendererReady:async()=>events.push('renderer-ready'),
+  });
+  await ctx.lifecycle.startLocal();
+  assert.deepEqual(events,['http-ready','open-window','renderer-ready']);
 });
