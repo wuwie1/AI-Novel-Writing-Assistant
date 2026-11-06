@@ -9,6 +9,10 @@ html[data-app-shell="mac"] .mac-records [data-tone="danger"] { color:#b84e47; }
 html[data-app-shell="mac"] .mac-records [data-tone="warning"] { color:#98732e; }
 html[data-app-shell="mac"] .mac-records [data-tone="success"] { color:#54815c; }
 html[data-app-shell="mac"] .mac-records progress { width:100%; height:3px; margin-top:10px; accent-color:#858580; }
+html[data-app-shell="mac"] .mac-record-list > button { appearance:none; box-shadow:none; }
+html[data-app-shell="mac"] .mac-records progress { appearance:none; border:0; border-radius:2px; overflow:hidden; background:#e2e2df; }
+html[data-app-shell="mac"] .mac-records progress::-webkit-progress-bar { background:#e2e2df; }
+html[data-app-shell="mac"] .mac-records progress::-webkit-progress-value { background:var(--mac-list-indicator); }
 html[data-app-shell="mac"] .mac-record-detail { padding:14px 4px; font-size:12px; line-height:1.8; }
 html[data-app-shell="mac"] .mac-record-detail h2 { font-size:16px; font-weight:600; }
 html[data-app-shell="mac"] .mac-record-detail dl { display:grid; grid-template-columns:70px 1fr; gap:9px; margin:20px 0; }

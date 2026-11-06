@@ -88,7 +88,8 @@ html[data-app-shell="mac"] .mac-shell {
   height: 100%;
   overflow: hidden;
   background: var(--mac-sidebar);
-  transition: grid-template-columns 180ms ease;
+  /* Switch directories atomically. WKWebView can suspend a grid animation
+     while backgrounded and retain an empty column after navigation. */
 }
 html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed { grid-template-columns: 64px 0 minmax(0, 1fr); }
 
@@ -120,7 +121,8 @@ html[data-app-shell="mac"] .mac-icon-button {
   background: transparent;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  /* Selection must follow the route even while WKWebView is in background. */
+  transition: none;
 }
 html[data-app-shell="mac"] .mac-rail-link:hover,
 html[data-app-shell="mac"] .mac-icon-button:hover { background: var(--mac-hover); color: var(--mac-text); }
@@ -163,7 +165,7 @@ html[data-app-shell="mac"] .mac-secondary {
   border-top: 1px solid var(--mac-line);
   border-top-left-radius: 16px;
   background: var(--mac-list);
-  transition: opacity 140ms ease;
+
 }
 html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary { visibility: hidden; opacity: 0; pointer-events: none; }
 html[data-app-shell="mac"] .mac-list-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 8px; border-bottom: 1px solid #dcdcd8; background: var(--mac-list); }

@@ -1,0 +1,40 @@
+/* Plate owns chapter editing, not TipTap. Keep its paragraph-marker wrapper
+   aligned with the text surface, including when typography settings change. */
+html[data-app-shell="mac"] [data-mac-page="novels/:id/chapters/:chapterId"] { padding:10px 12px; container-type:inline-size; }
+html[data-app-shell="mac"] [data-mac-page="novels/:id/chapters/:chapterId"] [style*="--cte-font-size"] { min-height:0; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] > .border-b { padding:6px 10px; min-height:40px; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] > .overflow-y-auto { padding:20px 8px 80px; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] > .overflow-y-auto > .relative {
+  width:100%; max-width:calc(34 * var(--cte-font-size,20px) + 70px); margin-inline:auto;
+}
+html[data-app-shell="mac"] [style*="--cte-font-size"] .prose { background:transparent; border-radius:0; padding-top:8px; padding-bottom:40px; caret-color:#333; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] [data-slate-editor] [data-slate-node="element"] { margin:0 0 1.6em; text-indent:2em; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] [role="toolbar"] { font-size:12px; }
+/* Respect all standard/wide/immersive and manual-collapse states. Only the
+   sizes change; no panel or action is removed from the shared editor. */
+@container (min-width:1000px) {
+  html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] { grid-template-columns:var(--mac-editor-columns); overflow:hidden; gap:12px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[320px_minmax(0,1fr)_400px]"] { --mac-editor-columns:244px minmax(0,1fr) 280px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[44px_minmax(0,1fr)_400px]"] { --mac-editor-columns:36px minmax(0,1fr) 280px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[320px_minmax(0,1fr)_44px]"] { --mac-editor-columns:244px minmax(0,1fr) 36px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[44px_minmax(0,1fr)_44px]"] { --mac-editor-columns:36px minmax(0,1fr) 36px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[minmax(0,1fr)_384px]"] { --mac-editor-columns:minmax(0,1fr) 280px; }
+  html[data-app-shell="mac"] [class*="xl:grid-cols-[minmax(0,1fr)]"] { --mac-editor-columns:minmax(0,1fr); }
+  html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] > div { order:0; }
+}
+@container (max-width:999px) {
+  html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] { grid-template-columns:minmax(0,1fr); overflow:auto; }
+  html[data-app-shell="mac"] [style*="--cte-font-size"] { min-height:600px; }
+}
+html[data-app-shell="mac"] [data-mac-page="lab/director/:novelId"] { height:100%; min-height:0; padding:12px 16px; }
+html[data-app-shell="mac"] [data-mac-page="lab/director/:novelId"] > div { height:100%; }
+/* The reader's default serif follows the Mac writing face. Explicit Song,
+   sans and Kai choices, and the user's inline font size, retain priority. */
+html[data-app-shell="mac"] :is([data-mac-page="lab/director/:novelId"],[role="dialog"]) [style*="font-family: ui-serif"] { font-family:"Mac WenKai","Kaiti SC",serif !important; }
+html[data-app-shell="mac"] [aria-label="章节正文"] { padding-inline:18px; }
+html[data-app-shell="mac"] [aria-label="章节正文"] > .border-b { margin-bottom:24px; padding-bottom:16px; }
+html[data-app-shell="mac"] [aria-label="章节正文"] > div[style] { line-height:1.6; letter-spacing:0; }
+html[data-app-shell="mac"] [aria-label="章节正文"] > div[style] > p { margin:0 0 1.6em; text-indent:2em; }
+
+html[data-app-shell="mac"] [role="dialog"]:has([style*="--cte-font-size"]) { height:100dvh; max-height:100dvh; padding:0; border-radius:0; overflow:hidden; container-type:inline-size; }
+html[data-app-shell="mac"] [style*="--cte-font-size"] .prose { font-family:"Mac WenKai","Kaiti SC","STKaiti",serif; font-size:var(--cte-font-size,20px); line-height:var(--cte-line-height,1.6); font-weight:400; }

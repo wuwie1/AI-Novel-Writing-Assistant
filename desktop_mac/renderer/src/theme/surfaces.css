@@ -1,0 +1,69 @@
+/* Presentation adapters for shared business components; never loaded by Web. */
+html[data-app-shell="mac"] .mac-feature { padding:18px 22px 26px; font-size:13px; }
+html[data-app-shell="mac"] .mac-feature > :is(.max-w-4xl,.max-w-6xl,.max-w-7xl) { max-width:none; padding:0; }
+html[data-app-shell="mac"] .mac-feature :is(.space-y-8,.space-y-6) > :not([hidden]) ~ :not([hidden]) { margin-top:20px; }
+html[data-app-shell="mac"] .mac-feature [data-ui="workspace-header"] { padding-bottom:12px; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] .h-10.w-10 { width:28px; height:28px; border:0; background:transparent; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] .mt-3 { margin-top:8px; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] .mt-2 { margin-top:4px; }
+html[data-app-shell="mac"] .mac-feature section[aria-label="推荐下一步"] { padding:10px 12px; border:0; border-radius:6px; }
+html[data-app-shell="mac"] .mac-feature section[aria-label="推荐下一步"] h2 { font-size:13px; }
+html[data-app-shell="mac"] .mac-feature section[aria-label="推荐下一步"] p { font-size:12px; line-height:1.6; }
+html[data-app-shell="mac"] .mac-feature section[aria-label="推荐下一步"] svg { width:16px; height:16px; }
+html[data-app-shell="mac"] [data-ui="card"] > div { padding:12px; }
+html[data-app-shell="mac"] [data-ui="card"] > div + div { padding-top:0; }
+html[data-app-shell="mac"] [data-ui="button"] { gap:6px; }
+html[data-app-shell="mac"] [data-ui="button"] svg { flex-shrink:0; }
+/* Icon size is a hit target, not horizontal text padding. Includes toolbar
+   controls that override the primitive's default 40px icon variant. */
+html[data-app-shell="mac"] [data-ui="button"]:is(.w-7,.w-8,.w-9,.w-10,.size-7,.size-8,.size-9,.size-10) {
+  padding:0; width:28px; height:28px; flex-shrink:0;
+}
+html[data-app-shell="mac"] [data-ui="button"]:is(.w-7,.w-8,.w-9,.w-10) svg { width:16px; height:16px; }
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) { max-height:calc(100dvh - 48px); overflow-y:auto; padding:20px; font-size:13px; }
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) h2 { font-size:16px; font-weight:500; }
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) :is(p,.text-sm) { font-size:12px; line-height:1.6; }
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) > button.absolute { width:24px; height:24px; display:grid; place-items:center; }
+html[data-app-shell="mac"] [role="tablist"] { width:fit-content; max-width:100%; overflow-x:auto; justify-content:flex-start; background:#eeeeec; }
+html[data-app-shell="mac"] [role="tab"] { flex-shrink:0; transition:none; }
+
+/* Resource pages use a few raw surfaces instead of Card. Reduce only their
+   neutral boundaries; error/selection/drop-target boundaries remain intact. */
+html[data-app-shell="mac"] .mac-feature :is(section,article,div).rounded-3xl,
+html[data-app-shell="mac"] .mac-feature :is(section,article,div).rounded-2xl { border-radius:7px; box-shadow:none; }
+html[data-app-shell="mac"] .mac-feature :is(section,article,div).rounded-3xl:is(.border-border,.border-border\/70,.border-border\/60),
+html[data-app-shell="mac"] .mac-feature :is(section,article,div).rounded-2xl:is(.border-border,.border-border\/70,.border-border\/60) { border-color:transparent; }
+html[data-app-shell="mac"] [data-mac-page="knowledge"] :is(section,article).rounded-3xl { padding:16px; }
+html[data-app-shell="mac"] .mac-feature :is(.p-8,.p-10).border-dashed:not([role="button"]):not(:has(input[type="file"])) { padding:28px 20px; border-color:transparent; }
+html[data-app-shell="mac"] .mac-feature [role="combobox"] { min-height:30px; height:auto; padding:6px 10px; font-size:12px; border-radius:6px; box-shadow:none; }
+html[data-app-shell="mac"] .mac-feature input:is([type="search"],[type="text"]) { font-size:13px; }
+html[data-app-shell="mac"] :focus-visible { outline:2px solid #88abc0; outline-offset:2px; }
+
+/* Asset libraries have their own primitives, independent of workspace/Card. */
+html[data-app-shell="mac"] .mac-feature > div > header:has(h1) { border:0; padding-bottom:12px; }
+html[data-app-shell="mac"] .mac-feature > div > header .h-10.w-10 { width:28px; height:28px; border:0; background:transparent; }
+html[data-app-shell="mac"] .mac-feature > div > header .h-10.w-10 svg { width:16px; height:16px; stroke-width:1.5; }
+html[data-app-shell="mac"] .mac-feature > div > header p { font-size:12px; line-height:1.6; }
+html[data-app-shell="mac"] .mac-feature [aria-label="资产状态"] { gap:12px; }
+html[data-app-shell="mac"] .mac-feature [aria-label="资产状态"] > div { border:0; background:var(--mac-soft); padding:10px 12px; }
+html[data-app-shell="mac"] .mac-feature [aria-label="资产状态"] .text-xl { font-size:18px; font-weight:500; }
+html[data-app-shell="mac"] .mac-feature section.bg-card.border-border\/80 { border:0; background:transparent; }
+html[data-app-shell="mac"] .mac-feature section.bg-card.border-border\/80 > div { padding:12px 0; }
+html[data-app-shell="mac"] .mac-feature .grid:has(> div > [aria-label] > [role="tree"]) { border:0; }
+html[data-app-shell="mac"] .mac-feature [role="treeitem"][aria-selected="true"] > .group { background:var(--mac-list-selected); color:var(--mac-text); box-shadow:inset 3px 0 var(--mac-list-indicator); }
+html[data-app-shell="mac"] .mac-feature [role="treeitem"][aria-selected="true"] > .group :is(button,span) { color:inherit; }
+
+/* Settings categories are already available in the Mac directory, including
+   its narrow-window drawer. Keep a single navigation surface. */
+html[data-app-shell="mac"] [data-mac-page^="settings/"] .grid:has(> nav[aria-label="系统设置"]) { grid-template-columns:minmax(0,1fr); }
+html[data-app-shell="mac"] [data-mac-page^="settings/"] nav[aria-label="系统设置"] { display:none; }
+html[data-app-shell="mac"] [role="status"].border-border\/70 { border:0; background:var(--mac-soft); }
+html[data-app-shell="mac"] #root [data-mac-page="create"] textarea { background:transparent; border:0; }
+
+/* Adaptation workspaces use plain surfaces. Preserve their editable controls,
+   image/drop targets and floating pickers while flattening persistent groups. */
+html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] > div { padding:0; }
+html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] > div > .rounded-xl.bg-card { border:0; border-radius:6px; padding:12px; }
+html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] .grid > div.rounded-lg.bg-background { border:0; background:transparent; }
+html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] :is(aside,section).rounded-lg.bg-background { border:0; border-radius:6px; background:var(--mac-soft); }
+html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] aside button.border-primary { border-color:transparent; background:var(--mac-list-selected); box-shadow:inset 3px 0 var(--mac-list-indicator); }

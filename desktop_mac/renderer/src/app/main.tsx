@@ -11,6 +11,9 @@ import { macEnvironment } from "../platform/native";
 import "./base.css";
 import "../theme/index.css";
 import "../theme/business.css";
+import "../theme/surfaces.css";
+import "../features/editor/editor.css";
+import "../features/creative/creative.css";
 import "../features/novels/shelf.css";
 import "../features/tasks/records.css";
 
