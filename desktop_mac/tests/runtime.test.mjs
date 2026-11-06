@@ -41,3 +41,22 @@ test('launchd escapes repository and log paths with XML characters', () => {
   assert.ok(xml.includes('/books/&lt;error&gt;'));
   assert.ok(!xml.includes('/books/A&B'));
 });
+
+test('launchd ownership waits past xpcproxy and verifies exact argv before recording a process', async () => {
+  const { waitForAgentIdentity } = await import('../infrastructure/processes/launchd.mjs');
+  const expected = ['/node','/repo/supervisor.mjs','mac-proxy'];
+  let attempt = 0;
+  const result = await waitForAgentIdentity('app.test', expected, {
+    print: async () => ({stdout:'pid = 42\n'}),
+    readArgv: async () => ++attempt === 1 ? ['xpcproxy','app.test'] : expected,
+    inspect: async () => ({pid:42,startTime:'same-start',command:expected.join(' ')}),
+    wait: async () => {},
+  });
+  assert.equal(attempt,2);
+  assert.equal(result.command,expected.join(' '));
+  await assert.rejects(waitForAgentIdentity('app.test',expected,{
+    print: async () => ({stdout:'pid = 42\n'}), readArgv: async () => ['/unrelated-process'],
+    inspect: async () => {throw Error('must not accept an unrelated command');}, timeoutMs:5,
+    wait: async () => new Promise((resolve)=>setTimeout(resolve,5)),
+  }),{exitCode:5});
+});

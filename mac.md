@@ -2,7 +2,7 @@
 
 编制及复核日期：2026-11-06（Asia/Singapore）。
 
-状态：工程实现、针对性检查与本地 beta 集成完成；视觉、原生交互及真实创作链为 `user_acceptance_pending`。实际状态与验证证据见 [实施进度](desktop_mac/docs/progress.md)。保留下文作为需求和验收基线；本轮没有启动 UI、修改后端源码、开放端口或执行真实部署。
+状态：工程实现、针对性检查与本地 beta 集成完成；视觉、原生交互及真实创作链为 `user_acceptance_pending`。实际状态与验证证据见 [实施进度](desktop_mac/docs/progress.md)，其中包括后续启动修复的实机就绪信号验证。保留下文作为需求和验收基线；未修改后端源码、开放端口或执行真实部署。
 
 ## 0. 给执行 Codex 的约定
 

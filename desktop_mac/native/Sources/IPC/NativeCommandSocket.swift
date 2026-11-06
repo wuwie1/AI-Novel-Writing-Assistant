@@ -106,7 +106,10 @@ final class NativeCommandSocket {
         case "status":
             var value = delegate?.socketStatus ?? [:]; value["ok"] = true; value["requestId"] = requestID; value["protocolVersion"] = 1
             writeJSON(value, to: fd)
-        case "focus": delegate?.focusWindow(); writeJSON(["ok": true, "requestId": requestID], to: fd)
+        case "focus":
+            delegate?.focusWindow()
+            var value = delegate?.socketStatus ?? [:]; value["ok"] = true; value["requestId"] = requestID; value["protocolVersion"] = 1
+            writeJSON(value, to: fd)
         case "close":
             guard pendingCloseFD == nil else { writeJSON(["ok": false, "error": "close_pending", "requestId": requestID], to: fd); return }
             pendingCloseFD = fd
