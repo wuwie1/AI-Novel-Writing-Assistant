@@ -1,8 +1,8 @@
 html[data-app-shell="mac"] .mac-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:30px; padding:5px 12px; border:0; border-radius:6px; color:var(--mac-text); background:#e7e7e4; font-size:12px; cursor:pointer; text-decoration:none; }
 html[data-app-shell="mac"] .mac-action:hover { background:var(--mac-hover); }
 html[data-app-shell="mac"] .mac-shelf-tools { display:flex; gap:10px; align-items:center; margin-bottom:28px; flex-wrap:wrap; }
-html[data-app-shell="mac"] .mac-search { display:flex; align-items:center; gap:9px; width:min(100%,480px); min-width:180px; flex:1; padding:0 12px; height:36px; border:1px solid var(--mac-line); border-radius:8px; background:white; color:var(--mac-muted); }
-html[data-app-shell="mac"] .mac-search input { width:100%; min-width:0; padding:0; border:0; background:transparent; outline:0; box-shadow:none; }
+html[data-app-shell="mac"] .mac-search { display:flex; align-items:center; gap:9px; width:100%; max-width:720px; min-width:180px; flex:1 1 320px; padding:0 12px; height:44px; border:1px solid #d8d8d2; border-radius:10px; background:white; color:var(--mac-muted); }
+html[data-app-shell="mac"] #root .mac-search input { width:100%; min-width:0; padding:0; border:0; background:transparent; outline:0; box-shadow:none; }
 html[data-app-shell="mac"] .mac-shelf-tools select { min-height:32px; font-size:12px; padding:4px 8px; border:0; }
 html[data-app-shell="mac"] .mac-book-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(142px,1fr)); gap:30px 24px; }
 html[data-app-shell="mac"] .mac-book-entry { position:relative; min-width:0; }
@@ -28,3 +28,6 @@ html[data-app-shell="mac"] .mac-empty h2 { font-size:16px; color:var(--mac-text)
 html[data-app-shell="mac"] .mac-empty p { max-width:320px; font-size:13px; line-height:1.7; }
 html[data-app-shell="mac"] .mac-pagination { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:30px; font-size:11px; color:var(--mac-muted); }
 html[data-app-shell="mac"] .mac-pagination > :first-child { margin-right:auto; }
+
+html[data-app-shell="mac"] .mac-search:focus-within { border-color:#8ebce9; box-shadow:0 0 0 2px rgb(10 132 255 / 10%); }
+html[data-app-shell="mac"] #root .mac-search input:focus { box-shadow:none; }
