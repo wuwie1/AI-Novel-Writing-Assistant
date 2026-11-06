@@ -54,17 +54,18 @@ function classifyChapterListRetryIssue(reason: string): string {
   return "综合质量：按失败原因重排标题、章节功能和摘要推进，保证每章都有新增变化。";
 }
 
+interface VolumeChapterListPromptConfig {
+  targetChapterCount: number;
+  targetBeatKey?: string;
+  targetBeatLabel?: string | null;
+  isBookFinale?: boolean;
+  reservedChapterTitles?: string[];
+  characterIds?: string[];
+  characterCatalog?: Array<{ id: string; name: string; role: string; castRole?: string | null }>;
+}
+
 function resolvePromptConfig(
-  input:
-    | number
-    | {
-      targetChapterCount: number;
-      targetBeatKey?: string;
-      targetBeatLabel?: string | null;
-      isBookFinale?: boolean;
-      reservedChapterTitles?: string[];
-      characterIds?: string[];
-      },
+  input: number | VolumeChapterListPromptConfig,
 ): {
   targetChapterCount: number;
   targetBeatKey: string;
@@ -72,6 +73,7 @@ function resolvePromptConfig(
   isBookFinale: boolean;
   reservedChapterTitles: string[];
   characterIds?: string[];
+  characterCatalog?: VolumeChapterListPromptConfig["characterCatalog"];
 } {
   if (typeof input === "number") {
     return {
@@ -89,7 +91,8 @@ function resolvePromptConfig(
     targetBeatLabel: input.targetBeatLabel?.trim() || "目标节奏段",
     isBookFinale: input.isBookFinale === true,
     reservedChapterTitles: input.reservedChapterTitles ?? [],
-    characterIds: input.characterIds,
+    characterIds: input.characterCatalog?.map(character => character.id) ?? input.characterIds,
+    characterCatalog: input.characterCatalog,
   };
 }
 
@@ -274,30 +277,32 @@ function isChapterFunctionQualityIssue(error: unknown): boolean {
 }
 
 export function createVolumeChapterListPrompt(
-  input:
-    | number
-    | {
-        targetChapterCount: number;
-        targetBeatKey?: string;
-        targetBeatLabel?: string | null;
-        isBookFinale?: boolean;
-        reservedChapterTitles?: string[];
-        characterIds?: string[];
-      },
+  input: number | VolumeChapterListPromptConfig,
 ): PromptAsset<
   VolumeChapterListPromptInput,
   ReturnType<typeof createVolumeChapterBeatBlockSchema>["_output"]
 > {
-  const { targetChapterCount, targetBeatKey, targetBeatLabel, isBookFinale = false, reservedChapterTitles, characterIds } =
+  const { targetChapterCount, targetBeatKey, targetBeatLabel, isBookFinale = false, reservedChapterTitles, characterIds, characterCatalog } =
     resolvePromptConfig(input);
   const withSchedule = characterIds !== undefined;
 
   return {
     id: "novel.volume.chapter_list",
-    version: withSchedule ? "v10" : "v9",
+    version: withSchedule ? "v11" : "v9",
     taskType: "planner",
     mode: "structured",
     language: "zh",
+
+    repairPolicy: withSchedule ? {
+      maxAttempts: 1,
+      guidance: [
+        "plannedCharacterIds 必须从下方本书角色目录中逐字复制 ID，不得增删 ID 字符、使用角色姓名或臆造 ID；同一章不得重复。",
+        "根据章节原有行动与角色身份修正错误引用，保留合法出场安排、章节标题、摘要、顺序和数量；不要为通过校验清空出场安排，也不要用其他角色顶替目录外人物。",
+        "角色目录为空时只能输出 []；目录外人物不得占用目录内角色的 ID。",
+        `本书角色目录：${JSON.stringify(characterCatalog ?? characterIds!.map(id => ({ id })))}`,
+        `目标节奏段：beatKey=${targetBeatKey}，beatLabel=${targetBeatLabel}；chapterCount 与 chapters.length 必须等于 ${targetChapterCount}。`,
+      ].join("\n"),
+    } : undefined,
 
     contextPolicy: {
       maxTokensBudget: NOVEL_PROMPT_BUDGETS.volumeChapterList,
@@ -389,7 +394,7 @@ export function createVolumeChapterListPrompt(
           "7. 不得输出 Markdown、注释、解释或任何额外文本。",
           "8. 每章 summary 控制在 40-120 个汉字，只写核心行动、阻力和造成的新局面；禁止扩写场景、对白或正文。",
           "9. 写完指定数量的最后一章后立即结束 JSON，不得追加分析、自检过程或候选版本。",
-          withSchedule ? "10. plannedCharacterIds 必须逐章输出数组，只使用角色目录 ID，安排本章真实参与行动、对话或现场观察的角色；仅提及、回忆、梦境不算现场出场。不可全员铺满，不可只照抄摘要出现的名字；按剧情需要安排登场、离场、重逢和对手压力。无人现场出场则输出 []，不新增角色。" : "",
+          withSchedule ? "10. plannedCharacterIds 必须逐章输出数组，从角色目录逐字复制 ID，不得增删字符、使用姓名或重复 ID；安排本章真实参与行动、对话或现场观察的角色，仅提及、回忆、梦境不算现场出场。不可全员铺满，不可只照抄摘要出现的名字；按剧情需要安排登场、离场、重逢和对手压力。无人现场出场则输出 []，不新增角色，也不用目录内角色的 ID 代指目录外人物。" : "",
           "",
           "三、章节规划核心原则",
           "1. 章节列表必须严格服从当前卷骨架与当前目标 beat 合同，不能偷跑到相邻 beat。",
@@ -458,7 +463,7 @@ export function createVolumeChapterListPrompt(
           .join("\n"),
       ),
 
-      ...(withSchedule ? [new HumanMessage(`角色目录（ID、姓名、身份、剧情定位；后续章节沿用这些身份）：\n${JSON.stringify(promptInput.novel.characters.map(character => ({id:character.id,name:character.name,role:character.role,castRole:character.castRole ?? null})).sort((a,b)=>(a.id ?? "").localeCompare(b.id ?? "")))}`)] : []),
+      ...(withSchedule ? [new HumanMessage(`角色目录（ID、姓名、身份、剧情定位；后续章节沿用这些身份）：\n${JSON.stringify((characterCatalog ?? promptInput.novel.characters.filter(character => character.id && characterIds!.includes(character.id))).map(character => ({id:character.id,name:character.name,role:character.role,castRole:character.castRole ?? null})).sort((a,b)=>(a.id ?? "").localeCompare(b.id ?? "")))}`)] : []),
       new HumanMessage(
         [
           "请基于以下上下文，输出当前节奏段的章节块。",

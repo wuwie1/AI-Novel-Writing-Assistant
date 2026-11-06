@@ -1,3 +1,4 @@
+import { useDocumentGuard } from "@/platform";
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { buildVolumeCountGuidance } from "@ai-novel/shared/types/volumePlanning";
@@ -486,6 +487,9 @@ export function useNovelVolumePlanning({
     }, 2000);
     return () => window.clearInterval(timer);
   }, [generateMutation.isPending, generateMutation.variables?.scope, novelId, queryClient]);
+
+  useDocumentGuard({ label: "卷章规划", dirty: hasUnsavedVolumeDraft, busy: generateMutation.isPending || isGeneratingChapterDetailBundle,
+    discard: () => setVolumeDraft(normalizedSavedVolumes) });
 
   return {
     normalizedVolumeDraft,

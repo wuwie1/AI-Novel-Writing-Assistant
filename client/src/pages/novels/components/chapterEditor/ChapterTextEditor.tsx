@@ -1,3 +1,4 @@
+import { useClientPlatform, type ClientPlatform } from "@/platform";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Value } from "platejs";
 import { ParagraphPlugin, Plate, PlateContent, usePlateEditor } from "platejs/react";
@@ -95,17 +96,17 @@ const TYPOGRAPHY_STORAGE_KEY = "ai-novel:chapter-editor:typography:v1";
 const GHOST_STORAGE_KEY = "ai-novel:chapter-editor:ghost:v1";
 const GHOST_DEBOUNCE_MS = 900;
 
-function loadTypography(): EditorTypography & { focusMode: boolean } {
-  const fallback = { fontSize: 15, lineHeight: 2.13, focusMode: false };
+function loadTypography(options?: ClientPlatform["editorTypography"]): EditorTypography & { focusMode: boolean } {
+  const fallback = { fontSize: options?.fontSize ?? 15, lineHeight: options?.lineHeight ?? 2.13, focusMode: false };
   try {
-    const raw = globalThis.localStorage?.getItem(TYPOGRAPHY_STORAGE_KEY);
+    const raw = globalThis.localStorage?.getItem(options?.storageKey ?? TYPOGRAPHY_STORAGE_KEY);
     if (!raw) {
       return fallback;
     }
     const parsed = JSON.parse(raw) as Partial<EditorTypography & { focusMode: boolean }>;
     return {
-      fontSize: FONT_SIZE_STEPS.includes(parsed.fontSize ?? 0) ? parsed.fontSize! : fallback.fontSize,
-      lineHeight: LINE_HEIGHT_STEPS.includes(parsed.lineHeight ?? 0) ? parsed.lineHeight! : fallback.lineHeight,
+      fontSize: (options?.fontSizes ?? FONT_SIZE_STEPS).includes(parsed.fontSize ?? 0) ? parsed.fontSize! : fallback.fontSize,
+      lineHeight: (options?.lineHeights ?? LINE_HEIGHT_STEPS).includes(parsed.lineHeight ?? 0) ? parsed.lineHeight! : fallback.lineHeight,
       focusMode: parsed.focusMode === true,
     };
   } catch {
@@ -238,7 +239,10 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   const { value, readOnly = false, onChange, onSelectionChange, onCursorChange, preview, focusRange = null, focusRequestKey = 0, documentKey, onQuickOperation, onQuickInstruction, onGhostSuggest, ghostSuspended = false, layoutMode, onLayoutModeChange, headerExtra, diagnosticRanges } = props;
   const [initialText] = useState(() => normalizeChapterContent(value));
   const [internalText, setInternalText] = useState(initialText);
-  const [typography, setTypography] = useState(loadTypography);
+  const platform = useClientPlatform();
+  const fontSizes = platform.editorTypography?.fontSizes ?? FONT_SIZE_STEPS;
+  const lineHeights = platform.editorTypography?.lineHeights ?? LINE_HEIGHT_STEPS;
+  const [typography, setTypography] = useState(() => loadTypography(platform.editorTypography));
   const [activeParagraphIndex, setActiveParagraphIndex] = useState<number | null>(null);
   const keyboardNavRef = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -272,15 +276,15 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
 
   useEffect(() => {
     try {
-      globalThis.localStorage?.setItem(TYPOGRAPHY_STORAGE_KEY, JSON.stringify(typography));
+      globalThis.localStorage?.setItem(platform.editorTypography?.storageKey ?? TYPOGRAPHY_STORAGE_KEY, JSON.stringify(typography));
     } catch {
       // Persistence is best-effort; the in-memory setting still applies.
     }
-  }, [typography]);
+  }, [typography, platform.editorTypography]);
 
   const cycleTypography = useCallback((key: "fontSize" | "lineHeight", direction: 1 | -1) => {
     setTypography((current) => {
-      const steps = key === "fontSize" ? FONT_SIZE_STEPS : LINE_HEIGHT_STEPS;
+      const steps = key === "fontSize" ? fontSizes : lineHeights;
       const index = steps.indexOf(current[key]);
       const nextIndex = Math.min(Math.max(index + direction, 0), steps.length - 1);
       return { ...current, [key]: steps[nextIndex] };
@@ -885,8 +889,8 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
                 <div className="text-xs text-muted-foreground">当前 {typography.fontSize}px</div>
               </div>
               <div className="flex shrink-0 gap-1">
-                <Button size="sm" variant="outline" disabled={typography.fontSize <= FONT_SIZE_STEPS[0]} onClick={() => cycleTypography("fontSize", -1)}>A-</Button>
-                <Button size="sm" variant="outline" disabled={typography.fontSize >= FONT_SIZE_STEPS[FONT_SIZE_STEPS.length - 1]} onClick={() => cycleTypography("fontSize", 1)}>A+</Button>
+                <Button size="sm" variant="outline" disabled={typography.fontSize <= fontSizes[0]} onClick={() => cycleTypography("fontSize", -1)}>A-</Button>
+                <Button size="sm" variant="outline" disabled={typography.fontSize >= fontSizes[fontSizes.length - 1]} onClick={() => cycleTypography("fontSize", 1)}>A+</Button>
               </div>
             </div>
             <div className="flex items-center justify-between gap-3">

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useDocumentGuard, useHostDraftState } from "@/platform";
+import { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BOOK_ANALYSIS_SECTIONS } from "@ai-novel/shared/types/bookAnalysis";
@@ -26,7 +27,7 @@ export default function NovelCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [basicForm, setBasicForm] = useState(() => createDefaultNovelBasicFormState());
+  const [basicForm, setBasicForm, formDraft] = useHostDraftState("novel-create", () => createDefaultNovelBasicFormState());
 
   const workflowTaskIdFromQuery = searchParams.get("workflowTaskId") ?? "";
   const workflowMode = searchParams.get("mode");
@@ -155,6 +156,7 @@ export default function NovelCreate() {
     onSuccess: async ({ response }) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.novels.all });
       if (response.data?.id) {
+        formDraft.clear();
         const directorHref = getDirectorWorkspaceHref(response.data);
         if (directorHref) {navigate(directorHref);return;}
         const search = new URLSearchParams();
@@ -163,6 +165,9 @@ export default function NovelCreate() {
       }
     },
   });
+
+  useDocumentGuard({ label: "新小说设置（保存为本机草稿）", dirty: formDraft.dirty && !createNovelMutation.isSuccess,
+    busy: createNovelMutation.isPending, save: formDraft.save, discard: formDraft.discard });
 
   return (
     <div className="mx-auto max-w-5xl space-y-7 px-3 py-4 sm:px-4 lg:px-0">

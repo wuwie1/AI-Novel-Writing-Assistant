@@ -271,7 +271,9 @@ test('V2 saves initial cast schedules in the existing beat calls without a separ
   let calls=0;
   promptRunner.runStructuredPrompt=async({asset,promptInput})=>{
     calls++;
-    assert.equal(asset.version,'v10');
+    assert.equal(asset.version,'v11');
+    assert.ok(asset.repairPolicy.guidance.includes('青禾'));
+    assert.ok(asset.repairPolicy.guidance.includes('qing'));
     return {output:asset.outputSchema.parse({beatKey:promptInput.targetBeat.key,beatLabel:promptInput.targetBeat.label,
       chapterCount:promptInput.targetBeatChapterCount,chapters:Array.from({length:promptInput.targetBeatChapterCount},(_,i)=>({
         title:(promptInput.targetBeat.key==='open_hook'?'药铺开门':'医馆封门')+i,summary:'青禾主动选择救治伤者，打破官差追捕的僵局并承担药方暴露的代价。',
@@ -286,6 +288,45 @@ test('V2 saves initial cast schedules in the existing beat calls without a separ
     assert.equal(calls,2,'two beats use only the original two split requests');
     assert.deepEqual(result.mergedDocument.volumes[0].chapters.map(c=>c.plannedCharacterIds),[['qing'],[],['qing'],[]]);
   }finally{promptRunner.runStructuredPrompt=original;}
+});
+
+test("V2 large beats receive enough output capacity for complete chapter plans", async (t) => {
+  for (const chapterCount of [45, 75]) {
+    await t.test(`${chapterCount} chapters`, async (t) => {
+      const document = createDocument();
+      document.volumes[0].chapters = [];
+      document.beatSheets[0].beats = [{
+        ...document.beatSheets[0].beats[0], chapterSpanHint: `1-${chapterCount}章`,
+      }];
+      let requestCount = 0;
+      t.mock.method(promptRunner, "runStructuredPrompt", async ({ asset, promptInput, options }) => {
+        requestCount += 1;
+        // The production failure exhausted 6400 tokens for 45 chapters. Leave
+        // headroom for summaries and cast IDs without sending unbounded requests.
+        assert.ok(options.maxTokens >= chapterCount * 200 + 900);
+        assert.ok(options.maxTokens <= 32_768);
+        assert.equal(promptInput.targetBeatChapterCount, chapterCount);
+        return { output: asset.outputSchema.parse({
+          beatKey: "open_hook", beatLabel: "开卷抓手", chapterCount,
+          chapters: Array.from({ length: chapterCount }, (_, index) => ({
+            beatKey: "open_hook", title: `破关${index + 1}`,
+            summary: "青禾主动救治伤者，打破官差追捕的僵局并承担药方暴露的代价。",
+            plannedCharacterIds: ["qing"],
+          })),
+        }) };
+      });
+      const result = await generateBeatChunkedChapterList({
+        document,
+        novel: { title: "测试", estimatedChapterCount: chapterCount, characters: [{ id: "qing", name: "青禾", role: "主角" }] },
+        workspace: { ...document, workspaceVersion: "v2", readiness: {} }, storyMacroPlan: null,
+        options: { targetVolumeId: "volume-1", generationMode: "full_volume", entrypoint: "director_next" },
+        notifyPhase: async () => {},
+      });
+      assert.equal(requestCount, 1);
+      assert.equal(result.mergedDocument.volumes[0].chapters.length, chapterCount);
+      assert.ok(result.mergedDocument.volumes[0].chapters.every(chapter => chapter.plannedCharacterIds.includes("qing")));
+    });
+  }
 });
 
 test("single-beat generation rejects a title copied from a completed beat before persistence", async () => {

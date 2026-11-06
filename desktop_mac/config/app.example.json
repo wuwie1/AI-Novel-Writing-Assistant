@@ -1,0 +1,11 @@
+{
+  "localApiPort": 3000,
+  "devUiPort": 15174,
+  "appUiPort": 15175,
+  "tunnelPort": 15173,
+  "sshTarget": "root@152.136.155.200",
+  "remoteWebPort": 18080,
+  "maintenanceProbePort": 18081,
+  "serverDir": "/data/write/AI-Novel-Writing-Assistant",
+  "deployRef": "origin/ai"
+}

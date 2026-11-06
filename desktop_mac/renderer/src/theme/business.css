@@ -1,0 +1,42 @@
+/* Mac presentation owns these values; the Web stylesheet is never imported. */
+html[data-app-shell="mac"] { --success:140 22% 42%; --warning:39 55% 43%; --info:193 64% 45%; --surface-panel:0 0% 96%; }
+html[data-app-shell="mac"] .mac-feature { min-height:100%; padding:22px 26px 32px; }
+html[data-app-shell="mac"] .mac-feature:has(> .mac-page),
+html[data-app-shell="mac"] .mac-feature:has(> .mac-novel-feature) { padding:0; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] { padding:0 0 18px; border:0; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] h1 { font-size:18px; letter-spacing:0; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] p { font-size:12px; line-height:1.7; }
+html[data-app-shell="mac"] [data-ui="workspace-header"] svg { width:16px; height:16px; }
+html[data-app-shell="mac"] [data-ui="card"] { border:0; border-radius:6px; box-shadow:none; background:var(--mac-soft); }
+html[data-app-shell="mac"] [data-ui="card"] [data-ui="card"] { background:transparent; }
+html[data-app-shell="mac"] [data-ui="card"] > div { padding:16px; }
+html[data-app-shell="mac"] [data-ui="card"] h3 { font-size:14px; line-height:1.6; }
+html[data-app-shell="mac"] [data-ui="button"] { min-height:28px; height:auto; padding:5px 11px; border-radius:6px; font-size:12px; line-height:1.5; box-shadow:none; }
+html[data-app-shell="mac"] [data-ui="button"].bg-primary { color:white; }
+html[data-app-shell="mac"] [role="tablist"] { height:auto; min-height:30px; padding:3px; background:#e8e8e5; border:0; border-radius:6px; }
+html[data-app-shell="mac"] [role="tab"] { font-size:12px; line-height:1.4; padding:5px 11px; box-shadow:none; }
+html[data-app-shell="mac"] [role="tab"][data-state="active"] { background:#fafaf8; border-radius:4px; }
+html[data-app-shell="mac"] table { font-size:12px; }
+html[data-app-shell="mac"] th { font-weight:500; color:var(--mac-muted); }
+html[data-app-shell="mac"] td, html[data-app-shell="mac"] th { padding:9px 12px; border-color:#e2e2df; }
+html[data-app-shell="mac"] .mac-feature h1 { font-size:20px; line-height:1.35; letter-spacing:0; }
+html[data-app-shell="mac"] .mac-feature h2 { font-size:16px; letter-spacing:0; }
+html[data-app-shell="mac"] .mac-feature h3 { font-size:14px; }
+html[data-app-shell="mac"] [data-mac-page="create"] > div { max-width:1000px; margin:auto; padding:0; }
+html[data-app-shell="mac"] [data-mac-page="create"] section { padding-top:8px; }
+html[data-app-shell="mac"] [data-mac-page="create"] [aria-labelledby="creation-idea-heading"] { box-shadow:none; background:var(--mac-list); border-radius:6px; padding:20px; }
+html[data-app-shell="mac"] [data-mac-page="create"] textarea { background:transparent; border:0; font-family:"Mac WenKai",serif; font-size:20px; line-height:1.6; }
+html[data-app-shell="mac"] [data-mac-page="novels/:id/chapters/:chapterId"] { height:100%; padding:12px 18px; }
+html[data-app-shell="mac"] [data-mac-page="novels/:id/chapters/:chapterId"] > div { height:100%; min-height:0; }
+html[data-app-shell="mac"] .tiptap, html[data-app-shell="mac"] .ProseMirror { font-family:"Mac WenKai","Songti SC",serif; font-size:20px; line-height:1.6; color:#333; caret-color:#333; }
+html[data-app-shell="mac"] .tiptap p, html[data-app-shell="mac"] .ProseMirror p { margin:0 0 .9em; }
+html[data-app-shell="mac"] .ProseMirror:focus { outline:none; }
+html[data-app-shell="mac"] .ProseMirror ::selection { background:rgb(10 132 255 / 22%); }
+html[data-app-shell="mac"] .mac-settings { max-width:880px; }
+html[data-app-shell="mac"] .mac-preference-list > :is(a,div) { display:flex; justify-content:space-between; align-items:center; gap:24px; padding:18px 8px; border-bottom:1px solid #e4e4e1; text-decoration:none; }
+html[data-app-shell="mac"] .mac-preference-list a:hover { background:var(--mac-soft); }
+html[data-app-shell="mac"] .mac-preference-list strong { font-weight:500; font-size:13px; }
+html[data-app-shell="mac"] .mac-preference-list p, html[data-app-shell="mac"] .mac-preference-list dd { font-size:12px; color:var(--mac-muted); line-height:1.7; }
+html[data-app-shell="mac"] .mac-preference-list dt { flex:0 0 90px; font-size:13px; }
+html[data-app-shell="mac"] .mac-settings-note { margin-top:24px; color:var(--mac-muted); font-size:12px; line-height:1.7; }
+@media(max-width:640px) { html[data-app-shell="mac"] .mac-feature { padding:16px; } html[data-app-shell="mac"] .mac-preference-list > div { align-items:flex-start; gap:12px; } }
