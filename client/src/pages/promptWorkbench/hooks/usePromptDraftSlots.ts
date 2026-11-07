@@ -1,3 +1,4 @@
+import { useDocumentGuard } from "@/platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getNovelList } from "@/api/novel/core";
@@ -359,6 +360,9 @@ export function usePromptDraftSlots(prompt: PromptCatalogItem | null) {
   const openOfficialVersionPanel = useCallback(() => {
     setShowReconcile(true);
   }, []);
+
+  useDocumentGuard({ label: "提示词草稿", dirty: dirtySlotKeys.length > 0, busy: saveMutation.isPending,
+    save: async () => { await saveMutation.mutateAsync(Object.fromEntries(dirtySlotKeys.map((key) => [key, drafts[key]]))); }, discard: resetDrafts });
 
   return {
     activeNovelId,

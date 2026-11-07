@@ -1,0 +1,34 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "../client/src/*"
+      ],
+      "@mac/*": [
+        "renderer/src/*"
+      ],
+      "@ai-novel/shared": [
+        "../shared/index.ts"
+      ],
+      "@ai-novel/shared/*": [
+        "../shared/*"
+      ]
+    },
+    "types": [
+      "vite/client"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "renderer",
+    "../client/src",
+    "../client/tailwind.config.ts"
+  ]
+}

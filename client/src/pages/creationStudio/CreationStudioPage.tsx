@@ -1,3 +1,4 @@
+import { useDocumentGuard, useHostDraftState } from "@/platform";
 import { getBookAnalysis } from "@/api/bookAnalysis";
 import { ShortStoryReferenceSummary } from "@/components/creation/ShortStoryReferenceSummary";
 import { BOOK_ANALYSIS_SECTIONS, type BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
@@ -37,7 +38,7 @@ export default function CreationStudioPage() {
   const longNovelEntry = searchParams.get("form") === "long_novel";
   const [referenceGoal, setReferenceGoal] = useState("借鉴结构、节奏与写法，创作新的完整短篇");
   const [referenceSections, setReferenceSections] = useState<BookAnalysisSectionKey[]>([]);
-  const [idea, setIdea] = useState("");
+  const [idea, setIdea, ideaDraft] = useHostDraftState("creation-idea", "");
   const [selectedDirectionId, setSelectedDirectionId] = useState("");
   const [narrativeForm, setNarrativeForm] = useState<NarrativeForm>("short_story");
   const [targetWordCount, setTargetWordCount] = useState(8000);
@@ -113,6 +114,7 @@ export default function CreationStudioPage() {
     onSuccess: (response) => {
       const created = response.data;
       if (!created) return;
+      ideaDraft.clear();
       setSearchParams({ taskId: created.taskId, ...(referenceRequested ? {form:"short_story"} : {}) }, { replace: true });
       if (created.status === "failed") { toast.error(created.diagnostic?.message ?? created.error ?? "创作方向未完成，请查看失败信息后继续。"); return; }
       toast.success("AI 已整理好两个可选方向。");
@@ -152,6 +154,9 @@ export default function CreationStudioPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "开始创作失败。"),
   });
+
+  useDocumentGuard({ label: "创作想法（保存为本机草稿）", dirty: !taskId && ideaDraft.dirty,
+    busy: interpretMutation.isPending || confirmMutation.isPending || regenerateMutation.isPending, save: ideaDraft.save, discard: ideaDraft.discard });
 
   if (taskId && taskQuery.isLoading) {
     return <CenteredStatus label="正在恢复你的创作想法…" />;

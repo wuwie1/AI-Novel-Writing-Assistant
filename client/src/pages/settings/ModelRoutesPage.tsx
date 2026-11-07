@@ -1,3 +1,4 @@
+import { useDocumentGuard } from "@/platform";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -159,6 +160,10 @@ export default function ModelRoutesPage() {
     [routeMap, taskTypes],
   );
   const isSavingRoutes = saveModelRouteMutation.isPending || saveAllModelRoutesMutation.isPending;
+
+  useDocumentGuard({ label: "模型路由设置", dirty: dirtyTaskTypes.length > 0, busy: isSavingRoutes,
+    save: async () => { await saveAllModelRoutesMutation.mutateAsync(dirtyTaskTypes.map((taskType) => buildRouteSavePayload(taskType, getRouteDraft(taskType)))); },
+    discard: () => setRouteDrafts({}) });
 
   function getRouteDraft(taskType: ModelRouteTaskType): RouteDraft {
     const existing = routeDrafts[taskType];

@@ -16,7 +16,7 @@ export default function WorkspaceHeader(props: WorkspaceHeaderProps) {
   const Icon = props.icon;
 
   return (
-    <header className={cn("border-b border-border/80 pb-5", props.className)}>
+    <header data-ui="workspace-header" className={cn("border-b border-border/80 pb-5", props.className)}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           {Icon ? (

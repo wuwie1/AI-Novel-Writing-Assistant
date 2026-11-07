@@ -1,3 +1,4 @@
+import { useDocumentGuard } from "@/platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -162,6 +163,9 @@ export function usePromptTemplateEditor(input: {
       nextRef?.setSelectionRange(start + token.length, start + token.length);
     }, 0);
   }, [focusedRole, humanContent, systemContent, updateDraft]);
+
+  useDocumentGuard({ label: "提示词模板", dirty: isDirty, busy: saveMutation.isPending || restoreMutation.isPending || activateMutation.isPending,
+    save: async () => { await saveMutation.mutateAsync(undefined); }, discard: resetDraft });
 
   return {
     activateMutation, draftTemplate, enabled, focusedRole, humanContent, humanRef, insertToken,

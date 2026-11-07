@@ -1,3 +1,4 @@
+import { useDocumentGuard } from "@/platform";
 import { ShortStoryReferenceSummary } from "@/components/creation/ShortStoryReferenceSummary";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,6 +92,12 @@ export default function ShortStoryStudioPage() {
       toast.success("正文已保存，并保留了修改前快照。");
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "保存失败，请刷新后重试。"),
+  });
+
+  useDocumentGuard({
+    label: "短篇正文", dirty: editing && changedSegments.length > 0, busy: saveMutation.isPending,
+    save: async () => { await saveMutation.mutateAsync(); },
+    discard: () => { setEditing(false); if (story) setDrafts(Object.fromEntries(story.segments.map((segment) => [segment.id, segment.content]))); },
   });
 
   const revisionPreviewMutation = useMutation({

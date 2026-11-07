@@ -1,0 +1,24 @@
+html[data-app-shell="mac"] .mac-record-columns { display:grid; grid-template-columns:minmax(220px, 1fr) minmax(260px, 1fr); gap:28px; }
+html[data-app-shell="mac"] .mac-record-list > button { display:block; width:100%; padding:14px 12px; border:0; border-bottom:1px solid #e3e3e0; border-radius:5px; background:transparent; text-align:left; }
+html[data-app-shell="mac"] .mac-record-list > button:is(:hover,.is-selected) { background:var(--mac-list); }
+html[data-app-shell="mac"] .mac-record-list button > div { display:flex; justify-content:space-between; gap:12px; }
+html[data-app-shell="mac"] .mac-record-list button p, html[data-app-shell="mac"] .mac-record-list button small { color:var(--mac-muted); font-size:11px; margin-top:6px; }
+html[data-app-shell="mac"] .mac-record-list button strong { font-size:13px; font-weight:500; }
+html[data-app-shell="mac"] .mac-record-list button span { flex-shrink:0; font-size:11px; }
+html[data-app-shell="mac"] .mac-records [data-tone="danger"] { color:#b84e47; }
+html[data-app-shell="mac"] .mac-records [data-tone="warning"] { color:#98732e; }
+html[data-app-shell="mac"] .mac-records [data-tone="success"] { color:#54815c; }
+html[data-app-shell="mac"] .mac-records progress { width:100%; height:3px; margin-top:10px; accent-color:#858580; }
+html[data-app-shell="mac"] .mac-record-list > button { appearance:none; box-shadow:none; }
+html[data-app-shell="mac"] .mac-records progress { appearance:none; border:0; border-radius:2px; overflow:hidden; background:#e2e2df; }
+html[data-app-shell="mac"] .mac-records progress::-webkit-progress-bar { background:#e2e2df; }
+html[data-app-shell="mac"] .mac-records progress::-webkit-progress-value { background:var(--mac-list-indicator); }
+html[data-app-shell="mac"] .mac-record-detail { padding:14px 4px; font-size:12px; line-height:1.8; }
+html[data-app-shell="mac"] .mac-record-detail h2 { font-size:16px; font-weight:600; }
+html[data-app-shell="mac"] .mac-record-detail dl { display:grid; grid-template-columns:70px 1fr; gap:9px; margin:20px 0; }
+html[data-app-shell="mac"] .mac-record-detail dt { color:var(--mac-muted); }
+html[data-app-shell="mac"] .mac-record-notice { margin:12px 0; padding:12px; background:#f4f2eb; border-radius:5px; overflow-wrap:anywhere; }
+html[data-app-shell="mac"] .mac-record-steps { margin:18px 0; }
+html[data-app-shell="mac"] .mac-record-steps li { display:flex; justify-content:space-between; padding:5px 0; }
+html[data-app-shell="mac"] .mac-record-paging { display:flex; justify-content:space-between; padding:16px 0; color:var(--mac-muted); }
+@media(max-width:780px) { html[data-app-shell="mac"] .mac-record-columns { grid-template-columns:1fr; } }

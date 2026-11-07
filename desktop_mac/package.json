@@ -1,0 +1,35 @@
+{
+  "name": "@ai-novel/desktop-mac",
+  "version": "0.6.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:renderer": "vite build --config renderer/vite.config.ts",
+    "build:native": "node native/build.mjs",
+    "build": "pnpm run typecheck && pnpm run build:renderer && pnpm run build:native",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@ai-novel/shared": "workspace:*",
+    "@tanstack/react-query": "^5.90.21",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1",
+    "lucide-react": "^0.576.0",
+    "@ai-novel/client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "jsdom": "^27.2.0"
+  }
+}
