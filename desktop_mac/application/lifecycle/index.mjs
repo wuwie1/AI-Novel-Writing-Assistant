@@ -10,6 +10,15 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
   const state = async () => (await readState(paths.stateFile, config.repoRealPath)) ?? emptyState(config.repoRealPath);
   const save = (value) => writeState(paths.stateFile, { ...value, updatedAt: clock() });
 
+  async function checkStartDependencies(mode, current) {
+    if (mode !== 'remote') return;
+    try { await adapters.ensureRendererDependencies(); }
+    catch (error) {
+      await save({ ...current, requestedMode: mode });
+      throw error;
+    }
+  }
+
   async function start(mode, { development = false, preparedBuild, heldLock } = {}) {
     if (!validMode(mode)) throw Object.assign(new Error('Mode must be local or remote'), { exitCode: 2 });
     const guard = heldLock ?? await acquireLock(paths.lifecycleLock, { repoRealPath: config.repoRealPath, operation: development ? 'dev_app' : 'app', now: clock });
@@ -20,6 +29,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       if (status && (!current.runningMode || status.repo !== config.repoRealPath || status.mode !== current.runningMode || status.backendIdentity !== current.backendIdentity)) {
         throw Object.assign(new Error('Native socket identity does not match the saved application state'), { exitCode: 4 });
       }
+      if (!preparedBuild) await checkStartDependencies(mode, current);
       if (current.runningMode === mode && status?.rendererReady) {
         await adapters.focus?.(current);
         return { status: 'focused', mode };
@@ -142,6 +152,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       const selectedMode = mode ?? current.requestedMode ?? current.runningMode ?? 'remote';
       if (!mode && !current.requestedMode && !current.runningMode) await adapters.report?.('No previous mode is recorded; restarting in remote mode.');
       let build;
+      await checkStartDependencies(selectedMode, current);
       try { build = await adapters.prepare({ mode: selectedMode, development: false, config, paths }); }
       catch (error) { await save({ ...current, requestedMode: selectedMode }); throw Object.assign(error, { exitCode: error.exitCode ?? 5 }); }
       const closed = current.runningMode ? await adapters.requestNativeClose?.(current) : { ok: true };

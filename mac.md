@@ -162,7 +162,7 @@ desktop_mac/
 ### 3.3 工作区、编译与运行配置
 
 - 一个 pnpm 包：`@ai-novel/desktop-mac`，根目录 `pnpm-workspace.yaml` 增加 `desktop_mac`。不再为 renderer 创建嵌套包。
-- React/Vite/TypeScript/Tailwind 等版本与现有工作区一致，不升级全仓依赖。Node 使用根 `engines` 支持的版本，pnpm 使用根 `packageManager` 的精确版本；缺依赖时报告安装步骤，不静默安装系统工具。
+- React/Vite/TypeScript/Tailwind 等版本由工作区锁文件确定。Node 使用根 `engines` 支持的版本，pnpm 使用根 `packageManager` 的精确版本。服务器模式启动前按锁文件补齐本机桌面依赖。缺少 Node、pnpm 或 Xcode Command Line Tools 时提示使用者准备相应工具。
 - 编排和适配器用 Node ESM `.mjs`，避免为运行 Make 命令引入额外 TS 执行器；Swift 使用 `xcrun swiftc` 构建原生壳，部署目标 macOS 14.0，默认当前 `arm64` 架构。
 - `@/*` 在 Mac 的 TS/Vite 配置中仍指向 `client/src/*`，新增 Mac 代码用 `@mac/*`；`@ai-novel/shared/*` 与现有映射一致。Vite 去重 `react` / `react-dom`，避免跨目录导入形成双 React 实例。
 - Mac Tailwind `content` 必须同时扫描 renderer 与被复用的 `client/src`，路径相对配置文件解析；复用 theme 定义但不改 Web 的扫描范围。依赖客户端静态资源的路径也纳入构建验证。

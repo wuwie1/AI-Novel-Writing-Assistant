@@ -5,6 +5,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { ensureRendererDependencies } from '../../infrastructure/dependencies/renderer.mjs';
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
 import { inspectProcess, processMatches, stableHash } from '../../infrastructure/processes/identity.mjs';
@@ -17,6 +18,10 @@ import { tunnelMatches } from '../../infrastructure/transport/ssh-identity.mjs';
 const exec = promisify(execFile);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const internalError = (message, exitCode = 5) => Object.assign(new Error(message), { exitCode });
+
+function requireMacOS() {
+  if (process.platform !== 'darwin') throw internalError('Mac lifecycle commands require macOS', 2);
+}
 
 export async function sourceFingerprint(repoRoot, { toolVersions = true } = {}) {
   const hash = createHash('sha256');
@@ -150,6 +155,10 @@ export function createRuntimeAdapters(config) {
   return {
     async beginStart() { createdRecords.clear(); },
     async commitStart() { createdRecords.clear(); },
+    ensureRendererDependencies() {
+      requireMacOS();
+      ensureRendererDependencies(repoRoot, pnpm);
+    },
     async nativeStatus() {
       try { return await sendNativeCommand(nativeSocketPath(repoRoot), 'status'); } catch { return null; }
     },
@@ -169,7 +178,7 @@ export function createRuntimeAdapters(config) {
       return sendNativeCommand(nativeSocketPath(repoRoot), 'close', { timeoutMs: 60_000 });
     },
     async prepare({ mode, development }) {
-      if (process.platform !== 'darwin') throw internalError('Mac lifecycle commands require macOS', 2);
+      requireMacOS();
       if (mode === 'local' && listenPid(config.localApiPort).length === 0) {
         await validateLocalDatabase(repoRoot);
         const node = selectServerNode(repoRoot);

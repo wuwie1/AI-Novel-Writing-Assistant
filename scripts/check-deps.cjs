@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { missingDirectDependencies } = require("./workspace-dependencies.cjs");
 
 // 启动前的依赖完整性防呆检查：面向从源码运行的使用者（含非专业开发者）。
 // 只做直接依赖的存在性检查（pnpm 会为每个 workspace 包创建 node_modules 符号链接），
@@ -20,14 +21,7 @@ function collectMissingDeps(packageDir) {
     return [];
   }
   const manifest = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-  const declared = {
-    ...(manifest.dependencies ?? {}),
-    ...(manifest.devDependencies ?? {}),
-  };
-  const nodeModulesDir = path.join(ROOT, packageDir, "node_modules");
-  return Object.keys(declared).filter((depName) => {
-    return !fs.existsSync(path.join(nodeModulesDir, ...depName.split("/")));
-  });
+  return missingDirectDependencies(path.join(ROOT, packageDir), manifest);
 }
 
 const problems = [];

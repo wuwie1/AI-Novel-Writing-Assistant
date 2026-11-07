@@ -15,6 +15,7 @@ async function setup(t, overrides = {}) {
   let failPrepare = false;
   let cancelClose = false;
   const adapters = {
+    ensureRendererDependencies: async () => calls.push('dependencies'),
     nativeStatus: async (current) => current?.runningMode ? ({ rendererReady: ready, repo: repoRealPath, mode: current.runningMode, backendIdentity: current.backendIdentity, pid: current.processes?.app?.pid }) : null, focus: async () => calls.push('focus'),
     requestNativeClose: async () => ({ ok: !cancelClose }), waitAppExited: async () => calls.push('waitExit'),
     prepare: async ({ mode }) => { calls.push(`prepare:${mode}`); if (failPrepare) throw Error('build failed'); return { fingerprint: `build-${mode}` }; },
@@ -38,6 +39,36 @@ test('repeated start focuses the owned native window and does not duplicate help
   assert.equal((await lifecycle.startLocal()).status, 'focused');
   assert.equal(calls.filter((item) => item === 'prepare:local').length, 1);
   assert.ok(calls.includes('focus'));
+});
+
+test('remote dependencies are checked under the lifecycle lock before build, focus and restart', async (t) => {
+  const { lifecycle, calls } = await setup(t);
+  await lifecycle.startRemote();
+  assert.deepEqual(calls.slice(0, 2), ['dependencies', 'prepare:remote']);
+  calls.length = 0;
+  await lifecycle.startRemote();
+  assert.deepEqual(calls, ['dependencies', 'focus']);
+  calls.length = 0;
+  await lifecycle.restart('remote');
+  assert.deepEqual(calls.slice(0, 2), ['dependencies', 'prepare:remote']);
+  assert.equal(calls.filter(call => call === 'dependencies').length, 1);
+});
+
+test('failed dependency repair leaves the running window in place and remembers the requested mode', async (t) => {
+  const { lifecycle, calls } = await setup(t, {
+    ensureRendererDependencies() { throw Object.assign(new Error('install failed'), { exitCode: 2 }); },
+  });
+  await lifecycle.startLocal();
+  const previous = await lifecycle.getState();
+  calls.length = 0;
+  await assert.rejects(lifecycle.startRemote(), { exitCode: 2 });
+  await assert.rejects(lifecycle.restart(), { exitCode: 2 });
+  assert.deepEqual(calls, []);
+  const state = await lifecycle.getState();
+  assert.equal(state.requestedMode, 'remote');
+  assert.equal(state.runningMode, 'local');
+  assert.deepEqual(state.processes, previous.processes);
+  assert.deepEqual(state.previousSuccessfulBuild, previous.previousSuccessfulBuild);
 });
 
 test('cancelled mode switch retains the running mode and build failure preserves prior success', async (t) => {
