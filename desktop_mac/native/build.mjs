@@ -21,8 +21,11 @@ const appPath = join(outDir, 'AI Novel Mac.app');
 const contents = join(appPath, 'Contents');
 const executableDir = join(contents, 'MacOS');
 const resources = join(contents, 'Resources');
+const iconName = 'AppIcon.icns';
 mkdirSync(executableDir, { recursive: true });
 mkdirSync(resources, { recursive: true });
+const icon = readFileSync(join(nativeDir, 'Resources', iconName));
+writeFileSync(join(resources, iconName), icon);
 const moduleCache = join(repoRoot, '.runtime/desktop_mac/swift-module-cache');
 mkdirSync(moduleCache, { recursive: true });
 const files = [];
@@ -44,6 +47,7 @@ const info = `<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleDisplayName</key><string>AI Novel</string>
 <key>CFBundleIdentifier</key><string>app.ai-novel.desktop-mac</string>
 <key>CFBundleExecutable</key><string>AI-Novel-Mac</string>
+<key>CFBundleIconFile</key><string>${iconName}</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>${version}</string>
 <key>CFBundleVersion</key><string>${version}</string>
@@ -58,6 +62,7 @@ if (swiftc.status !== 0) throw new Error(`swiftc failed (${swiftc.status ?? swif
 const hash = createHash('sha256');
 for (const file of files) hash.update(readFileSync(file));
 hash.update(info);
+hash.update(icon);
 writeFileSync(join(appPath, 'Contents', 'native-build.sha256'), hash.digest('hex') + '\n');
 const sign = spawnSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { cwd: repoRoot, stdio: 'inherit' });
 if (sign.status !== 0) throw new Error(`ad-hoc codesign failed (${sign.status ?? sign.signal})`);
