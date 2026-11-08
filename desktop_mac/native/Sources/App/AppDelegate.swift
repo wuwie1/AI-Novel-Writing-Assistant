@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var web: NativeWebView!
     private var socket: NativeCommandSocket!
     private var socketCloseApproved = false
+    private var frameRecovery = WindowFrameRecovery()
 
     func applicationDidFinishLaunching(_: Notification) {
         do {
@@ -104,16 +105,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func backFromMenu(_: Any?) { web?.navigateHistory(-1) }
     @objc private func forwardFromMenu(_: Any?) { web?.navigateHistory(1) }
 
+    func windowWillEnterFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = true }
+    func windowWillExitFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = true }
+    func windowDidEnterFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = false }
+    func windowDidFailToExitFullScreen(_: NSWindow) { frameRecovery.isTransitioningFullScreen = false }
+
+    func windowDidExitFullScreen(_: Notification) {
+        frameRecovery.isTransitioningFullScreen = false
+        restoreVisibleFrame()
+    }
+
+    func windowDidFailToEnterFullScreen(_: NSWindow) {
+        frameRecovery.isTransitioningFullScreen = false
+        restoreVisibleFrame()
+    }
+
+    func windowDidChangeOcclusionState(_: Notification) {
+        guard window.occlusionState.contains(.visible), let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        content.needsDisplay = true
+    }
+
     @objc private func restoreVisibleFrame() {
         guard let window, let screen = window.screen ?? NSScreen.main else { return }
-        let visible = screen.visibleFrame
-        var frame = window.frame
-        frame.size.width = min(frame.width, visible.width)
-        frame.size.height = min(frame.height, visible.height)
-        frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
-        frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
-        if frame != window.frame { window.setFrame(frame, display: true) }
-        window.contentView?.needsDisplay = true
+        if let adjusted = frameRecovery.adjustedFrame(window.frame, within: screen.visibleFrame, styleMask: window.styleMask) {
+            window.setFrame(adjusted, display: true)
+        }
     }
 
     private func showFatal(_ message: String) {

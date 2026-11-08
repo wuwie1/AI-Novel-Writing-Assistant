@@ -21,7 +21,9 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 原生桥协议版本1：rendererReady、requestSave、requestClose、closeDecision。退出/重载必须等 renderer 允许；保存失败、忙碌、取消或超时不退出。Mac 使用 `createBrowserRouter` 保持浏览器路径，并使用其导航 blocker；普通 `BrowserRouter` 不提供该 blocker 的 data-router 上下文，不能直接替换。
 
-红色关闭按钮仅隐藏现有窗口和 WebView；Dock 重开不重载。窗口位置、上次路由和持久草稿按后端身份隔离。屏幕变化/唤醒只校正可见范围；WebContent 异常由用户选择重新打开，不能无提示重载。
+红色关闭按钮仅隐藏现有窗口和 WebView；Dock 重开不重载。窗口位置、上次路由和持久草稿按后端身份隔离。WebContent 异常由用户选择重新打开，不能无提示重载。
+
+普通窗口在屏幕变化或唤醒时按 `NSScreen.visibleFrame` 校正位置和大小。这个区域可能扣除 Dock 和菜单栏，套用到全屏窗口会在桌面空间边缘留下空隙。全屏和进出全屏的动画期间由 AppKit 管理窗口尺寸，过渡结束或失败后再按实际窗口状态处理。窗口重新可见时沿用现有 WebView 完成布局和重绘，以保留编辑位置和未保存输入。
 
 文档保护覆盖范围以 `desktop_mac/docs/route-parity.md` 为准。新增状态编辑器需注册明确的 dirty/busy/save/discard 能力；不要把只修改了外观的页面误认为已具备退出保护。
 
