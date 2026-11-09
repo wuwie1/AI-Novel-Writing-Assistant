@@ -112,8 +112,7 @@ export default function BookAnalysisCreateDialog(props: BookAnalysisCreateDialog
   } = props;
 
   const isDiagnosisMode = analysisMode === "diagnosis";
-  const selectedSourceVersion = sourceDocument?.versions.find((version) => version.id === selectedVersionId)
-    ;
+  const selectedSourceVersion = sourceDocument?.versions.find((version) => version.id === selectedVersionId);
   const sourceCharCount = selectedSourceVersion?.charCount ?? selectedSourceVersion?.content.length ?? 0;
   const sortedSourceChapters = [...sourceChapters].sort((a, b) => a.chapterIndex - b.chapterIndex);
   const rangeStartChapter = selectedSourceRange

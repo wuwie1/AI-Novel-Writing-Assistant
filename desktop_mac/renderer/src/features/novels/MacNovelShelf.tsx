@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { EntityList, DirectoryRows, useEntityListHost, useRouteFields } from "@/platform";
+import { CollectionFilters } from "../../shell/CollectionFilters";
 import { Link } from "react-router-dom";
 import { BookCopy, BookOpen, BookOpenText, ChevronLeft, ChevronRight, Download, Image, MoreHorizontal, Plus, Search, Sparkles, Trash2, Workflow } from "lucide-react";
 import { NovelList, type NovelListPresentation } from "@/pages/novels";
@@ -22,11 +23,13 @@ function Shelf({ model }: { model: NovelListPresentation }) {
   const overview = layout === "overview" || (!layout && !id && ["shelf","workbench"].includes(params.get("view") ?? ""));
   const selected = id ? model.selectedNovel : host?.narrow ? null : model.novels[0];
   const filters = <>
-      <label className="mac-search"><Search size={16} /><input aria-label="搜索小说" placeholder="搜索小说" value={model.search} onChange={(event) => model.setSearch(event.target.value)} /></label>
-      <select aria-label="作品类型" value={model.narrativeForm} onChange={(event) => model.setNarrativeForm(event.target.value as NovelListPresentation["narrativeForm"])}><option value="all">全部作品</option><option value="long_novel">长篇小说</option><option value="short_story">短篇小说</option></select>
-      <select aria-label="写作模式" value={model.writingMode} onChange={(event) => model.setWritingMode(event.target.value as NovelListPresentation["writingMode"])}><option value="all">全部模式</option><option value="original">原创</option><option value="continuation">续写</option></select>
-      <select aria-label="作品状态" value={model.status} onChange={(event) => model.setStatus(event.target.value as NovelListPresentation["status"])}><option value="all">全部状态</option><option value="draft">创作中</option><option value="published">已发布</option></select>
-      <select aria-label="排序方式" value={model.sort} onChange={(event) => model.setSort(event.target.value as NovelListPresentation["sort"])}><option value="updated">最近编辑</option><option value="created">最近创建</option><option value="progress">完成度</option></select>
+      <label className="mac-search"><Search size={16} /><input type="search" aria-label="搜索小说" placeholder="搜索小说" value={model.search} onChange={(event) => model.setSearch(event.target.value)} /></label>
+      <CollectionFilters active={model.narrativeForm !== "all" || model.writingMode !== "all" || model.status !== "all" || model.sort !== "updated"}>
+      <label>作品类型<select aria-label="作品类型" value={model.narrativeForm} onChange={(event) => model.setNarrativeForm(event.target.value as NovelListPresentation["narrativeForm"])}><option value="all">全部作品</option><option value="long_novel">长篇小说</option><option value="short_story">短篇小说</option></select></label>
+      <label>写作模式<select aria-label="写作模式" value={model.writingMode} onChange={(event) => model.setWritingMode(event.target.value as NovelListPresentation["writingMode"])}><option value="all">全部模式</option><option value="original">原创</option><option value="continuation">续写</option></select></label>
+      <label>作品状态<select aria-label="作品状态" value={model.status} onChange={(event) => model.setStatus(event.target.value as NovelListPresentation["status"])}><option value="all">全部状态</option><option value="draft">创作中</option><option value="published">已发布</option></select></label>
+      <label>排序方式<select aria-label="排序方式" value={model.sort} onChange={(event) => model.setSort(event.target.value as NovelListPresentation["sort"])}><option value="updated">最近编辑</option><option value="created">最近创建</option><option value="progress">完成度</option></select></label>
+      </CollectionFilters>
   </>;
   const emptyState = model.isPending ? <div className="mac-empty" role="status">正在读取你的小说…</div> : model.isError ? <div className="mac-empty" role="alert"><p>小说暂时无法读取</p><button className="mac-action" onClick={model.refetch}>重新读取</button></div> : !model.novels.length ? (
       <div className="mac-empty"><BookOpen size={28} strokeWidth={1.3}/><h2>{hasFilters ? "没有符合条件的小说" : "开始你的第一本小说"}</h2><p>{hasFilters ? "试试调整搜索词或筛选条件。" : "告诉 AI 你的想法，一起完成设定、规划和正文。"}</p>{hasFilters ? <button className="mac-action" onClick={model.clearFilters}>清除筛选</button> : <Link className="mac-action" to="/create">开始创作</Link>}</div>

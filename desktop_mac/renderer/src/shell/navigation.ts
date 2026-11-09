@@ -21,17 +21,11 @@ export const createLinks: NavigationLink[] = [
   ["/novels/create", "填写小说设定"],
   ["/novels/auto-director", "AI 自动创作"],
 ];
-const directorLinks: NavigationLink[] = [["/lab/director", "导演运行记录"], ["/auto-director/follow-ups", "导演跟进"]];
 
 export interface MacNavigation {
-  key: string;
   section: "create" | "shelf" | "novel" | "creative" | "director" | "tasks" | "settings" | "help" | "resources" | "drama" | "comic";
   title: string;
-  sidebarTitle: string;
   primary: string;
-  links?: readonly NavigationLink[];
-  novelId?: string;
-  chapterId?: string;
 }
 
 export function pathIsWithin(path: string, root: string) {
@@ -52,30 +46,27 @@ export function resolveMacNavigation(pathname: string, search = ""): MacNavigati
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/create" || path === "/novels/create" || path === "/novels/auto-director") {
     return {
-      key: "create",
       section: "create",
       title: resolveCreateTitle(path, search),
-      sidebarTitle: "开始创作",
       primary: "/create",
-      links: createLinks,
     };
   }
-  if (path === "/" || path === "/novels") return { key: "shelf", section: "shelf", title: "书架", sidebarTitle: "我的小说", primary: "/novels" };
+  if (path === "/" || path === "/novels") return { section: "shelf", title: "书架", primary: "/novels" };
   const novel = matchPath("/novels/:id/*", path);
   const director = matchPath("/lab/director/:novelId", path);
   const novelId = novel?.params.id ?? (director?.params.novelId !== "preview" ? director?.params.novelId : undefined);
   if (novelId) {
     const chapterId = matchPath("/novels/:id/chapters/:chapterId", path)?.params.chapterId;
-    return { key: `novel:${novelId}`, section: "novel", title: chapterId ? "章节编辑" : director ? "小说导演台" : path.endsWith("/preview") ? "阅读预览" : "小说工作台", sidebarTitle: "小说与章节", primary: director ? "/lab/director" : "/novels", novelId, chapterId };
+    return { section: "novel", title: chapterId ? "章节编辑" : director ? "小说导演台" : path.endsWith("/preview") ? "阅读预览" : "小说工作台", primary: director ? "/lab/director" : "/novels" };
   }
-  if (pathIsWithin(path, "/creative-hub") || path === "/chat-legacy" || path === "/chat") return { key: "creative", section: "creative", title: "创作中枢", sidebarTitle: "创作对话", primary: "/creative-hub" };
-  if (pathIsWithin(path, "/lab/director") || pathIsWithin(path, "/auto-director")) return { key: "director", section: "director", title: pathIsWithin(path, "/auto-director") ? "导演跟进" : "导演运行记录", sidebarTitle: "导演创作", primary: "/lab/director", links: directorLinks };
-  if (path === "/tasks") return { key: "tasks", section: "tasks", title: "运行记录", sidebarTitle: "记录筛选", primary: "/tasks" };
-  if (pathIsWithin(path, "/settings")) return { key: "settings", section: "settings", title: settingsSections.find(([key]) => path === `/settings/${key}`)?.[1] ?? "设置", sidebarTitle: "设置分类", primary: "/settings", links: [["/settings", "设置概览"], ...settingsSections.map(([key, title]) => [`/settings/${key}`, title] as const)] };
-  if (path === "/help") return { key: "help", section: "help", title: "帮助", sidebarTitle: "创作指南", primary: "/help" };
-  if (pathIsWithin(path, "/comic")) return { key: "comic", section: "comic", title: "漫画", sidebarTitle: "漫画项目", primary: "more" };
+  if (pathIsWithin(path, "/creative-hub") || path === "/chat-legacy" || path === "/chat") return { section: "creative", title: "创作中枢", primary: "/creative-hub" };
+  if (pathIsWithin(path, "/lab/director") || pathIsWithin(path, "/auto-director")) return { section: "director", title: pathIsWithin(path, "/auto-director") ? "导演跟进" : "导演运行记录", primary: "/lab/director" };
+  if (path === "/tasks") return { section: "tasks", title: "运行记录", primary: "/tasks" };
+  if (pathIsWithin(path, "/settings")) return { section: "settings", title: settingsSections.find(([key]) => path === `/settings/${key}`)?.[1] ?? "设置", primary: "/settings" };
+  if (path === "/help") return { section: "help", title: "帮助", primary: "/help" };
+  if (pathIsWithin(path, "/comic")) return { section: "comic", title: "漫画", primary: "more" };
   // 短剧入口与 Web 保持一致：路由保留，但不作为 Mac 主导航入口。
-  if (pathIsWithin(path, "/drama")) return { key: "drama", section: "drama", title: "短剧", sidebarTitle: "短剧项目", primary: "more" };
+  if (pathIsWithin(path, "/drama")) return { section: "drama", title: "短剧", primary: "more" };
   const group = resourceGroups.find(({ links }) => links.some(([to]) => pathIsWithin(path, to)));
-  return { key: group?.title ?? "more", section: "resources", title: group?.links.find(([to]) => pathIsWithin(path, to))?.[1] ?? "创作工具", sidebarTitle: group?.title ?? "更多功能", primary: "more", links: group?.links ?? moreLinks };
+  return { section: "resources", title: group?.links.find(([to]) => pathIsWithin(path, to))?.[1] ?? "创作工具", primary: "more" };
 }

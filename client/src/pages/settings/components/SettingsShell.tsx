@@ -17,7 +17,7 @@ export function SettingsShell(props: { title: string; description: string; child
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="grid gap-6 lg:grid-cols-[176px_minmax(0,1fr)]">
-        <nav aria-label="系统设置" className="min-w-0 lg:pt-2">
+        <nav data-workspace-navigation aria-label="系统设置" className="min-w-0 lg:pt-2">
           <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
             {items.map(({ to, label, icon: Icon, end }) => (
               <NavLink

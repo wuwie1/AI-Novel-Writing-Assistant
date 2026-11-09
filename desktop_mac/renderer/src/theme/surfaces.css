@@ -53,8 +53,7 @@ html[data-app-shell="mac"] .mac-feature .grid:has(> div > [aria-label] > [role="
 html[data-app-shell="mac"] .mac-feature [role="treeitem"][aria-selected="true"] > .group { background:var(--mac-list-selected); color:var(--mac-text); box-shadow:inset 3px 0 var(--mac-list-indicator); }
 html[data-app-shell="mac"] .mac-feature [role="treeitem"][aria-selected="true"] > .group :is(button,span) { color:inherit; }
 
-/* Settings categories are already available in the Mac directory, including
-   its narrow-window drawer. Keep a single navigation surface. */
+/* Settings categories stay in the canvas header at all widths. */
 html[data-app-shell="mac"] [data-mac-page^="settings/"] .grid:has(> nav[aria-label="系统设置"]) { grid-template-columns:minmax(0,1fr); }
 html[data-app-shell="mac"] [data-mac-page^="settings/"] nav[aria-label="系统设置"] > div { flex-direction:row; overflow-x:auto; }
 html[data-app-shell="mac"] [role="status"].border-border\/70 { border:0; background:var(--mac-soft); }
@@ -70,8 +69,6 @@ html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] aside button.bor
 
 html[data-app-shell="mac"] [data-mac-page="comic"] header .mac-action + .mac-action,
 html[data-app-shell="mac"] [data-mac-page="comic"] .mac-feature header button + button { display:none; }
-html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .prompt-workbench-theme { flex-direction:column; }
-html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .prompt-workbench-theme > div:first-child { width:100%; max-width:none; min-width:0; max-height:220px; }
 html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid.lg\:grid-cols-\[240px_minmax\(0\,1fr\)_280px\],
 html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid.lg\:grid-cols-\[220px_minmax\(0\,1fr\)_260px\],
 html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid[class*="lg:grid-cols-["] { grid-template-columns:minmax(0,1fr); }
@@ -92,3 +89,15 @@ html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary {
 }
 html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary-close,
 html[data-app-shell="mac"] .mac-secondary:not(.is-open) .mac-secondary-close { display:none; }
+
+html[data-app-shell="mac"] .mac-secondary :is([data-ui="card"],[data-slot="card"],aside) {
+  border: 0; box-shadow: none; background: transparent; min-width: 0;
+}
+html[data-app-shell="mac"] .mac-secondary .mac-collection-tools .grid { grid-template-columns: minmax(0,1fr); }
+html[data-app-shell="mac"] .mac-secondary .mac-context-list :is(button,a)[aria-current="true"] {
+  background: var(--mac-list-selected); box-shadow: inset 3px 0 var(--mac-list-indicator);
+}
+
+html[data-app-shell="mac"] .mac-collection-filters > summary { cursor: pointer; font-size: 13px; }
+html[data-app-shell="mac"] .mac-filter-fields { display: grid; gap: 6px; padding-block: 6px; }
+html[data-app-shell="mac"] .mac-filter-fields > label { display: grid; gap: 2px; font-size: 12px; }

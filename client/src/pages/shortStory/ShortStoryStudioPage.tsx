@@ -1,5 +1,4 @@
-import { EntityDirectory, useEntityListHost } from "@/platform";
-import { useDocumentGuard } from "@/platform";
+import { EntityDirectory, useDocumentGuard, useEntityListHost } from "@/platform";
 import { ShortStoryReferenceSummary } from "@/components/creation/ShortStoryReferenceSummary";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +14,7 @@ import {
   Sparkles,
   WandSparkles,
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { ShortStoryRevisionImpact } from "@ai-novel/shared/types/creationStudio";
 import {
   applyShortStoryRevision,
@@ -45,12 +44,21 @@ function createDownload(blob: Blob, fileName: string): void {
 }
 
 export default function ShortStoryStudioPage() {
-  const host = useEntityListHost();
-  const [focusedSegment, setFocusedSegment] = useState("");
   const novelId = useParams<{ id: string }>().id ?? "";
+  return <ShortStoryDocument key={novelId} novelId={novelId}/>;
+}
+
+function ShortStoryDocument({ novelId }: { novelId: string }) {
+  const host = useEntityListHost();
+  const location = useLocation();
+  const focusedSegment = host ? new URLSearchParams(location.hash.slice(1)).get("segment") : null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  function focusSegment(id: string | null, replace = false) {
+    const hash = id ? new URLSearchParams({segment: id}).toString() : "";
+    navigate({pathname: location.pathname, search: location.search, hash}, {replace, preventScrollReset: true});
+  }
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [revisionImpact, setRevisionImpact] = useState<ShortStoryRevisionImpact | null>(null);
@@ -67,7 +75,12 @@ export default function ShortStoryStudioPage() {
     },
   });
   const story = storyQuery.data?.data ?? null;
+  const selectedSegment = focusedSegment ?? story?.segments[0]?.id;
   const isProducing = story?.production.status === "queued" || story?.production.status === "running";
+
+  useEffect(() => {
+    if (focusedSegment && story?.segments.length && !isProducing) setEditing(true);
+  }, [focusedSegment, story?.segments.length, isProducing]);
 
   useEffect(() => {
     if (!story || editing) return;
@@ -80,7 +93,7 @@ export default function ShortStoryStudioPage() {
   }, [drafts, story]);
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (_leaveAfterSave: boolean) => {
       if (!story) return;
       for (const segment of changedSegments) {
         await updateShortStorySegment(novelId, segment.id, {
@@ -89,9 +102,10 @@ export default function ShortStoryStudioPage() {
         });
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, leaveAfterSave) => {
       await queryClient.invalidateQueries({ queryKey: ["short-story", novelId] });
       setEditing(false);
+      if (focusedSegment && !leaveAfterSave) focusSegment(null, true);
       setRevisionImpact(null);
       toast.success("正文已保存，并保留了修改前快照。");
     },
@@ -100,7 +114,7 @@ export default function ShortStoryStudioPage() {
 
   useDocumentGuard({
     label: "短篇正文", dirty: editing && changedSegments.length > 0, busy: saveMutation.isPending,
-    save: async () => { await saveMutation.mutateAsync(); },
+    save: async () => { await saveMutation.mutateAsync(true); },
     discard: () => { setEditing(false); if (story) setDrafts(Object.fromEntries(story.segments.map((segment) => [segment.id, segment.content]))); },
   });
 
@@ -311,17 +325,18 @@ export default function ShortStoryStudioPage() {
                       onClick={() => {
                         setDrafts(Object.fromEntries(story.segments.map((segment) => [segment.id, segment.content])));
                         setEditing(false);
+                        if (focusedSegment) focusSegment(null, true);
                       }}
                     >
                       取消
                     </Button>
-                    <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || changedSegments.length === 0}>
+                    <Button size="sm" onClick={() => saveMutation.mutate(false)} disabled={saveMutation.isPending || changedSegments.length === 0}>
                       {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                       保存修改
                     </Button>
                   </>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={isProducing || revisionApplyMutation.isPending || revisionPreviewMutation.isPending || replanPreviewMutation.isPending || story.segments.length === 0}>
+                  <Button variant="outline" size="sm" onClick={() => { setEditing(true); if (host && story.segments[0]) focusSegment(story.segments[0].id); }} disabled={isProducing || revisionApplyMutation.isPending || revisionPreviewMutation.isPending || replanPreviewMutation.isPending || story.segments.length === 0}>
                     <PencilLine className="mr-2 h-4 w-4" />直接编辑
                   </Button>
                 )}
@@ -335,9 +350,9 @@ export default function ShortStoryStudioPage() {
                 </div>
               ) : editing ? (
                 <div className="overflow-hidden rounded-lg border border-input bg-background focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10">
-                  <EntityDirectory collection={`segments:${novelId}`} title="短篇分段" selection={focusedSegment || story.segments[0]?.id}
-                    rows={story.segments.map((s,i) => ({id:s.id,label:`第 ${i+1} 段`,description:s.content.slice(0,36)}))} onSelect={setFocusedSegment}/>
-                  {story.segments.filter(s => !host || s.id === (story.segments.some(item => item.id === focusedSegment) ? focusedSegment : story.segments[0]?.id)).map((segment) => (
+                  <EntityDirectory collection={`segments:${novelId}`} title="短篇分段" selection={selectedSegment}
+                    rows={story.segments.map((s,i) => ({id:s.id,label:`第 ${i+1} 段`,description:s.content.slice(0,36)}))} onSelect={focusSegment} onClear={() => focusSegment(story.segments[0]?.id ?? null, true)}/>
+                  {story.segments.filter(s => !host || s.id === selectedSegment).map((segment) => (
                     <textarea
                       key={segment.id}
                       aria-label="作品正文"

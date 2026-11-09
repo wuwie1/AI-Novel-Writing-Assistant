@@ -1,1 +1,1 @@
-export { BookResourcePicker } from "./BookResourcePicker";
+export { BookResourcePicker, readResourceCategory, readResourceSelection } from "./BookResourcePicker";

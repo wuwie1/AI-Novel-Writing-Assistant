@@ -152,6 +152,7 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
   const workflowStepLabel = recommendedWorkflowTab
     ? getNovelWorkspaceTabLabel(recommendedWorkflowTab)
     : null;
+  const activeStepIndex = getNovelWorkspaceFlowStepIndex(normalizedActiveTab);
   const stepIndex = directorDisplayState?.stepIndex ?? getNovelWorkspaceFlowStepIndex(guidedFlowTab);
   const progressLabel = stepIndex >= 0
     ? `\u7b2c ${stepIndex + 1} \u6b65 / \u5171 ${directorDisplayState?.totalSteps ?? NOVEL_WORKSPACE_FLOW_STEPS.length} \u6b65`
@@ -198,11 +199,11 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
   return (
     <div className="space-y-5 lg:space-y-6">
       {host && <nav className="mac-view-links" aria-label="写作步骤">
-        <button disabled={stepIndex <= 0} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[stepIndex-1].key)}>上一步</button>
+        <button disabled={activeStepIndex <= 0} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[activeStepIndex-1].key)}>上一步</button>
         <select aria-label="选择写作步骤" value={normalizedActiveTab} onChange={e => props.onActiveTabChange(e.target.value)}>
           {NOVEL_WORKSPACE_FLOW_STEPS.map(step => <option key={step.key} value={step.key}>{step.label}</option>)}<option value="history">版本历史</option>
         </select>
-        <button disabled={stepIndex < 0 || stepIndex >= NOVEL_WORKSPACE_FLOW_STEPS.length-1} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[stepIndex+1].key)}>下一步</button>
+        <button disabled={activeStepIndex < 0 || activeStepIndex >= NOVEL_WORKSPACE_FLOW_STEPS.length-1} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[activeStepIndex+1].key)}>下一步</button>
         {showWorkflowRecommendation && recommendedWorkflowTab && <button onClick={() => props.onActiveTabChange(recommendedWorkflowTab)}>前往推荐步骤 · {workflowStepLabel}</button>}
         <Link to={`/novels/${id}/preview`}>阅读预览</Link><Link to={`/novels/${id}/ai-usage`}>AI 用量</Link>
       </nav>}

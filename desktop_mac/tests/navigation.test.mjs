@@ -45,6 +45,7 @@ before(async () => {
       import ModelRoutesPage from '@/pages/settings/ModelRoutesPage';
       import GenreManagementPage from '@/pages/genres/GenreManagementPage';
       import KnowledgePage from '@/pages/knowledge/KnowledgePage';
+      import ShortStoryStudioPage from '@/pages/shortStory/ShortStoryStudioPage';
       import NovelPreview from '@/pages/novels/NovelPreview';
       import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
       import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
@@ -64,6 +65,7 @@ before(async () => {
           else if(config.url==='/novels/offpage') data={...novel,id:'offpage',workspaceSourceRoute:'/lab/director/offpage'};
           else if(config.url.includes('editor-workspace')) data={};
           else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
+          else if(config.url==='/novels/book-a/short-story') data={novel,production:{status:'completed'},continuousContent:'第一段和第二段',segments:[{id:'s1',content:'第一段',version:1},{id:'s2',content:'第二段',version:1}]};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
           else if(config.url==='/settings/api-keys') data=[{provider:'deepseek',kind:'builtin',name:'测试厂商',models:['test'],defaultModel:'test',isActive:false,isConfigured:false}];
@@ -106,7 +108,7 @@ before(async () => {
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
           {path:'settings/models',element:<><Editor/><SettingsPage/></>},{path:'settings/model-routes',element:<ModelRoutesPage/>},
-          {path:'comic',element:<ComicWorkspacePage/>},{path:'comic/projects/:id',element:<ComicProjectPage/>},{path:'drama',element:<DramaWorkspacePage/>},{path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'comic',element:<ComicWorkspacePage/>},{path:'comic/projects/:id',element:<ComicProjectPage/>},{path:'drama',element:<DramaWorkspacePage/>},{path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/story',element:<ShortStoryStudioPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false,gcTime:0}}});
         const root=createRoot(document.getElementById('root'));
@@ -148,7 +150,7 @@ before(async () => {
       build.onResolve({ filter: /^@\/components\/ui\/(dialog|button|toast)$/ }, (args) => ({ path: args.path, namespace: 'test-ui' }));
       build.onLoad({ filter: /.*/, namespace: 'test-ui' }, () => ({ resolveDir: macRoot, loader: 'tsx', contents: `
         import React from 'react';
-        export const Dialog=({open,children})=>open?<div role="dialog">{children}</div>:null;
+        export const Dialog=({open,children,onOpenChange})=>open?<div role="dialog">{children}{onOpenChange && <button aria-label="关闭测试浮层" onClick={()=>onOpenChange(false)}>关闭浮层</button>}</div>:null;
         const Pass=({children})=><div>{children}</div>;
         export const DialogContent=Pass, AppDialogContent=Pass, DialogHeader=Pass, DialogFooter=Pass, DialogPortal=Pass, DialogOverlay=()=>null, DialogTrigger=Pass, DialogClose=Pass;
         export const DialogTitle=({children})=><h2>{children}</h2>;
@@ -307,8 +309,18 @@ test('chapter sidebar can expand, and cancelling navigation retains its chapter 
     assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
     assert.match(h.sidebar.querySelector('[aria-current]').textContent,/测试章节/);
     await h.edit({ dirty: true });
-    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[1].click());
+    const editor = document.querySelector('textarea[aria-label="正文"]');
+    editor.value = '待保存的正文';
+    editor.focus();
+    const next = h.sidebar.querySelectorAll('.mac-list-row')[1];
+    await h.flush(() => {
+      next.dispatchEvent(new window.Event('pointerdown', {bubbles: true}));
+      next.focus();
+      next.click();
+    });
     await h.click('取消');
+    assert.equal(document.activeElement, editor);
+    assert.equal(editor.value, '待保存的正文');
     assert.equal(h.pathname, '/novels/book-a/chapters/chapter-a');
     assert.equal(h.sidebar.getAttribute('aria-label'), '章节目录');
     assert.match(h.sidebar.textContent, /测试章节/);
@@ -470,5 +482,62 @@ test('selecting a model route offers cancellation and retains the draft after a 
     assert.match(h.router.state.location.search, /taskType=writer/);
     await h.click('放弃未保存修改');
     assert.match(h.router.state.location.search, /taskType=planner/);
+  } finally { await h.cleanup(); }
+});
+
+test('closing the visual asset library keeps the current book selection and its filters', async () => {
+  const location = '/novels?page=2&selectedNovelId=book-b';
+  const h = await mount(location + '#visual-assets');
+  try {
+    assert.ok(h.dialog);
+    assert.match(h.sidebar.querySelector('[aria-current]').textContent, /第二页作品/);
+    await h.click('关闭浮层');
+    assert.equal(h.dialog, null);
+    assert.equal(h.router.state.location.hash, '');
+    assert.equal(h.pathname + h.router.state.location.search, location);
+    assert.match(h.sidebar.querySelector('[aria-current]').textContent, /第二页作品/);
+  } finally { await h.cleanup(); }
+});
+
+test('short story segment history restores each draft within the same document', async () => {
+  const h = await mount('/novels/book-a/story#segment=s2');
+  const editor = () => document.querySelector('textarea[aria-label="作品正文"]');
+  try {
+    assert.equal(editor().value, '第二段');
+    await h.flush(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(editor(), '保留的分段草稿');
+      editor().dispatchEvent(new window.Event('input', {bubbles: true}));
+    });
+    await h.flush(() => h.sidebar.querySelector('.mac-list-row').click());
+    assert.equal(h.dialog, null);
+    assert.equal(h.router.state.location.hash, '#segment=s1');
+    assert.equal(editor().value, '第一段');
+    await h.go(-1);
+    assert.equal(editor().value, '保留的分段草稿');
+    await h.go('/help');
+    assert.ok(h.dialog);
+    await h.flush(() => [...h.dialog.querySelectorAll('button')].find(item => item.textContent === '取消').click());
+    assert.equal(h.pathname, '/novels/book-a/story');
+    assert.equal(editor().value, '保留的分段草稿');
+  } finally { await h.cleanup(); }
+});
+
+test('collection filters return focus on Escape and overview tabs respond to arrow keys', async () => {
+  const h = await mount('/novels');
+  try {
+    const filter = h.sidebar.querySelector('.mac-collection-filters');
+    filter.open = true;
+    const control = filter.querySelector('select');
+    control.focus();
+    await h.flush(() => control.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
+    assert.equal(filter.open, false);
+    assert.equal(document.activeElement, filter.querySelector('summary'));
+    await h.click('书架总览');
+    const tabs = document.querySelectorAll('[aria-label="书架视图"] [role="tab"]');
+    tabs[0].focus();
+    await h.flush(() => tabs[0].dispatchEvent(new window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true, cancelable: true})));
+    assert.equal(document.activeElement, tabs[1]);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.ok(h.sidebar.hidden);
   } finally { await h.cleanup(); }
 });

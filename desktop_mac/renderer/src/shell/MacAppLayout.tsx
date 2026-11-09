@@ -10,8 +10,8 @@ import { queryKeys } from "@/api/queryKeys";
 import { EntityListContext, type EntityCollection } from "@/platform";
 import { macEnvironment } from "../platform/native";
 import { createLinks, moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
+import { moveWorkspaceFocus } from "./workspaceKeyboard";
 import { MacReleaseNotesDialog, MacVersionBadge } from "./MacReleaseNotes";
-import { MacSidebarContent } from "./sidebar";
 
 const primaryIcons = [Plus, BookOpen, Sparkles, Workflow, ScrollText];
 
@@ -28,7 +28,6 @@ export function MacAppLayout() {
     setEntity(value);
     return () => setEntity((current) => current === value ? null : current);
   }, []);
-  const [listSearch, setListSearch] = useState("");
   const [visualAssetsOpen, setVisualAssetsOpen] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 960px)").matches);
@@ -55,21 +54,15 @@ export function MacAppLayout() {
   const taskBadgeCount = (attentionTasks.data?.data?.items.length ?? 0)
     + (failedTasks.data?.data?.items.length ?? 0);
   const directorBadgeCount = directorAttention.data?.data?.length ?? 0;
-  // These workbenches own their document/thread directory. Keep one directory
-  // visible initially, while allowing the user to reopen the global navigator.
-  const workbench = context.chapterId ? "chapter-editor"
-    : context.section === "creative" ? "creative-workbench"
-    : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const legacy = !entity && !location.pathname.startsWith("/worlds/") && !["/knowledge", "/book-analysis", "/market-radar", "/genres", "/story-modes", "/base-characters", "/worlds", "/worlds/generator", "/titles", "/style-engine", "/anti-ai-rules", "/prompt-workbench"].includes(location.pathname) && !["help", "tasks", "create", "shelf", "novel", "director", "creative", "settings", "comic", "drama"].includes(context.section);
-  const hasList = !!entity || legacy;
-  const title = entity?.title ?? context.sidebarTitle;
-  const collapseKey = entity?.collection ?? workbench ?? context.section;
-  const drawerKey = JSON.stringify([collapseKey, entity ? entity.selection : location.key]);
+  const hasList = entity !== null;
+  const title = entity?.title ?? "";
+  const collapseKey = entity?.collection ?? "";
+  const drawerKey = JSON.stringify([collapseKey, entity?.selection]);
   const drawerOpen = narrow && hasList && (drawer?.key === drawerKey ? drawer.open : entity?.selection === null);
   const setDrawerOpen = (open: boolean) => setDrawer({ key: drawerKey, open });
   const host = useMemo(() => ({ target, narrow, register }), [target, narrow, register]);
   const closeDrawer = () => { setDrawerOpen(false); toggle.current?.focus(); };
-  const collapsed = collapsedSections[collapseKey] ?? (!entity && Boolean(workbench));
+  const collapsed = collapsedSections[collapseKey] ?? false;
   const mode = macEnvironment()?.mode;
 
   useEffect(() => {
@@ -90,11 +83,17 @@ export function MacAppLayout() {
     // 路由确认成功后才切换列表；取消离开时保留原页面和目录。
     setMoreOpen(false);
   }, [location.key]);
-  useEffect(() => { setListSearch(""); }, [context.key]);
+  useEffect(() => {
+    setDrawer(previous => previous && previous.key !== drawerKey ? null : previous);
+  }, [drawerKey]);
+  useEffect(() => {
+    const list = target?.querySelector(".mac-context-list");
+    if (list) list.scrollTop = 0;
+  }, [target, collapseKey]);
   useEffect(() => {
     if (!moreOpen && !drawerOpen) return;
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMoreOpen(false); if (drawerOpen) closeDrawer(); }
+      if (!event.defaultPrevented && event.key === "Escape" && !document.querySelector('[role="dialog"],[role="alertdialog"]')) { setMoreOpen(false); if (drawerOpen) closeDrawer(); }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
@@ -149,15 +148,24 @@ export function MacAppLayout() {
     </header>
     <aside hidden={!hasList} className={`mac-secondary${drawerOpen ? " is-open" : ""}`} aria-label={title} inert={!hasList || (narrow ? !drawerOpen : collapsed)} aria-hidden={!hasList || (narrow ? !drawerOpen : collapsed)}>
       {hasList && narrow && <button className="mac-icon-button mac-secondary-close" aria-label={`关闭${title}`} onClick={closeDrawer}><X size={16}/></button>}
-      <div ref={setTarget} className="mac-collection-slot"/>
-      {legacy && <>
-        <div className="mac-list-tools"><input type="search" aria-label={`搜索${title}`} placeholder={`搜索${title}`} value={listSearch} onChange={(event) => setListSearch(event.target.value)}/></div>
-        <div className="mac-context-list" key={context.key}>{!collapsed || drawerOpen ? <MacSidebarContent context={context} search={listSearch}/> : null}</div>
-      </>}
+      <div ref={setTarget} className="mac-collection-slot" onClick={event => {
+        if (drawerOpen && event.target instanceof Element && event.target.closest('button[aria-current="true"],a[aria-current="page"]')) closeDrawer();
+      }}/>
     </aside>
     {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${title}`} onClick={closeDrawer}/> : null}
     <main className="mac-workspace">
-      <section className="mac-canvas" aria-label={context.title}>{context.section === "director" && location.pathname !== "/lab/director/preview" && <nav className="mac-view-links" aria-label="导演工作区"><Link to="/lab/director">运行记录</Link><Link to="/auto-director/follow-ups">导演跟进</Link></nav>}{context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">{createLinks.map(([href,label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}</nav>}<Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider></Suspense></section>
+      <section className="mac-canvas" aria-label={context.title} onKeyDown={moveWorkspaceFocus}>
+        {context.section === "director" && location.pathname !== "/lab/director/preview" && <nav className="mac-view-links" aria-label="导演工作区">
+          <Link aria-current={location.pathname === "/lab/director" ? "page" : undefined} to="/lab/director">运行记录</Link>
+          <Link aria-current={location.pathname === "/auto-director/follow-ups" ? "page" : undefined} to="/auto-director/follow-ups">导演跟进</Link>
+        </nav>}
+        {context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">
+          {createLinks.map(([href, label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}
+        </nav>}
+        <Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}>
+          <EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider>
+        </Suspense>
+      </section>
     </main>
     <VisualAssetLibraryDialog
       open={visualAssetsOpen}
