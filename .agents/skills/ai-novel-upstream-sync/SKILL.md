@@ -1,6 +1,6 @@
 ---
 name: ai-novel-upstream-sync
-description: 在 wuwie1/AI-Novel-Writing-Assistant 中处理“检查上游更新”“同步上游”“同步上游并部署”，将 ExplosiveCoderflome 的更新整合到 main 和 ai，并按请求推送、部署或核对已部署版本。
+description: 在 wuwie1/AI-Novel-Writing-Assistant 中处理“服务器更新”，将当前部署分支的本地提交更新到服务器并重启服务。也处理“检查上游更新”“同步上游”“同步上游并部署”及指定的补推或补部署。
 ---
 
 # 小说助手上游同步
@@ -9,10 +9,19 @@ description: 在 wuwie1/AI-Novel-Writing-Assistant 中处理“检查上游更�
 
 ## 选择执行范围
 
+- “服务器更新”直接执行下节，以当前部署分支的本地 HEAD 为候选，包含重启 API 和网页服务。这个指令独立于上游整合与 GitHub 推送。
 - “检查上游更新”只运行随技能提供的检查脚本，汇报上游提交和两个分支的差距。
 - “同步上游”包含本地合并与校验，最后回到 ai。“推送”表示把通过验证的两个分支推送到 fork。
 - 本仓库约定的简写“同步上游并部署”包含本地整合、校验、推送两个分支到 fork、部署 ai 及重启验收。用户指定的分支、环境、只检查、本地同步或不推送等范围优先。
 - 可单独补推或补部署。上游无新提交时，逐项核对用户要求的本地分支、远端分支及实际部署版本。远端仍落后就补推；服务器的代码、部署清单和服务健康均已对齐时，无需重新构建、备份或重启。明确要求重启时按请求执行。
+
+## 服务器更新
+
+1. 在仓库根目录核对当前分支、`git status --short` 和 `git rev-parse HEAD`。工作区须干净，当前分支与服务器发布分支一致（默认 `ai`）。有未提交改动时列出文件，让用户确定要部署的提交。沿用下方部署目标与 SSH 身份核对规则。
+2. 执行 `make server_update DRY_RUN=1`。读取 `inspection` 中服务器当前版本 `current` 和本次候选 `candidate`，核对后者等于刚记录的本地 SHA。单独要求预演时，汇报检查结果即完成。
+3. 版本不同时，按两提交的差异选取回归用例，核对服务端、客户端构建以及相关测试的真实日志。按仓库验证复用规则补跑缺少的检查。将 `sha`、`ref`、实际通过的 `passed` 和日志位置 `evidence` 写入本机忽略的 `.runtime/server-update/<SHA>/validation.json`。字段与 `desktop_mac/README.md` 的部署验证记录一致。
+4. 版本不同时执行 `make server_update DEPLOY_VALIDATION_FILE=".runtime/server-update/<SHA>/validation.json"`，将 `<SHA>` 替换为本轮完整提交。版本相同时执行 `make server_update`，同样完成重启。命令会在需要时通过 SSH 传输增量 Git bundle，在服务器隔离构建并通过现有备份、任务静止、切换、健康检查和回滚流程。
+5. 以成功的 `deployed` 回执、对应 SHA 和已校验的备份路径报告完成。失败时报告阻塞原因或事务的回滚结果，保留现场。服务锁内的停启由部署事务完成。
 
 ## 检查与合并
 

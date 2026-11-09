@@ -1,4 +1,4 @@
 interface:
-  display_name: "小说助手上游同步"
-  short_description: "检查小说助手上游提交差距，按请求在本地同步、推送或部署服务器"
+  display_name: "小说助手同步与服务器更新"
+  short_description: "检查并同步小说助手上游，或将本地提交部署到服务器并重启服务"
   default_prompt: "使用 $ai-novel-upstream-sync 检查上游更新，列出 main 和 ai 各自待合入的提交。"

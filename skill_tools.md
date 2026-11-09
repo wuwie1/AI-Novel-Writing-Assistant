@@ -2,6 +2,12 @@
 
 项目维护技能随 `ai` 分支保存在 `.agents/skills/`。在新电脑上检出包含这些文件的 `ai` 分支，用 Codex 打开仓库，就可以在项目聊天里输入 `$ai-novel-upstream-sync 检查上游更新`。
 
+## 服务器更新
+
+在项目聊天输入 **服务器更新**，或输入 `$ai-novel-upstream-sync 服务器更新`。它会把当前部署分支（默认 `ai`）已提交的代码更新到配置的服务器，重启 API 和网页服务，并检查首页、健康接口和小说列表。尚未推送到 GitHub 的提交也可以部署。服务器已是同一提交时，仍会重启服务。
+
+执行前先提交要部署的改动。Codex 会核对当前提交、构建与测试结果，再调用 `make server_update`。只想查看待部署版本和任务状态时，可输入“服务器更新，只预演”或运行 `make server_update DRY_RUN=1`。[部署配置与验证记录](desktop_mac/README.md#更新服务器)
+
 ## 同步小说助手上游
 
 使用 Git 和 Bash 检查上游。新克隆先运行 `git remote -v`，确认 `origin` 指向 `wuwie1/AI-Novel-Writing-Assistant`。如果还没有 `upstream`，在仓库根目录添加一次。

@@ -89,7 +89,14 @@ def switch_transaction(payload, info, batch, candidate, manifest):
         set_nginx(root, original, reload=True)
         maintenance = False
         health(config['remoteWebPort'])
-        restore_service_state(info)
+        if 'currentSha' in payload:
+            if git(root, 'rev-parse', 'HEAD') != info['sha']:
+                raise Refused('实际部署提交与本次候选不符')
+            for unit in info['states']:
+                if command(['systemctl', 'is-active', unit], check=False).stdout.strip() != 'active':
+                    raise Refused(unit + ' 重启后未处于 active 状态')
+        else:
+            restore_service_state(info)
         record_path = root / '.runtime/deployment.json'
         record = json.loads(record_path.read_text()) if record_path.exists() else {}
         record['desktopMacDeployment'] = dict(sha=info['sha'], previousSha=info['old'], backup=str(batch / 'backups'), fingerprint=manifest['fingerprint'], result='success', time=datetime.datetime.now(datetime.timezone.utc).isoformat())
@@ -113,14 +120,15 @@ def switch_transaction(payload, info, batch, candidate, manifest):
                             raise Refused('回滚目录存在未登记内容，保留现场')
                         os.rename(saved, live)
                 # No hard reset, database restore, or deletion is permitted.
-                git(root, 'switch', '--detach', info['old'])
+                if info['old'] != info['sha']:
+                    git(root, 'switch', '--detach', info['old'])
             set_nginx(root, original, reload=not stopped and info['states']['ai-novel-web'] == 'active')
             maintenance = False
             if stopped and info['states']['ai-novel-api'] == 'active':
                 start_and_check(info, config['remoteWebPort'])
             restore_service_state(info)
             journal['phase'] = 'rolled_back' if switched else 'aborted'; write_json(journal_path, journal)
-            emit('rolled_back' if switched else 'aborted', sha=info['old'], detached=switched, backup=str(batch / 'backups'), reason=str(failure))
+            emit('rolled_back' if switched else 'aborted', sha=info['old'], detached=switched and info['old'] != info['sha'], backup=str(batch / 'backups'), reason=str(failure))
             return 7 if switched else 6
         except BaseException:
             journal['phase'] = 'rollback_failed'; write_json(journal_path, journal)

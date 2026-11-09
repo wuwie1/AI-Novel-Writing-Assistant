@@ -69,6 +69,17 @@ make dev_app
 
 ## 更新服务器
 
+从本地发布分支部署已提交的代码并重启服务，可在 Codex 项目聊天里输入“服务器更新”。也可在仓库根目录执行以下命令。
+
+```bash
+make server_update DRY_RUN=1
+make server_update DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
+```
+
+`server_update` 锁定当前干净工作区的 HEAD，要求本地和服务器位于配置的发布分支。服务器缺少候选对象时，经 SSH 传输从服务器基线到该提交的 Git bundle。版本相同时可直接运行 `make server_update`，仍会重启并检查 API 和网页服务。切换版本所需的验证记录格式见下文。
+
+要部署 fork 远端发布分支的版本，可使用 `up_app`。
+
 ```bash
 make up_app DRY_RUN=1
 make up_app DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
@@ -76,7 +87,7 @@ make up_app DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
 
 预演只读检查远端发布 SHA、服务与数据位置、兼容性和任务静止状态；不会 fetch、创建远端目录/锁、构建或停服。候选 Git 对象不在服务器时会说明尚未验证，不能把预演输出当成部署通过。
 
-目标仓库的 origin 必须匹配指定 fork。读取候选和 fetch 使用同一公开 fork 的 HTTPS 地址，不修改远端 origin 或 SSH 主机配置。
+目标仓库的 origin 必须匹配指定 fork。`up_app` 通过该 fork 的 HTTPS 地址查询并抓取发布分支，`server_update` 通过现有 SSH 连接传输本地候选。
 
 真实更新只允许当前发布分支的快进，候选 SHA 需要验证记录。例如：
 
@@ -91,7 +102,7 @@ make up_app DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
 
 记录必须来自该提交真实完成的检查，不应照抄示例声明成功。命令不推送代码、不改变发布分支、不运行数据库迁移。schema、迁移、数据库启动兼容代码或数据库依赖变化时拒绝普通更新，需单独审查升级方案。
 
-更新流程：隔离构建 → 完整预备份 → 关闭新 API 请求 → 两次任务及连接检查 → 停服并保存最终备份 → 快进源码并事务替换完整依赖/产物 → 只读健康检查 → 恢复入口。备份采用 SQLite backup API 并做完整性和文件校验；资产、配置、源码和旧依赖均保留。备份及日志位于服务器 `.runtime/desktop_mac-deploy/<时间>-<SHA>/`，不会自动清理。
+更新时先隔离构建并完成预备份，再关闭新 API 请求。两次确认任务空闲且连接已排空后，停服保存最终备份，快进源码，替换依赖和产物。服务通过健康检查后恢复对外入口。两次 SQLite 备份均校验完整性，资产、配置、源码和旧依赖也会保留。服务器在 `.runtime/desktop_mac-deploy/` 下为每次更新保留独立目录，成功回执的 `backup` 给出本次备份路径。
 
 失败回滚只恢复源码和依赖/产物，绝不还原或覆盖数据库。回滚源码可能停在 detached HEAD；先核对事务记录和旧 SHA，再恢复发布分支。异常中断会保留 `transaction.json`，下一次更新拒绝覆盖未完成事务；人工恢复步骤见 [部署边界](../docs/wiki/architecture/mac-desktop.md)。
 

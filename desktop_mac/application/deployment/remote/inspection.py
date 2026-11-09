@@ -1,3 +1,31 @@
+def candidate_commit(root, branch, payload, fetch):
+    if 'currentSha' in payload:
+        sha = payload['currentSha']
+        if not isinstance(sha, str) or len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
+            raise Refused('本地候选必须是完整的 Git 提交 SHA')
+        if fetch and payload.get('withBundle'):
+            with tempfile.NamedTemporaryFile(dir=root / '.runtime', suffix='.bundle') as incoming:
+                shutil.copyfileobj(sys.stdin.buffer, incoming)
+                incoming.flush()
+                if git(root, 'bundle', 'list-heads', incoming.name) != sha + ' HEAD':
+                    raise Refused('传入的 Git bundle 与本次提交不符')
+                git(root, 'bundle', 'verify', incoming.name)
+                # Import objects only. The verified transaction owns the branch fast-forward.
+                git(root, 'bundle', 'unbundle', incoming.name)
+        return sha
+    source_url = 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git'
+    remote_ref = 'refs/heads/' + branch
+    remote_result = git(root, 'ls-remote', '--exit-code', source_url, remote_ref).split()
+    sha = remote_result[0] if remote_result else ''
+    if len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
+        raise Refused('未解析出固定发布 SHA')
+    if fetch:
+        git(root, 'fetch', '--no-tags', source_url, remote_ref)
+        if git(root, 'rev-parse', 'FETCH_HEAD') != sha:
+            raise Refused('发布线在检查期间变化，请重新运行')
+    return sha
+
+
 def inspect_deployment(payload, fetch=False):
     config = payload['config']
     root = pathlib.Path(config['serverDir']).resolve(strict=True)
@@ -6,24 +34,16 @@ def inspect_deployment(payload, fetch=False):
     origin = git(root, 'remote', 'get-url', 'origin')
     if origin not in ('git@github.com:wuwie1/AI-Novel-Writing-Assistant.git', 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git'):
         raise Refused('origin 不是指定 fork')
-    # The fork is public; HTTPS avoids relying on server-side GitHub SSH identities.
-    source_url = 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git'
     old = git(root, 'rev-parse', 'HEAD')
+    if 'serverBase' in payload and old != payload['serverBase']:
+        raise Refused('服务器版本在本次预演后变化，请重新核对部署基线')
     branch = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD', check=False)
     if not branch or git(root, 'status', '--porcelain', '--untracked-files=no'):
         raise Refused('服务器源码有修改或处于 detached HEAD，需先人工核对发布分支')
     ref = config['deployRef']
     if not ref.startswith('origin/') or ref[7:] != branch or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/.' for c in ref):
         raise Refused('DEPLOY_REF 必须是服务器当前发布分支的 origin/<branch>，不能自动换线')
-    remote_ref = 'refs/heads/' + ref[7:]
-    remote_result = git(root, 'ls-remote', '--exit-code', source_url, remote_ref).split()
-    candidate_sha = remote_result[0] if remote_result else ''
-    if len(candidate_sha) != 40 or any(c not in '0123456789abcdef' for c in candidate_sha):
-        raise Refused('未解析出固定发布 SHA')
-    if fetch:
-        git(root, 'fetch', '--no-tags', source_url, remote_ref)
-        if git(root, 'rev-parse', 'FETCH_HEAD') != candidate_sha:
-            raise Refused('发布线在检查期间变化，请重新运行')
+    candidate_sha = candidate_commit(root, branch, payload, fetch)
     candidate_known = command(['git', '-C', root, 'cat-file', '-e', candidate_sha + '^{commit}'], check=False).returncode == 0
     checks = []
     differences = []

@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 CODE = pathlib.Path(__file__).resolve().parents[1] / 'application/deployment/remote'
 
@@ -106,13 +106,76 @@ class DeploymentTests(unittest.TestCase):
 
     def test_dry_run_never_enters_locks_or_mutation_adapters(self):
         m = module()
-        info = dict(old='old', sha='candidate', differences=['client/page'], checks=['not yet validated'], db=pathlib.Path('/db'), assets=[])
+        info = dict(old='old', sha='candidate', known=False, differences=['client/page'], checks=['not yet validated'], db=pathlib.Path('/db'), assets=[])
         m.inspect_deployment = lambda payload: info
         m.check_quiescence = lambda *a: None
         m.remote_lock = lambda *_: self.fail('dry-run acquired remote lock')
         m.build_candidate = lambda *_: self.fail('dry-run built artifacts')
         m.backup_snapshot = lambda *_: self.fail('dry-run wrote a backup')
         self.assertEqual(m.run_remote(dict(dryRun=True)), 0)
+
+    def test_changed_server_head_refuses_update_before_importing_candidate(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary).resolve()
+            m.git = Mock(side_effect=[str(root), 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git', 'a' * 40])
+            m.candidate_commit = Mock()
+            with self.assertRaisesRegex(m.Refused, '预演后变化'):
+                m.inspect_deployment(dict(config=dict(serverDir=str(root)), serverBase='b' * 40), fetch=True)
+            m.candidate_commit.assert_not_called()
+
+    def test_explicit_current_version_update_restarts_both_units_and_leaves_them_serving(self):
+        for initial in ('active', 'inactive'):
+            with self.subTest(initial=initial), tempfile.TemporaryDirectory() as temporary:
+                m = module()
+                root = pathlib.Path(temporary)
+                (root / '.runtime').mkdir()
+                template = pathlib.Path('infra/server/nginx.conf.template')
+                (root / template.parent).mkdir(parents=True)
+                original = (CODE.parents[3] / template).read_text()
+                (root / template).write_text(original)
+                (root / '.runtime/nginx.conf').write_text(original.replace('@ROOT@', str(root)))
+                sha = 'a' * 40
+                info = dict(root=root, old=sha, sha=sha, branch='ai', healthy=initial == 'active',
+                            known=True, differences=[], checks=[], db=root / 'test.db', assets=[],
+                            states=dict.fromkeys(('ai-novel-api', 'ai-novel-web'), initial))
+                m.inspect_deployment = Mock(return_value=info)
+                m.check_quiescence = Mock()
+                m.check_connections = Mock()
+                m.backup_snapshot = Mock(side_effect=lambda info, location, **kwargs: location)
+                m.verify_snapshot = Mock()
+                m.validate_nginx = Mock()
+                m.set_nginx = Mock()
+                m.command = Mock(return_value=types.SimpleNamespace(stdout='active'))
+                m.git = Mock(return_value=sha)
+                m.health = Mock()
+
+                def build(info, batch):
+                    candidate = batch / 'candidate'
+                    for slot in m.ARTIFACTS:
+                        (root / slot).parent.mkdir(parents=True, exist_ok=True)
+                        (candidate / slot).mkdir(parents=True)
+                    return candidate, {'fingerprint': 'verified-test-build'}
+
+                m.build_candidate = Mock(side_effect=build)
+                payload = dict(config=dict(remoteWebPort=18080, maintenanceProbePort=18081), dryRun=False)
+                if initial == 'active':
+                    self.assertEqual(m.run_remote(payload), 0)
+                    m.build_candidate.assert_not_called()
+                with patch.object(m.time, 'sleep'):
+                    self.assertEqual(m.run_remote(dict(payload, currentSha=sha, serverBase=sha)), 0)
+                units = [c.args[0] for c in m.command.call_args_list]
+                self.assertEqual(units, [['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'],
+                                         ['systemctl', 'start', 'ai-novel-api', 'ai-novel-web'],
+                                         ['systemctl', 'is-active', 'ai-novel-api'],
+                                         ['systemctl', 'is-active', 'ai-novel-web']])
+                self.assertEqual([c.args[0] for c in m.health.call_args_list], [18081, 18080])
+                self.assertEqual(m.backup_snapshot.call_count, 2)
+                self.assertEqual(m.verify_snapshot.call_count, 2)
+                self.assertEqual(m.check_connections.call_count, 2)
+                record = json.loads((root / '.runtime/deployment.json').read_text())['desktopMacDeployment']
+                self.assertEqual(record['sha'], sha)
+                self.assertEqual(record['result'], 'success')
 
 
 if __name__ == '__main__':
