@@ -38,7 +38,7 @@ export function PromptCatalogSidebar(props: PromptCatalogSidebarProps) {
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={props.keyword} onChange={(event) => props.onKeywordChange(event.target.value)}
-            aria-label="搜索提示词" placeholder="搜索名称或用途" className="pl-9 shadow-none" />
+            aria-label="搜索已加载的提示词" placeholder="搜索已加载的名称或用途" className="pl-9 shadow-none" />
         </div>
         <div className="flex gap-1 rounded-md bg-muted p-1" aria-label="提示词目录范围">
           <Button variant={showAll ? "ghost" : "secondary"} size="sm" className="flex-1 shadow-none"

@@ -1,3 +1,4 @@
+import { BookChapterDirectory } from "./components/chapterDirectory";
 import { useEffect, useMemo } from "react";
 import { FlaskConical } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -53,10 +54,14 @@ export default function NovelChapterEdit() {
     [chapterId, detail?.chapters],
   );
 
+  const directory = <BookChapterDirectory novelId={id} chapters={detail?.chapters ?? []} volumes={detail?.volumes} selected={chapterId}
+    pending={novelDetailQuery.isPending} error={novelDetailQuery.isError} retry={() => void novelDetailQuery.refetch()}
+    select={value => navigate({ pathname:`/novels/${encodeURIComponent(id)}/chapters/${encodeURIComponent(value)}`, search:location.search })}/>;
+
   if (novelDetailQuery.isLoading && !detail) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-4">
-        <PageStateCard message="正在加载章节编辑器..." />
+        {directory}<PageStateCard message="正在加载章节编辑器..." />
       </div>
     );
   }
@@ -64,7 +69,7 @@ export default function NovelChapterEdit() {
   if (novelDetailQuery.isError) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-4">
-        <PageStateCard message="章节数据加载失败，请刷新后重试。" />
+        {directory}<PageStateCard message="章节数据加载失败，请刷新后重试。" />
       </div>
     );
   }
@@ -72,13 +77,14 @@ export default function NovelChapterEdit() {
   if (!chapter) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-4">
-        <PageStateCard message="没有找到对应章节，可能已被删除或当前链接不完整。" />
+        {directory}<PageStateCard message="没有找到对应章节，可能已被删除或当前链接不完整。" />
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
+      {directory}
       <ChapterEditorShell
         key={chapter.id}
         headerExtra={(
@@ -98,7 +104,7 @@ export default function NovelChapterEdit() {
             ? "error"
             : "ready"}
         onBack={() => navigate(`/novels/${id}/edit`)}
-        onOpenVersionHistory={() => navigate(`/novels/${id}/edit`)}
+        onOpenVersionHistory={() => navigate(`/novels/${id}/edit?stage=history`)}
         onRefreshWorkspace={() => { void chapterEditorWorkspaceQuery.refetch(); }}
         isRefreshingWorkspace={chapterEditorWorkspaceQuery.isFetching}
       />

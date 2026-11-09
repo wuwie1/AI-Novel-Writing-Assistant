@@ -1,3 +1,4 @@
+import { useRouteFields } from "@/platform";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -81,7 +82,9 @@ export default function WorldWorkspace() {
   const [refineAttribute, setRefineAttribute] = useState<RefineAttribute>("background");
   const [refineMode, setRefineMode] = useState<"replace" | "alternatives">("replace");
   const [refineLevel, setRefineLevel] = useState<"light" | "deep">("light");
-  const [activeTab, setActiveTab] = useState("structure");
+  const [route, updateRoute] = useRouteFields();
+  const activeTab = route.get("tab") ?? "structure";
+  const setActiveTab = (tab: string) => updateRoute({tab, tool: null, assetId: null});
   const [advancedStructureOpen, setAdvancedStructureOpen] = useState(false);
 
   const worldDetailQuery = useQuery({
@@ -537,6 +540,8 @@ export default function WorldWorkspace() {
 
         <TabsContent value="assets">
           <WorldAssetsTab
+            libraryState={{pending: libraryQuery.isLoading, error: libraryQuery.isError, retry: () => void libraryQuery.refetch()}}
+            snapshotState={{pending: snapshotQuery.isLoading, error: snapshotQuery.isError, retry: () => void snapshotQuery.refetch()}}
             worldId={id}
             world={world}
             selectedLayerPrimaryField={selectedLayerMeta.primaryField}

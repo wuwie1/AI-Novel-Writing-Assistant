@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection, useEntityListHost, useRouteFields, useDocumentGuard } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -292,11 +293,12 @@ function EpisodesPanel(props: {
   onGenerateScript: (order: number) => void;
   onReview: (order: number) => void;
   onRepair: (order: number) => void;
-  onSave: (order: number, input: { title: string; hookOpening: string; cliffhanger: string; content: string; durationSec: string }) => void;
+  onSave: (order: number, input: { title: string; hookOpening: string; cliffhanger: string; content: string; durationSec: string }) => unknown;
   busy: boolean;
 }) {
   const episodes = props.project.episodes ?? [];
-  const selectedEpisode = episodes.find((episode) => episode.order === props.selectedOrder) ?? episodes[0];
+  const host = useEntityListHost();
+  const selectedEpisode = episodes.find(episode => episode.order === props.selectedOrder);
   const [draft, setDraft] = useState({
     title: "",
     hookOpening: "",
@@ -305,23 +307,24 @@ function EpisodesPanel(props: {
     durationSec: "",
   });
 
-  useEffect(() => {
-    setDraft({
-      title: selectedEpisode?.title ?? "",
-      hookOpening: selectedEpisode?.hookOpening ?? "",
-      cliffhanger: selectedEpisode?.cliffhanger ?? "",
-      content: selectedEpisode?.content ?? "",
-      durationSec: selectedEpisode?.durationSec != null ? String(selectedEpisode.durationSec) : "",
-    });
-  }, [selectedEpisode?.id, selectedEpisode?.title, selectedEpisode?.hookOpening, selectedEpisode?.cliffhanger, selectedEpisode?.content, selectedEpisode?.durationSec]);
+  const savedDraft = {
+    title: selectedEpisode?.title ?? "", hookOpening: selectedEpisode?.hookOpening ?? "",
+    cliffhanger: selectedEpisode?.cliffhanger ?? "", content: selectedEpisode?.content ?? "",
+    durationSec: selectedEpisode?.durationSec != null ? String(selectedEpisode.durationSec) : "",
+  };
+  const savedKey = JSON.stringify(savedDraft);
+  useEffect(() => { setDraft(savedDraft); }, [selectedEpisode?.id, savedKey]);
+  useDocumentGuard({label: "短剧分集台本", dirty: Boolean(selectedEpisode) && JSON.stringify(draft) !== savedKey, busy: props.busy,
+    save: async () => { if (!selectedEpisode || !draft.title.trim()) throw Error("请填写本集标题。"); await props.onSave(selectedEpisode.order, draft); },
+    discard: () => setDraft(savedDraft)});
 
   if (episodes.length === 0) {
     return <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">还没有分集大纲。先生成前 12 集分集。</div>;
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-      <div className="space-y-2">
+    <div className={host ? "min-w-0" : "grid gap-4 xl:grid-cols-[360px_1fr]"}>
+      {!host && <div className="space-y-2">
         {episodes.map((episode) => (
           <EpisodeCard
             key={episode.id}
@@ -330,7 +333,7 @@ function EpisodesPanel(props: {
             onSelect={() => props.onSelectOrder(episode.order)}
           />
         ))}
-      </div>
+      </div>}
       {selectedEpisode ? (
         <Card className="rounded-lg">
           <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -415,8 +418,8 @@ function EpisodesPanel(props: {
 export default function DramaProjectPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<DramaTab>("source");
-  const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
+  const [route, update] = useRouteFields();
+  const activeTab = TABS.find(item => item.key === route.get("tab"))?.key ?? "source";
   const [selectedVideoProvider, setSelectedVideoProvider] = useState("mock");
 
   const projectQuery = useQuery({
@@ -444,12 +447,13 @@ export default function DramaProjectPage() {
   const activeVideoProvider = videoProviders.some((provider) => provider.provider === selectedVideoProvider)
     ? selectedVideoProvider
     : videoProviders[0]?.provider ?? "mock";
-  const selectedOrderValue = useMemo(() => {
-    if (selectedOrder) {
-      return selectedOrder;
-    }
-    return project?.episodes?.[0]?.order ?? null;
-  }, [project?.episodes, selectedOrder]);
+  const episodes = project?.episodes ?? [];
+  const directory = useDirectorySelection("episodeId", episodes);
+  const selectedEpisode = episodes.find(ep => ep.id === directory.selection) ?? (!directory.host && !route.has("episodeId") ? episodes[0] : undefined);
+  const selectedOrderValue = selectedEpisode?.order ?? null;
+  const setActiveTab = (tab: DramaTab, order?: number) => update({tab, characterId: null,
+    episodeId: order ? episodes.find(ep => ep.order === order)?.id ?? null : route.get("episodeId")});
+  const setSelectedOrder = (order: number) => update({episodeId: episodes.find(ep => ep.order === order)?.id ?? null});
   const batchCostSummary = project ? summarizeBatchCosts(project) : null;
 
   const invalidateProject = async () => {
@@ -508,7 +512,7 @@ export default function DramaProjectPage() {
       toast.error("请填写本集标题。");
       return;
     }
-    runAction(
+    return runAction(
       () => updateDramaEpisode(project.id, order, {
         title: input.title.trim(),
         hookOpening: input.hookOpening.trim() || null,
@@ -528,7 +532,7 @@ export default function DramaProjectPage() {
     return (
       <div className="space-y-4">
         <Button asChild variant="outline" size="sm">
-          <Link to="/drama"><ArrowLeft className="h-4 w-4" />返回短剧工作台</Link>
+          <Link to={`/drama?projectId=${encodeURIComponent(id ?? "")}`}><ArrowLeft className="h-4 w-4" />返回短剧工作台</Link>
         </Button>
         <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">没有找到这个短剧项目。</div>
       </div>
@@ -540,7 +544,7 @@ export default function DramaProjectPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <Button asChild variant="ghost" size="sm" className="px-0">
-            <Link to="/drama"><ArrowLeft className="h-4 w-4" />短剧工作台</Link>
+            <Link to={`/drama?projectId=${encodeURIComponent(id ?? "")}`}><ArrowLeft className="h-4 w-4" />短剧工作台</Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-normal">{project.title}</h1>
@@ -565,11 +569,12 @@ export default function DramaProjectPage() {
 
       <ProjectProgress project={project} />
 
+      {["episodes", "quality", "visual", "export"].includes(activeTab) && <EntityDirectory {...directory} title="短剧分集" collection={`drama:${id}:${activeTab}`}
+        rows={episodes.map(ep => ({id: ep.id, label: `第 ${ep.order} 集 ${ep.title}`, description: ep.hookOpening}))}/>}
       <DramaNextStepPanel
         project={project}
         busy={actionMutation.isPending}
         onSetTab={setActiveTab}
-        onSelectEpisode={setSelectedOrder}
         onAssembleSource={() => runAction(() => assembleDramaSourceBundle(project.id), "短剧素材已整理。")}
         onGenerateStrategy={() => runAction(() => generateDramaStrategy(project.id), "短剧策略已生成。")}
         onGenerateOutline={() => runAction(() => generateDramaOutline(project.id, { startOrder: 1, count: 12 }), "前 12 集分集已生成。")}
@@ -616,8 +621,8 @@ export default function DramaProjectPage() {
         <DramaQualityPanel
           project={project}
           busy={actionMutation.isPending}
-          onSelectEpisode={setSelectedOrder}
-          onOpenEpisodes={() => setActiveTab("episodes")}
+          selectedId={directory.host ? selectedEpisode?.id ?? null : undefined}
+          onOpenEpisodes={order => setActiveTab("episodes", order)}
           onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
           onComplianceAll={() => runAction(() => checkDramaProjectCompliance(project.id), "合规预检完成。")}
           onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}

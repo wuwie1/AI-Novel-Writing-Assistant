@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { EntityList, DirectoryRows, useRouteFields, useDirectorySelection } from "@/platform";
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Trash2 } from "lucide-react";
-import { buildTitleLibraryListKey, deleteTitleLibraryEntry, listTitleLibrary, markTitleLibraryUsed } from "@/api/title";
+import { type TitleLibraryListParams, buildTitleLibraryListKey, deleteTitleLibraryEntry, listTitleLibrary, markTitleLibraryUsed } from "@/api/title";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { queryKeys } from "@/api/queryKeys";
@@ -18,16 +19,14 @@ const selectClassName = "w-full rounded-lg border-0 bg-muted/35 px-3 py-2.5 text
 
 export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelProps) {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [genreId, setGenreId] = useState("");
-  const [sort, setSort] = useState<"newest" | "hot" | "clickRate">("newest");
-  const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    setPage(1);
-  }, [genreId, search, sort]);
-
-  const listParams = useMemo(
+  const [route, update] = useRouteFields();
+  const search = route.get("q") ?? "";
+  const genreId = route.get("genreId") ?? "";
+  const order = route.get("sort");
+  const sort = order === "hot" || order === "clickRate" ? order : "newest";
+  const page = Math.max(1, Number.parseInt(route.get("page") ?? "1", 10) || 1);
+  const filter = (field: string, value: string) => update({[field]: value, page: null}, true);
+  const listParams = useMemo<TitleLibraryListParams>(
     () => ({
       page,
       pageSize: 18,
@@ -68,14 +67,14 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
   const rows = libraryQuery.data?.data?.items ?? [];
   const pagination = libraryQuery.data?.data;
 
-  return (
-    <div className="space-y-5">
+  const directory = useDirectorySelection("titleId", rows);
+  const tools = (
       <div className="grid gap-3 rounded-2xl bg-muted/20 p-4 md:grid-cols-[minmax(0,1fr)_220px_180px]">
         <label className="space-y-2 text-sm">
           <span className="font-medium text-foreground">搜索</span>
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => filter("q", event.target.value)}
             placeholder="匹配标题、说明或关键词"
             className={controlClassName}
           />
@@ -85,7 +84,7 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
           <SelectControl
             className={selectClassName}
             value={genreId}
-            onChange={(event) => setGenreId(event.target.value)}
+            onChange={(event) => filter("genreId", event.target.value)}
           >
             <option value="">全部类型</option>
             {genreOptions.map((option) => (
@@ -100,7 +99,7 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
           <SelectControl
             className={selectClassName}
             value={sort}
-            onChange={(event) => setSort(event.target.value as "newest" | "hot" | "clickRate")}
+            onChange={(event) => filter("sort", event.target.value)}
           >
             <option value="newest">最新加入</option>
             <option value="hot">使用次数</option>
@@ -108,6 +107,37 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
           </SelectControl>
         </label>
       </div>
+  );
+  const pager = <>      {pagination && pagination.totalPages > 1 ? (
+        <div className="flex items-center justify-between border-t border-border/60 pt-4 text-sm">
+          <div className="text-muted-foreground">
+            第 {pagination.page} / {pagination.totalPages} 页，共 {pagination.total} 条
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => update({page: String(page - 1)})}>
+              上一页
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= pagination.totalPages}
+              onClick={() => update({page: String(page + 1)})}
+            >
+              下一页
+            </Button>
+          </div>
+        </div>
+      ) : null}</>;
+  return (
+    <div className="space-y-5">
+      <EntityList collection="title-library" title="标题库" selection={directory.selection} inline={tools} tools={tools}>
+        {libraryQuery.isLoading ? <p>正在读取标题…</p> : libraryQuery.isError ? <button onClick={() => void libraryQuery.refetch()}>重新读取标题</button>
+          : rows.length ? <DirectoryRows {...directory} rows={rows.map(row => ({id: row.id, label: row.title, description: row.genre?.name}))}/> : <p>当前筛选下没有标题。</p>}
+        {pager}
+      </EntityList>
+      {directory.host && directory.selection && !libraryQuery.isFetching && !rows.some(row => row.id === directory.selection) && <p>当前页没有这个标题。 <button onClick={directory.onClear}>返回列表</button></p>}
+
 
       {libraryQuery.isLoading ? (
         <div className="py-10 text-center text-sm text-muted-foreground">
@@ -125,7 +155,7 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-2">
-        {rows.map((entry) => (
+        {rows.filter(row => directory.includes(row.id)).map((entry) => (
           <article key={entry.id} className="flex min-h-56 flex-col rounded-2xl border border-border/35 bg-card/70 p-5 transition-all hover:border-border/65 hover:shadow-[0_12px_32px_rgba(15,23,42,0.035)]">
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -186,27 +216,7 @@ export default function TitleLibraryPanel({ genreOptions }: TitleLibraryPanelPro
         ))}
       </div>
 
-      {pagination && pagination.totalPages > 1 ? (
-        <div className="flex items-center justify-between border-t border-border/60 pt-4 text-sm">
-          <div className="text-muted-foreground">
-            第 {pagination.page} / {pagination.totalPages} 页，共 {pagination.total} 条
-          </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((prev) => prev - 1)}>
-              上一页
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= pagination.totalPages}
-              onClick={() => setPage((prev) => prev + 1)}
-            >
-              下一页
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {!directory.host && pager}
     </div>
   );
 }

@@ -12,6 +12,7 @@ interface StoryModeTreeBrowserProps {
   onDelete: (node: StoryModeTreeNode) => void;
   deletingId?: string;
   initialSelectedId?: string;
+  controlledId?: string | null;
 }
 
 function findNode(nodes: StoryModeTreeNode[], targetId: string): StoryModeTreeNode | null {
@@ -43,19 +44,21 @@ export default function StoryModeTreeBrowser({
   onEdit,
   onDelete,
   deletingId,
-  initialSelectedId,
+  initialSelectedId, controlledId,
 }: StoryModeTreeBrowserProps) {
-  const [selectedId, setSelectedId] = useState(initialSelectedId || nodes[0]?.id || "");
+  const [localId, setSelectedId] = useState(initialSelectedId || nodes[0]?.id || "");
+  const selectedId = controlledId === undefined ? localId : controlledId ?? "";
   const selectedNode = useMemo(() => findNode(nodes, selectedId), [nodes, selectedId]);
   const selectedPath = useMemo(() => findPath(nodes, selectedId), [nodes, selectedId]);
 
   useEffect(() => {
+    if (controlledId !== undefined) return;
     if (initialSelectedId && findNode(nodes, initialSelectedId)) {
       setSelectedId(initialSelectedId);
       return;
     }
     if (!selectedNode && nodes[0]) setSelectedId(nodes[0].id);
-  }, [initialSelectedId, nodes, selectedNode]);
+  }, [controlledId, initialSelectedId, nodes, selectedNode]);
 
   if (!selectedNode) return null;
 
@@ -64,15 +67,15 @@ export default function StoryModeTreeBrowser({
   const canCreateChild = !selectedNode.parentId;
 
   return (
-    <div className="grid min-h-[560px] overflow-hidden rounded-lg border border-border/80 bg-background lg:grid-cols-[320px_minmax(0,1fr)]">
-      <AssetTreeNavigator
+    <div className={controlledId === undefined ? "grid min-h-[560px] overflow-hidden rounded-lg border border-border/80 bg-background lg:grid-cols-[320px_minmax(0,1fr)]" : "min-w-0"}>
+      {controlledId === undefined && <AssetTreeNavigator
         nodes={nodes}
         selectedId={selectedId}
         onSelect={setSelectedId}
         title="推进模式目录"
         hint="选择模式查看合同"
         ariaLabel="推进模式树"
-      />
+      />}
 
       <section className="flex min-w-0 flex-col" aria-labelledby="selected-story-mode-title">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3">

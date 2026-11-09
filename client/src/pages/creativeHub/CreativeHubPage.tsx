@@ -1,3 +1,4 @@
+import { EntityList, useEntityListHost } from "@/platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
@@ -45,6 +46,7 @@ const pendingAutoCreateThreadKeys = new Set<string>();
 export default function CreativeHubPage() {
   const llm = useLLMStore();
   const queryClient = useQueryClient();
+  const host = useEntityListHost();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedThreadId = searchParams.get("threadId")?.trim() ?? "";
   const activeThreadId = requestedThreadId;
@@ -681,6 +683,7 @@ export default function CreativeHubPage() {
           />
         </div>
 
+        <EntityList collection="creative-threads" title="创作对话" selection={activeThreadId || null}>
         <div className="min-h-0 lg:col-span-2 lg:row-start-2 xl:col-span-1 xl:col-start-1 xl:row-start-1">
           <CreativeHubThreadList
             threads={threads}
@@ -700,13 +703,13 @@ export default function CreativeHubPage() {
                   : new URLSearchParams(prev);
                 next.set("threadId", threadId);
                 return next;
-              }, { replace: true });
+              }, { replace: !host });
             }}
             onCreate={() => void requestThreadCreation({ title: DEFAULT_THREAD_TITLE, resourceBindings: {} })}
             onArchive={(threadId, archived) => void archiveThread(threadId, archived)}
             onDelete={(threadId) => void removeThread(threadId)}
           />
-        </div>
+        </div></EntityList>
       </div>
     </div>
   );

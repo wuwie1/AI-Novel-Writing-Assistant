@@ -1,3 +1,5 @@
+import { BookResourcePicker, readResourceCategory, readResourceSelection } from "./directory";
+import { useEntityListHost, useRouteFields } from "@/platform";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ResizableWorkspace } from "@/components/layout/resizableWorkspace";
 import { ResourceDirectory } from "./ResourceDirectory";
@@ -19,7 +21,29 @@ import {CastTimeline} from "./characters/CastTimeline";
 const WorldMapView = lazy(()=>import("./visualizations").then(module=>({default:module.WorldMapView})));
 const CharacterGraphView = lazy(()=>import("./visualizations").then(module=>({default:module.CharacterGraphView})));
 
-export function NovelWorkspace({ book, preview = false, review, onLeaveReview, followGeneration = false, generation = null, activity, onEditChapter, editedChapter }: { book: WorkspaceBook; preview?: boolean; review?:URLSearchParams; onLeaveReview?:()=>void; followGeneration?:boolean; generation?:DirectorGenerationSnapshot|null; activity?:DirectorWorkspaceActivity; onEditChapter?:(chapterId:string)=>void; editedChapter?:{id:string;revision:number}|null }) {
+interface NovelWorkspaceProps {
+  book: WorkspaceBook;
+  preview?: boolean;
+  review?: URLSearchParams;
+  onLeaveReview?: () => void;
+  followGeneration?: boolean;
+  generation?: DirectorGenerationSnapshot | null;
+  activity?: DirectorWorkspaceActivity;
+  onEditChapter?: (chapterId: string) => void;
+  editedChapter?: {id: string; revision: number} | null;
+}
+
+export function NovelWorkspace(props: NovelWorkspaceProps) {
+  const host = useEntityListHost();
+  return host ? <RoutedBookWorkspace key={props.book.novel.id} {...props}/> : <BookWorkspace key={props.book.novel.id} {...props}/>;
+}
+
+function RoutedBookWorkspace(props: NovelWorkspaceProps) {
+  const route = useRouteFields();
+  return <BookWorkspace {...props} route={route}/>;
+}
+
+function BookWorkspace({ book, preview = false, review, onLeaveReview, followGeneration = false, generation = null, activity, onEditChapter, editedChapter, route }: NovelWorkspaceProps & {route?: ReturnType<typeof useRouteFields>}) {
   const {preferences: readingDisplay, updatePreferences: onReadingDisplayChange} = useReadingDisplayPreferences();
   const live = followGeneration && generation?.novelId === book.novel.id ? generation : null;
   // Planning/polling may not yet include the newly created chapter. The preview is read-only.
@@ -31,7 +55,12 @@ export function NovelWorkspace({ book, preview = false, review, onLeaveReview, f
   const followTarget = followedWorkspaceSelection(followGeneration, activity, live, displayBook);
   const followKey = followTarget ? `${followTarget.key}:${JSON.stringify(followTarget.selection)}` : null;
   const [selection, setSelection] = useState<Selection | null>(()=>followTarget?.selection ?? null);
-  const selected = resolveSelection(selection, displayBook);
+  const requested = route ? readResourceSelection(route[0]) : null;
+  const selected = resolveSelection(requested ?? selection, displayBook);
+  function showResource(item: Selection, replace = false) {
+    route?.[1]({resource: item.kind, resourceId: "id" in item ? item.id : null,
+      resourceVolumeId: item.kind === "beat" ? item.volumeId : null, review: null}, replace);
+  }
   const reviewChapterId=savedReview?.execution?.id ?? savedReview?.chapters?.[0]?.id;
   const directorySelected:Selection=savedReview?.plan ? {kind:"plan",id:savedReview.plan.id}
     : reviewChapterId ? {kind:"chapter",id:reviewChapterId} : selected;
@@ -45,7 +74,8 @@ export function NovelWorkspace({ book, preview = false, review, onLeaveReview, f
     setReadingOrder(followTarget.selection.kind === "chapter" ? live?.chapterOrder ?? null : null);
     setCharacterId(null);
     if (followTarget.selection.kind !== "chapter" && contentViewport.current) contentViewport.current.scrollTop = 0;
-    if (savedReview) onLeaveReview?.();
+    if (route) showResource(followTarget.selection, true);
+    else if (savedReview) onLeaveReview?.();
     // Focus once per stage/execution or when the target becomes available; never on every token/poll.
   }, [followKey]);
   const [readingOrder, setReadingOrder] = useState<number | null>(() => chapter?.order ?? null);
@@ -53,9 +83,10 @@ export function NovelWorkspace({ book, preview = false, review, onLeaveReview, f
   const [directoryOpen, setDirectoryOpen] = useState(true);
   const character = book.materials.characters.find(row => row.id === characterId);
   function select(item: Selection) {
-    if (savedReview) onLeaveReview?.();
+    if (route) showResource(item);
+    else if (savedReview) onLeaveReview?.();
     if (chapter) setReadingOrder(chapter.order);
-    setSelection(item);
+    if (!route) setSelection(item);
     if (item.kind === "chapter") setReadingOrder(book.chapters.find(row => row.id === item.id)?.order ?? null);
   }
   function openCharacter(id: string) {
@@ -77,7 +108,10 @@ export function NovelWorkspace({ book, preview = false, review, onLeaveReview, f
         : selected.kind === "beat" || selected.kind === "plan" || (selected.kind === "volume" && book.planning) ? null : <AssetDetail book={book} selected={selected} onCharacter={openCharacter} onSelect={select} preview={preview} />}
     </section>;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-    {directoryOpen ? <ResizableWorkspace id="director-resource-layout" className="min-h-0 flex-1" label="调整目录与正文宽度" defaultLeft={27} minLeft={180} minRight={340} breakpoint={560} left={directory} right={content}/> : <>{directory}{content}</>}
+    {route ? <BookResourcePicker book={displayBook} selected={directorySelected} onSelect={select}
+      category={savedReview ? null : readResourceCategory(route[0].get("resource"))}
+      unavailable={!savedReview && Boolean(route[0].get("resource")) && (!requested || !sameSelection(requested, selected))}
+      onEmpty={resource => route[1]({resource, resourceId: null, resourceVolumeId: null, review: null})}>{content}</BookResourcePicker> : directoryOpen ? <ResizableWorkspace id="director-resource-layout" className="min-h-0 flex-1" label="调整目录与正文宽度" defaultLeft={27} minLeft={180} minRight={340} breakpoint={560} left={directory} right={content}/> : <>{directory}{content}</>}
     {character ? <CharacterDrawer key={character.id} book={book} character={character} readingOrder={chapter?.order ?? readingOrder} preview={preview} onClose={() => setCharacterId(null)} onChapter={id => select({kind:"chapter",id})} onPlan={id => select({kind:"plan",id})} onResources={id=>{setCharacterId(null);select({kind:"character_resources",id});}}/> : null}
   </div>;
 }

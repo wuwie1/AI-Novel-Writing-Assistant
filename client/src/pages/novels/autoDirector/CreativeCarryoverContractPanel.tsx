@@ -100,6 +100,7 @@ export default function CreativeCarryoverContractPanel({
         ) : contract ? "方案已准备好，采用后可继续开书。" : null}
       </div>
 
+      {state.kind === "idle" && <Button onClick={onRegenerate} disabled={busy}>生成创作方案</Button>}
       {state.kind === "insufficient" ? (
         <div className="space-y-3 rounded-lg bg-warning/10 px-4 py-3 text-sm leading-6">
           <p className="font-medium text-foreground">

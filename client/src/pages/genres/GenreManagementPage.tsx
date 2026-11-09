@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -46,6 +47,7 @@ export default function GenreManagementPage() {
   });
 
   const genreTree = genreTreeQuery.data?.data ?? [];
+  const directory = useDirectorySelection("selectedId", genreTree);
   const parentOptions = useMemo(() => flattenGenreTreeOptions(genreTree), [genreTree]);
   const totalGenres = useMemo(() => countGenres(genreTree), [genreTree]);
   const linkedNovelCount = useMemo(
@@ -205,6 +207,9 @@ export default function GenreManagementPage() {
 
   return (
     <div className="space-y-5">
+      <EntityDirectory collection="genres" title="题材目录" {...directory}
+        rows={flattenGenreTreeOptions(genreTree).map(option => ({id: option.id, label: option.name, description: option.path}))}
+        pending={genreTreeQuery.isLoading} error={genreTreeQuery.isError} retry={() => void genreTreeQuery.refetch()}/>
       <GenreCreateDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
@@ -287,6 +292,7 @@ export default function GenreManagementPage() {
           <GenreTreeBrowser
             nodes={genreTree}
             initialSelectedId={searchParams.get("selectedId") ?? ""}
+              controlledId={directory.host ? directory.selection : undefined}
             onCreateChild={handleCreateChild}
             onEdit={setEditingGenreId}
             onDelete={handleDelete}

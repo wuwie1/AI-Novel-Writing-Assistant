@@ -112,9 +112,7 @@ export default function BookAnalysisCreateDialog(props: BookAnalysisCreateDialog
   } = props;
 
   const isDiagnosisMode = analysisMode === "diagnosis";
-  const selectedSourceVersion = sourceDocument?.versions.find((version) => version.id === selectedVersionId)
-    ?? sourceDocument?.versions.find((version) => version.isActive)
-    ?? sourceDocument?.versions[0];
+  const selectedSourceVersion = sourceDocument?.versions.find((version) => version.id === selectedVersionId);
   const sourceCharCount = selectedSourceVersion?.charCount ?? selectedSourceVersion?.content.length ?? 0;
   const sortedSourceChapters = [...sourceChapters].sort((a, b) => a.chapterIndex - b.chapterIndex);
   const rangeStartChapter = selectedSourceRange
@@ -138,7 +136,7 @@ export default function BookAnalysisCreateDialog(props: BookAnalysisCreateDialog
 
   const canSubmit = isDiagnosisMode
     ? Boolean(selectedDiagnosisNovelId) && !createDiagnosisPending
-    : Boolean(selectedDocumentId) && sourceRangeValid && !createPending;
+    : Boolean(selectedDocumentId && selectedSourceVersion) && sourceRangeValid && !createPending;
   const submitting = isDiagnosisMode ? createDiagnosisPending : createPending;
   const submitLabel = isDiagnosisMode
     ? (createDiagnosisPending ? "正在创建诊断..." : "创建诊断拆书")

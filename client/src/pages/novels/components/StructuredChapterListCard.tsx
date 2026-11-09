@@ -1,3 +1,4 @@
+import { useEntityListHost } from "@/platform";
 import AiButton from "@/components/common/AiButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ export default function StructuredChapterListCard(props: StructuredChapterListCa
     onSelectChapter,
   } = props;
 
+  const host = useEntityListHost();
   const isGeneratingCurrentVolume = isGeneratingChapterList && generatingChapterListVolumeId === selectedVolume.id;
   const matchedChapterIds = new Set<string>();
   const beatGroups = (selectedBeatSheet?.beats ?? []).map((beat) => {
@@ -251,7 +253,7 @@ export default function StructuredChapterListCard(props: StructuredChapterListCa
                       ) : null}
                     </div>
 
-                    {expanded ? (
+                    {expanded && !host ? (
                       <div className="mt-3 space-y-2 border-l border-border/70 pl-3">
                         {group.chapters.length > 0 ? group.chapters.map((chapter) => {
                           const isSelected = selectedChapter?.id === chapter.id;
@@ -296,7 +298,7 @@ export default function StructuredChapterListCard(props: StructuredChapterListCa
                     <span className="text-xs text-muted-foreground">这些章节暂时没有落到任何节奏段</span>
                   </div>
                   <div className="mt-3 space-y-2">
-                    {unmatchedChapters.map((chapter) => {
+                    {unmatchedChapters.filter(c => !host || c.id === selectedChapter?.id).map((chapter) => {
                       const isSelected = selectedChapter?.id === chapter.id;
                       const title = chapter.title || `第${chapter.chapterOrder}章`;
                       return (

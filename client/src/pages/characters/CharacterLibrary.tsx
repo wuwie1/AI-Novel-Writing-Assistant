@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ImageAsset } from "@ai-novel/shared/types/image";
@@ -38,6 +39,7 @@ export default function CharacterLibrary() {
 
   const characters = characterListQuery.data?.data ?? [];
 
+  const directory = useDirectorySelection("baseCharacterId", characters);
   const imageAssetQueries = useQueries({
     queries: characters.map((character) => ({
       queryKey: queryKeys.images.assets("character", character.id),
@@ -162,6 +164,9 @@ export default function CharacterLibrary() {
 
   return (
     <div className="space-y-5">
+      <EntityDirectory collection="base-characters" title="角色素材" {...directory}
+        rows={characters.map(item => ({id: item.id, label: item.name, description: item.category || item.role}))}
+        pending={characterListQuery.isLoading} error={characterListQuery.isError} retry={() => void characterListQuery.refetch()}/>
       <AssetLibraryHeader
         icon={UsersRound}
         context="跨小说复用资产"
@@ -330,7 +335,7 @@ export default function CharacterLibrary() {
 
           {!characterListQuery.isLoading && !characterListQuery.isError ? (
             <>
-              {characters.map((character, index) => (
+              {characters.map((character, index) => directory.includes(character.id) && (
                 <CharacterCard
                   key={character.id}
                   character={character}

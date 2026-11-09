@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -186,6 +187,7 @@ export default function DramaWorkspacePage() {
   });
 
   const projects = useMemo(() => projectsQuery.data?.data ?? [], [projectsQuery.data?.data]);
+  const directory = useDirectorySelection("projectId", projects);
   const novels = useMemo(() => novelsQuery.data?.data?.items ?? [], [novelsQuery.data?.data?.items]);
   const selectedNovel = useMemo(
     () => novels.find((novel) => novel.id === form.sourceRef),
@@ -311,6 +313,9 @@ export default function DramaWorkspacePage() {
 
   return (
     <div className="space-y-5">
+      <EntityDirectory title="短剧项目" collection="drama:projects" {...directory} onSelect={id => navigate(`/drama/projects/${encodeURIComponent(id)}`)}
+        rows={projects.map(project => ({id: project.id, label: project.title, description: project.status}))}
+        pending={projectsQuery.isLoading} error={projectsQuery.isError} retry={() => void projectsQuery.refetch()}/>
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-normal">短剧工作台</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
@@ -551,7 +556,7 @@ export default function DramaWorkspacePage() {
           ) : null}
 
           <div className="grid gap-3">
-            {projects.map((project) => (
+            {projects.filter(project => directory.includes(project.id)).map((project) => (
               <ProjectCard
                 key={project.id}
                 project={project}

@@ -1,3 +1,5 @@
+import { useEntityListHost, useRouteFields } from "@/platform";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import type { KnowledgeDocumentDetail, KnowledgeRecallTestResult } from "@ai-novel/shared/types/knowledge";
 import { Badge } from "@/components/ui/badge";
@@ -87,13 +89,10 @@ export default function KnowledgeDocumentDetailDialog({
 }: KnowledgeDocumentDetailDialogProps) {
   const isArchived = document?.status === "archived";
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <AppDialogContent
-        className="max-w-4xl"
-        title={document?.title ?? "知识文档详情"}
-        bodyClassName="min-w-0 space-y-4"
-      >
+  const host = useEntityListHost();
+  const [params, update] = useRouteFields();
+  const versionId = params.get("versionId") ?? document?.activeVersionId ?? document?.versions[0]?.id;
+  const content = <>
           <div className="flex flex-wrap gap-2">
             {isArchived ? (
               <Button variant="outline" onClick={onRestoreDocument} disabled={restorePending}>
@@ -205,7 +204,11 @@ export default function KnowledgeDocumentDetailDialog({
               </Card>
 
               <div className="min-w-0 space-y-3">
-                {document.versions.map((version) => (
+                {host && <label>阅读版本 <select value={versionId ?? ""} onChange={event => update({versionId: event.target.value})}>
+                  {!document.versions.some(v => v.id === versionId) && <option value={versionId ?? ""}>请选择可用版本</option>}
+                  {document.versions.map(v => <option value={v.id} key={v.id}>v{v.versionNumber}</option>)}
+                </select></label>}
+                {document.versions.filter(v => !host || v.id === versionId).map((version) => (
                   <div key={version.id} className="min-w-0 max-w-full overflow-hidden rounded-md border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="font-medium">版本 v{version.versionNumber}</div>
@@ -226,6 +229,7 @@ export default function KnowledgeDocumentDetailDialog({
                         </Button>
                       </div>
                     ) : null}
+                    {!isArchived && <Link to={`/book-analysis?${new URLSearchParams({documentId: document.id, versionId: version.id})}`}>用此版本新建拆书</Link>}
                     <VersionContentPreview content={version.content} />
                   </div>
                 ))}
@@ -236,7 +240,7 @@ export default function KnowledgeDocumentDetailDialog({
               正在加载文档详情...
             </div>
           )}
-      </AppDialogContent>
-    </Dialog>
-  );
+  </>;
+  if (host) return open ? <section className="min-w-0 space-y-4"><h2>{document?.title ?? "文档详情"}</h2>{content}</section> : null;
+  return <Dialog open={open} onOpenChange={onOpenChange}><AppDialogContent className="max-w-4xl" title={document?.title ?? "知识文档详情"} bodyClassName="min-w-0 space-y-4">{content}</AppDialogContent></Dialog>;
 }

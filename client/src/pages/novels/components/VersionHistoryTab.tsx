@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createNovelSnapshot, listNovelSnapshots, restoreNovelSnapshot } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
@@ -47,10 +48,15 @@ export default function VersionHistoryTab({ novelId }: VersionHistoryTabProps) {
     },
   });
 
+  const host = useEntityListHost();
+  const [fields, update] = useRouteFields();
   const snapshots = snapshotsQuery.data?.data ?? [];
 
   return (
     <div className="space-y-4">
+      <EntityDirectory collection={`snapshots:${novelId}`} title="版本历史" selection={fields.get("snapshotId")}
+        rows={snapshots.map(s => ({ id:s.id, label:s.label || formatSnapshotTrigger(s.triggerType), description:new Date(s.createdAt).toLocaleString() }))}
+        onSelect={id => update({snapshotId:id})} pending={snapshotsQuery.isPending} error={snapshotsQuery.isError} retry={() => void snapshotsQuery.refetch()}/>
       <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/15 p-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="font-medium">版本历史</div>
@@ -64,7 +70,7 @@ export default function VersionHistoryTab({ novelId }: VersionHistoryTabProps) {
       </div>
 
       <div className="space-y-3">
-        {snapshots.map((snapshot) => {
+        {snapshots.filter(s => !host || s.id === fields.get("snapshotId")).map((snapshot) => {
           const isRestoringCurrent = restoreMutation.isPending && restoreMutation.variables === snapshot.id;
 
           return (

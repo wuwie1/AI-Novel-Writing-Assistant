@@ -9,6 +9,7 @@ import {
 } from "@ai-novel/shared/types/novelDirector";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { cn } from "@/lib/utils";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 
@@ -101,6 +102,12 @@ export default function NovelAutoDirectorCandidateBatches(props: NovelAutoDirect
     onGenerateNext,
   } = props;
   const reducedMotion = useReducedMotion();
+  const host = useEntityListHost();
+  const [params, update] = useRouteFields();
+  const rows = batches.flatMap(batch => batch.candidates.map(candidate => ({
+    id: JSON.stringify([batch.id, candidate.id]), label: candidate.workingTitle, group: batch.roundLabel,
+  })));
+  const selected = rows.find(row => row.id === params.get("candidate"))?.id ?? rows[0]?.id;
 
   if (batches.length === 0) {
     return (
@@ -112,7 +119,9 @@ export default function NovelAutoDirectorCandidateBatches(props: NovelAutoDirect
 
   return (
     <div className="space-y-8">
-      {batches.map((batch, batchIndex) => (
+      {rows.length > 0 && <EntityDirectory collection={`candidates:${params.get("taskId") ?? batches[0]?.id}`} title="方向候选" rows={rows} selection={selected}
+        disabled={isConfirming || isGenerating || isPatchingCandidate || isRefiningTitle} onSelect={id => update({ candidate:id })}/>}
+      {batches.filter(batch => !host || batch.candidates.some(c => JSON.stringify([batch.id, c.id]) === selected)).map((batch, batchIndex) => (
         <motion.section
           key={batch.id}
           initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
@@ -137,6 +146,7 @@ export default function NovelAutoDirectorCandidateBatches(props: NovelAutoDirect
 
           <div className="mt-5 divide-y divide-border/45">
             {batch.candidates.map((candidate, candidateIndex) => {
+              if (host && JSON.stringify([batch.id, candidate.id]) !== selected) return null;
               const titleOptions = resolveCandidateTitleOptions(candidate);
               const toneSummary = formatToneKeywords(candidate);
               return (

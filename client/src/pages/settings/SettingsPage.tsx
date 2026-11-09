@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
@@ -68,6 +69,8 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
   });
 
   const providerConfigs = useMemo(() => apiKeySettingsQuery.data?.data ?? [], [apiKeySettingsQuery.data?.data]);
+  const rows = providerConfigs.map(provider => ({id: provider.provider, label: provider.name || provider.provider, description: provider.provider}));
+  const directory = useDirectorySelection("provider", rows);
   const editingConfig = useMemo(
     () => providerConfigs.find((item) => item.provider === editingProvider),
     [editingProvider, providerConfigs],
@@ -452,9 +455,12 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
   return (
     <div className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot}>
       <div className="space-y-4">
+        <EntityDirectory {...directory} collection="model-providers" title="模型厂商" rows={rows}
+          pending={apiKeySettingsQuery.isLoading} error={apiKeySettingsQuery.isError} retry={() => void apiKeySettingsQuery.refetch()}/>
         <ProviderSettingsSection
           embedded={embedded}
           providers={providerConfigs}
+          selectedProvider={directory.host ? directory.selection : undefined}
           balances={providerBalancesQuery.data?.data ?? []}
           isBalanceLoading={providerBalancesQuery.isLoading}
           testingProvider={testMutation.isPending ? testMutation.variables?.provider : undefined}

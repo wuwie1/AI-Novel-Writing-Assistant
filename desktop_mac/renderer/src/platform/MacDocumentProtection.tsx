@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientPlatformProvider, type ClientPlatform, type DocumentGuard } from "@/platform";
@@ -18,25 +18,25 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const [prompt, setPrompt] = useState<DocumentGuard[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const active = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.dirty || item.busy), []);
-  const platform = useMemo<ClientPlatform>(() => {
-    const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
-    return {
-      editorTypography: { storageKey: "ai-novel.mac.editor.typography", fontSize: 20, lineHeight: 1.6, fontSizes: [16,18,20,22,24], lineHeights: [1.4,1.6,1.8,2] },
-      draftStorage: {
-        getItem: (key) => localStorage.getItem(prefix + key),
-        setItem: (key, value) => localStorage.setItem(prefix + key, value),
-        removeItem: (key) => localStorage.removeItem(prefix + key),
-      },
-      registerDocument: (id, read) => {
-        guards.current.set(id, read);
-        return () => { guards.current.delete(id); };
-      },
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const remember = (event: PointerEvent) => {
+      const activeElement = document.activeElement;
+      previousFocus.current = event.target instanceof Element && event.target.closest(".mac-secondary,.mac-icon-rail,.mac-toolbar") &&
+        activeElement instanceof HTMLElement && activeElement.matches('input,textarea,[contenteditable="true"]') ? activeElement : null;
     };
+    document.addEventListener("pointerdown", remember, true);
+    return () => document.removeEventListener("pointerdown", remember, true);
   }, []);
+  useLayoutEffect(() => {
+    if (!prompt && returnFocus.current?.isConnected) returnFocus.current.focus({preventScroll:true});
+  }, [prompt]);
+  const active = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.dirty || item.busy), []);
   const finish = useCallback((allowed: boolean) => {
     const request = answer.current;
     answer.current = null;
+    if (allowed) returnFocus.current = null;
     setPrompt(null);
     setError("");
     request?.resolve(allowed);
@@ -52,10 +52,28 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       toast.info("请等待当前保存或生成操作完成，再离开页面。");
       return false;
     }
+    returnFocus.current = previousFocus.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    previousFocus.current = null;
     setPrompt(documents);
     setError("");
     return new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
   }, [active]);
+  const platform = useMemo<ClientPlatform>(() => {
+    const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
+    return {
+      confirmDocumentLeave: confirmLeave,
+      editorTypography: { storageKey: "ai-novel.mac.editor.typography", fontSize: 20, lineHeight: 1.6, fontSizes: [16,18,20,22,24], lineHeights: [1.4,1.6,1.8,2] },
+      draftStorage: {
+        getItem: (key) => localStorage.getItem(prefix + key),
+        setItem: (key, value) => localStorage.setItem(prefix + key, value),
+        removeItem: (key) => localStorage.removeItem(prefix + key),
+      },
+      registerDocument: (id, read) => {
+        guards.current.set(id, read);
+        return () => { guards.current.delete(id); };
+      },
+    };
+  }, [confirmLeave]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && active().length > 0,
   );
@@ -127,7 +145,9 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   return <ClientPlatformProvider value={platform}>
     {children}
     <Dialog open={prompt !== null} onOpenChange={(open) => { if (!open && !saving) finish(false); }}>
-      <DialogContent aria-describedby="mac-close-description">
+      <DialogContent aria-describedby="mac-close-description" onCloseAutoFocus={event => {
+        if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus({preventScroll:true}); }
+      }}>
         <DialogTitle>保存修改后离开？</DialogTitle>
         <DialogDescription id="mac-close-description">{prompt?.map((item) => item.label).join("、")}有未保存的修改。</DialogDescription>
         {error ? <p role="alert">{error}</p> : null}

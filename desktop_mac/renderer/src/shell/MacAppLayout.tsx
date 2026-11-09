@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, CircleHelp, Plus, PanelLeft, MoreHorizontal, Settings2, Sparkles, Workflow, X, ScrollText } from "lucide-react";
@@ -7,10 +7,11 @@ import LLMSelector from "@/components/common/LLMSelector";
 import { listTasks } from "@/api/tasks";
 import { listDirectorRuns } from "@/api/directorNext";
 import { queryKeys } from "@/api/queryKeys";
+import { EntityListContext, type EntityCollection } from "@/platform";
 import { macEnvironment } from "../platform/native";
-import { moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
+import { createLinks, moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
+import { moveWorkspaceFocus } from "./workspaceKeyboard";
 import { MacReleaseNotesDialog, MacVersionBadge } from "./MacReleaseNotes";
-import { MacSidebarContent } from "./sidebar";
 
 const primaryIcons = [Plus, BookOpen, Sparkles, Workflow, ScrollText];
 
@@ -19,8 +20,14 @@ export function MacAppLayout() {
   const navigate = useNavigate();
   const context = resolveMacNavigation(location.pathname, location.search);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [listSearch, setListSearch] = useState("");
+  const [drawer, setDrawer] = useState<{ key: string; open: boolean } | null>(null);
+  const [entity, setEntity] = useState<EntityCollection | null>(null);
+  const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const register = useCallback((value: EntityCollection) => {
+    setEntity(value);
+    return () => setEntity((current) => current === value ? null : current);
+  }, []);
   const [visualAssetsOpen, setVisualAssetsOpen] = useState(false);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 960px)").matches);
@@ -38,7 +45,7 @@ export function MacAppLayout() {
     refetchInterval: 20_000,
   });
   const directorAttention = useQuery({
-    queryKey: queryKeys.directorNext.runs(true),
+    queryKey: queryKeys.directorNext.runs(true,20),
     queryFn: () => listDirectorRuns({ needsAttention: true, limit: 20 }),
     staleTime: 20_000,
     refetchInterval: 20_000,
@@ -47,13 +54,15 @@ export function MacAppLayout() {
   const taskBadgeCount = (attentionTasks.data?.data?.items.length ?? 0)
     + (failedTasks.data?.data?.items.length ?? 0);
   const directorBadgeCount = directorAttention.data?.data?.length ?? 0;
-  // These workbenches own their document/thread directory. Keep one directory
-  // visible initially, while allowing the user to reopen the global navigator.
-  const workbench = context.chapterId ? "chapter-editor"
-    : context.section === "creative" ? "creative-workbench"
-    : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const collapseKey = workbench ?? context.section;
-  const collapsed = collapsedSections[collapseKey] ?? Boolean(workbench);
+  const hasList = entity !== null;
+  const title = entity?.title ?? "";
+  const collapseKey = entity?.collection ?? "";
+  const drawerKey = JSON.stringify([collapseKey, entity?.selection]);
+  const drawerOpen = narrow && hasList && (drawer?.key === drawerKey ? drawer.open : entity?.selection === null);
+  const setDrawerOpen = (open: boolean) => setDrawer({ key: drawerKey, open });
+  const host = useMemo(() => ({ target, narrow, register }), [target, narrow, register]);
+  const closeDrawer = () => { setDrawerOpen(false); toggle.current?.focus(); };
+  const collapsed = collapsedSections[collapseKey] ?? false;
   const mode = macEnvironment()?.mode;
 
   useEffect(() => {
@@ -65,7 +74,7 @@ export function MacAppLayout() {
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 960px)");
-    const update = () => { setNarrow(query.matches); setDrawerOpen(false); };
+    const update = () => { setNarrow(query.matches); setDrawer(null); };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
@@ -73,19 +82,24 @@ export function MacAppLayout() {
   useEffect(() => {
     // 路由确认成功后才切换列表；取消离开时保留原页面和目录。
     setMoreOpen(false);
-    setDrawerOpen(false);
   }, [location.key]);
-  useEffect(() => { setListSearch(""); }, [context.key]);
+  useEffect(() => {
+    setDrawer(previous => previous && previous.key !== drawerKey ? null : previous);
+  }, [drawerKey]);
+  useEffect(() => {
+    const list = target?.querySelector(".mac-context-list");
+    if (list) list.scrollTop = 0;
+  }, [target, collapseKey]);
   useEffect(() => {
     if (!moreOpen && !drawerOpen) return;
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMoreOpen(false); setDrawerOpen(false); }
+      if (!event.defaultPrevented && event.key === "Escape" && !document.querySelector('[role="dialog"],[role="alertdialog"]')) { setMoreOpen(false); if (drawerOpen) closeDrawer(); }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [moreOpen, drawerOpen]);
+  }, [moreOpen, drawerOpen, drawerKey]);
 
-  return <div className={`mac-shell${collapsed ? " is-secondary-collapsed" : ""}`}>
+  return <div className={`mac-shell${!hasList || (!narrow && collapsed) ? " is-secondary-collapsed" : ""}`}>
     <nav className="mac-icon-rail" aria-label="主导航">
       <div className="mac-rail-primary">
         {primaryLinks.map(([to, label], index) => {
@@ -97,7 +111,7 @@ export function MacAppLayout() {
               ? directorBadgeCount
               : 0;
           return <Link key={to} to={to} className={`mac-rail-link${index === 0 ? " mac-rail-create" : ""}${active ? " is-active" : ""}`} aria-label={badge > 0 ? `${label}，${badge} 条待处理` : label} aria-current={active ? "page" : undefined} data-tooltip={label} onClick={(event) => {
-            if (narrow && active) { event.preventDefault(); setDrawerOpen((open) => !open); }
+            if (narrow && active && hasList && location.pathname === to) { event.preventDefault(); setDrawerOpen(!drawerOpen); }
           }}><Icon size={16} strokeWidth={1.5}/>{badge > 0 ? <span className="mac-rail-badge" aria-hidden="true">{badge > 9 ? "9+" : badge}</span> : null}</Link>;
         })}
         <div className="mac-rail-divider" role="separator"/>
@@ -120,10 +134,10 @@ export function MacAppLayout() {
     </nav>
     <header className="mac-toolbar">
       <div className="mac-toolbar-library">
-        <button className="mac-icon-button mac-drawer-toggle" aria-label={`${(narrow ? !drawerOpen : collapsed) ? "展开" : "收起"}${context.sidebarTitle}`} title={context.sidebarTitle} aria-expanded={narrow ? drawerOpen : !collapsed} onClick={() => {
-          if (narrow) setDrawerOpen((open) => !open);
+        {hasList && <button ref={toggle} className="mac-icon-button mac-drawer-toggle" aria-label={`${(narrow ? !drawerOpen : collapsed) ? "展开" : "收起"}${title}`} title={title} aria-expanded={narrow ? drawerOpen : !collapsed} onClick={() => {
+          if (narrow) setDrawerOpen(!drawerOpen);
           else setCollapsedSections((current) => ({ ...current, [collapseKey]: !collapsed }));
-        }}><PanelLeft size={16} strokeWidth={1.5}/>{narrow ? <span className="mac-drawer-toggle-label">{context.sidebarTitle}</span> : null}</button>
+        }}><PanelLeft size={16} strokeWidth={1.5}/>{narrow ? <span className="mac-drawer-toggle-label">{title}</span> : null}</button>}
         <div className="mac-toolbar-title">{context.title}</div>
       </div>
       <div className="mac-toolbar-model" aria-label="当前创作模型">
@@ -132,18 +146,26 @@ export function MacAppLayout() {
       <span className={`mac-mode-indicator${mode === "local" ? " is-local" : ""}`}><span/>{mode === "local" ? "本地测试" : mode === "remote" ? "服务器" : "桌面"}</span>
       <MacVersionBadge onOpenNotes={() => setReleaseNotesOpen(true)} />
     </header>
-    <aside className={`mac-secondary${drawerOpen ? " is-open" : ""}`} aria-label={context.sidebarTitle} inert={narrow ? !drawerOpen : collapsed} aria-hidden={narrow ? !drawerOpen : collapsed}>
-      <div className="mac-list-tools">
-        <input type="search" aria-label={`搜索${context.sidebarTitle}`} placeholder={`搜索${context.sidebarTitle}`} value={listSearch} onChange={(event) => setListSearch(event.target.value)}/>
-        <button className="mac-icon-button mac-secondary-close" aria-label={`关闭${context.sidebarTitle}`} onClick={() => setDrawerOpen(false)}><X size={16} strokeWidth={1.5}/></button>
-      </div>
-      <div className="mac-context-list" key={context.key}>
-        {!collapsed || drawerOpen ? <MacSidebarContent context={context} search={listSearch}/> : null}
-      </div>
+    <aside hidden={!hasList} className={`mac-secondary${drawerOpen ? " is-open" : ""}`} aria-label={title} inert={!hasList || (narrow ? !drawerOpen : collapsed)} aria-hidden={!hasList || (narrow ? !drawerOpen : collapsed)}>
+      {hasList && narrow && <button className="mac-icon-button mac-secondary-close" aria-label={`关闭${title}`} onClick={closeDrawer}><X size={16}/></button>}
+      <div ref={setTarget} className="mac-collection-slot" onClick={event => {
+        if (drawerOpen && event.target instanceof Element && event.target.closest('button[aria-current="true"],a[aria-current="page"]')) closeDrawer();
+      }}/>
     </aside>
-    {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${context.sidebarTitle}`} onClick={() => setDrawerOpen(false)}/> : null}
+    {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${title}`} onClick={closeDrawer}/> : null}
     <main className="mac-workspace">
-      <section className="mac-canvas" aria-label={context.title}><Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><Outlet/></Suspense></section>
+      <section className="mac-canvas" aria-label={context.title} onKeyDown={moveWorkspaceFocus}>
+        {context.section === "director" && location.pathname !== "/lab/director/preview" && <nav className="mac-view-links" aria-label="导演工作区">
+          <Link aria-current={location.pathname === "/lab/director" ? "page" : undefined} to="/lab/director">运行记录</Link>
+          <Link aria-current={location.pathname === "/auto-director/follow-ups" ? "page" : undefined} to="/auto-director/follow-ups">导演跟进</Link>
+        </nav>}
+        {context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">
+          {createLinks.map(([href, label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}
+        </nav>}
+        <Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}>
+          <EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider>
+        </Suspense>
+      </section>
     </main>
     <VisualAssetLibraryDialog
       open={visualAssetsOpen}

@@ -1,4 +1,4 @@
-import { useDocumentGuard, useHostDraftState } from "@/platform";
+import { EntityDirectory, useEntityListHost, useRouteFields, useDocumentGuard, useHostDraftState } from "@/platform";
 import { getBookAnalysis } from "@/api/bookAnalysis";
 import { ShortStoryReferenceSummary } from "@/components/creation/ShortStoryReferenceSummary";
 import { BOOK_ANALYSIS_SECTIONS, type BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
@@ -32,6 +32,8 @@ function normalizeTarget(form: NarrativeForm, value: number): number {
 
 export default function CreationStudioPage() {
   const navigate = useNavigate();
+  const host = useEntityListHost();
+  const [fields, update] = useRouteFields();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const taskId = searchParams.get("taskId")?.trim() ?? "";
@@ -40,7 +42,8 @@ export default function CreationStudioPage() {
   const [referenceGoal, setReferenceGoal] = useState("借鉴结构、节奏与写法，创作新的完整短篇");
   const [referenceSections, setReferenceSections] = useState<BookAnalysisSectionKey[]>([]);
   const [idea, setIdea, ideaDraft] = useHostDraftState("creation-idea", "");
-  const [selectedDirectionId, setSelectedDirectionId] = useState("");
+  const [webDirection, setSelectedDirectionId] = useState("");
+  const selectedDirectionId = host ? fields.get("directionId") ?? "" : webDirection;
   const [narrativeForm, setNarrativeForm] = useState<NarrativeForm>("short_story");
   const [targetWordCount, setTargetWordCount] = useState(8000);
   const [confirmedBaseline, setConfirmedBaseline] = useState("");
@@ -88,7 +91,7 @@ export default function CreationStudioPage() {
     if (!interpretation) return;
     setNarrativeForm(interpretation.recommendedNarrativeForm);
     setTargetWordCount(interpretation.recommendedTargetWordCount);
-    setSelectedDirectionId((current) => current || interpretation.directions[0].id);
+    setSelectedDirectionId((current) => interpretation.directions.some(item => item.id === current) ? current : interpretation.directions[0]?.id ?? "");
     setWritingPlatform(interpretation.recommendedWritingPlatform);
     setConfirmedBaseline(`${interpretation.recommendedNarrativeForm}:${interpretation.recommendedTargetWordCount}:${interpretation.recommendedWritingPlatform}`);
   }, [task?.taskId, interpretation]);
@@ -96,7 +99,7 @@ export default function CreationStudioPage() {
   const currentScaleKey = `${narrativeForm}:${targetWordCount}:${writingPlatform}`;
   const scaleNeedsRefresh = Boolean(interpretation && confirmedBaseline && currentScaleKey !== confirmedBaseline);
   const selectedDirection = useMemo(
-    () => interpretation?.directions.find((direction) => direction.id === selectedDirectionId) ?? null,
+    () => interpretation?.directions.find((direction) => direction.id === selectedDirectionId) ?? interpretation?.directions[0] ?? null,
     [interpretation, selectedDirectionId],
   );
 
@@ -334,13 +337,16 @@ export default function CreationStudioPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            {interpretation.directions.map((direction) => (
+          {host && interpretation.directions.length > 0 && <EntityDirectory collection={`directions:${taskId}`} title="创作方向" selection={selectedDirection?.id}
+            rows={interpretation.directions.map(d => ({ id: d.id, label: d.title, description: d.premise }))}
+            onSelect={id => update({ directionId: id })}/>}
+          <div className="grid gap-4">
+            {(host && selectedDirection ? [selectedDirection] : interpretation.directions).map((direction) => (
               <DirectionCard
                 key={direction.id}
                 direction={direction}
-                selected={direction.id === selectedDirectionId}
-                onSelect={() => setSelectedDirectionId(direction.id)}
+                selected={direction.id === selectedDirection?.id}
+                onSelect={() => host ? update({ directionId: direction.id }) : setSelectedDirectionId(direction.id)}
               />
             ))}
           </div>

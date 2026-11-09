@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection, useDocumentGuard } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, ImageIcon, Loader2, Mic2, Save, UserRound, Video } from "lucide-react";
@@ -306,6 +307,9 @@ function CharacterAssetEditor(props: {
 }) {
   const [draft, setDraft] = useState<DramaCharacterAssetInput>(() => buildDraft(props.character));
 
+  useDocumentGuard({label: "短剧角色", dirty: JSON.stringify(draft) !== JSON.stringify(buildDraft(props.character)), busy: props.busy,
+    discard: () => setDraft(buildDraft(props.character))});
+
   useEffect(() => {
     setDraft(buildDraft(props.character));
   }, [
@@ -445,10 +449,12 @@ export function DramaCharactersPanel(props: {
   onRefreshProject: () => void;
 }) {
   const characters = props.project.characters ?? [];
+  const directory = useDirectorySelection("characterId", characters);
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
 
   return (
     <div className="space-y-4">
+      <EntityDirectory {...directory} collection={`drama:${props.project.id}:characters`} title="短剧角色" rows={characters.map(item => ({id: item.id, label: item.name, description: item.archetype}))}/>
       <Card className="rounded-lg">
         <CardHeader>
           <CardTitle className="text-lg">短剧角色资产</CardTitle>
@@ -484,7 +490,7 @@ export function DramaCharactersPanel(props: {
         <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">整理素材后会自动导入主要角色，再补齐造型、表演和台词锚点。</div>
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">
-          {characters.map((character) => (
+          {characters.filter(item => directory.includes(item.id)).map((character) => (
             <CharacterAssetEditor
               key={character.id}
               projectId={props.project.id}

@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -71,11 +72,14 @@ export default function MarketRadarPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [platforms, setPlatforms] = useState<MarketRadarPlatform[]>(["fanqie", "qidian", "jinjiang"]);
-  const [activeRunId, setActiveRunId] = useState("");
-  const [showAnalysis, setShowAnalysis] = useState(false);
+  const host = useEntityListHost();
+  const [route, update] = useRouteFields();
+  const activeRunId = route.get("runId") ?? "";
+  const tab = route.get("view");
+  const viewTab = tab === "analysis" || tab === "saved" ? tab : "rankings";
+  const itemId = route.get("itemId");
   const [selectedAnalysisItemIds, setSelectedAnalysisItemIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [viewTab, setViewTab] = useState<"rankings" | "analysis" | "saved">("rankings");
   const savedTopicsQuery = useQuery({ queryKey: queryKeys.marketRadar.savedTopics, queryFn: getSavedMarketTopics });
   const [influenceMode, setInfluenceMode] = useState<MarketInfluenceMode>("differentiate");
   const initialScanStarted = useRef(false);
@@ -98,11 +102,9 @@ export default function MarketRadarPage() {
   });
   const latestRun = latestScanQuery.data?.data ?? null;
   const currentRun = scanQuery.data?.data ?? null;
-  const activeRun = currentRun && (currentRun.rankingItems.length > 0 || !latestRun)
-    ? currentRun
-    : latestRun;
-  const availableReport = activeRun?.report ?? latestRun?.report ?? null;
-  const report = showAnalysis ? availableReport : null;
+  const activeRun = activeRunId ? currentRun : latestRun;
+  const availableReport = activeRun?.report;
+  const report = viewTab === "analysis" ? availableReport : null;
 
   useEffect(() => {
     if (!availableReport || !shouldResetMarketRadarSignalSelection(selectedSignalReportIdRef.current, availableReport.id)) return;
@@ -111,7 +113,7 @@ export default function MarketRadarPage() {
   }, [availableReport?.id]);
 
   useEffect(() => {
-    if (report) analysisResultRef.current?.scrollIntoView({ block: "start" });
+    if (report) analysisResultRef.current?.scrollIntoView?.({ block: "start" });
   }, [report?.id]);
 
   const scanMutation = useMutation({
@@ -119,9 +121,8 @@ export default function MarketRadarPage() {
     onSuccess: (response) => {
       const run = response.data;
       if (!run) return;
-      setActiveRunId(run.id);
+      update({runId: run.id, view: "rankings", itemId: null});
       queryClient.setQueryData(queryKeys.marketRadar.scan(run.id), response);
-      setShowAnalysis(false);
       setSelectedAnalysisItemIds([]);
       selectedSignalReportIdRef.current = run.report?.id ?? "";
       setSelectedIds(run.report ? recommendedSignalIds(run.report) : []);
@@ -175,7 +176,7 @@ export default function MarketRadarPage() {
   useEffect(() => {
     if (initialScanStarted.current || latestScanQuery.isPending) return;
     initialScanStarted.current = true;
-    if (!latestRun) scanMutation.mutate();
+    if (!latestRun && !activeRunId && !latestScanQuery.isError) scanMutation.mutate();
   }, [latestScanQuery.isPending, latestRun?.id]);
 
   const switchingToNewRun = Boolean(activeRunId && activeRunId !== latestRun?.id);
@@ -194,7 +195,7 @@ export default function MarketRadarPage() {
   const pollingRunId = resolveMarketRadarPollingRunId(activeRunId, latestRun);
 
   useEffect(() => {
-    if (pollingRunId && pollingRunId !== activeRunId) setActiveRunId(pollingRunId);
+    if (pollingRunId && pollingRunId !== activeRunId) update({runId: pollingRunId}, true);
   }, [activeRunId, pollingRunId]);
   const displayingPreviousRun = Boolean(
     latestRun
@@ -271,11 +272,15 @@ export default function MarketRadarPage() {
       ? current.filter((item) => item !== id)
       : [...current, id]);
   };
+  const directoryRows = viewTab === "rankings"
+    ? rankingGroups.flatMap(group => group.items.map(item => ({id: item.id, label: item.title, description: `第 ${item.rank} 名 · ${PLATFORM_LABELS[item.platform]}`, group: sourceLabels.get(group.key) ?? group.listKey})))
+    : viewTab === "analysis" ? (report?.signals ?? []).map(signal => ({id: signal.id, label: signal.label, description: signal.summary}))
+    : (savedTopicsQuery.data?.data ?? []).map(topic => ({id: topic.id, label: topic.label, description: topic.summary}));
+  const listQuery = viewTab === "saved" ? savedTopicsQuery : activeRunId ? scanQuery : latestScanQuery;
+  const showsDetail = (id: string) => !host || id === itemId;
   const startNewAnalysis = () => {
     if (!activeRun) return;
-    setActiveRunId(activeRun.id);
-    setShowAnalysis(true);
-    setViewTab("analysis");
+    update({runId: activeRun.id, view: "analysis", itemId: null});
     analysisMutation.mutate();
   };
 
@@ -294,7 +299,12 @@ export default function MarketRadarPage() {
         </div>
       </div>
 
-      <Tabs value={viewTab} onValueChange={(value) => { const next = value as typeof viewTab; setViewTab(next); setShowAnalysis(next === "analysis"); }}>
+      <EntityDirectory collection={JSON.stringify(["radar", viewTab, viewTab === "saved" ? null : activeRun?.id, viewTab === "analysis" && report?.id])}
+        title={viewTab === "rankings" ? "榜单作品" : viewTab === "analysis" ? "市场信号" : "收藏题材"}
+        rows={directoryRows} selection={itemId} onSelect={id => update({itemId: id, runId: viewTab === "saved" ? activeRunId : activeRun?.id ?? null})}
+        pending={listQuery.isPending} error={listQuery.isError} retry={() => void listQuery.refetch()}/>
+      {host && !listQuery.isPending && <p>{itemId && !directoryRows.some(row => row.id === itemId) ? <>该条目不在当前集合。 <button onClick={() => update({itemId: null}, true)}>返回列表</button></> : !itemId && directoryRows.length ? "从目录选择一项查看详情。" : null}</p>}
+      <Tabs value={viewTab} onValueChange={value => update({view: value, runId: activeRun?.id ?? activeRunId, itemId: null})}>
         <TabsList className="grid h-auto w-full grid-cols-3 rounded-lg bg-muted/45 p-1">
           <TabsTrigger value="rankings">当前榜单</TabsTrigger>
           <TabsTrigger value="analysis" disabled={!analysisAvailability.canViewReport && !analyzing}>AI 分析结果</TabsTrigger>
@@ -343,7 +353,7 @@ export default function MarketRadarPage() {
           </div>
         </section>
         <div className="grid items-start gap-x-6 gap-y-8 md:grid-cols-2 2xl:grid-cols-3">
-          {rankingGroups.map(({ key, items }) => {
+          {rankingGroups.filter(group => group.items.some(item => showsDetail(item.id))).map(({ key, items }) => {
             const itemIds = items.map((item) => item.id);
             const selectedCount = itemIds.filter((id) => selectedAnalysisItemIds.includes(id)).length;
             const allSelected = selectedCount === itemIds.length;
@@ -354,7 +364,7 @@ export default function MarketRadarPage() {
                 {allSelected ? "取消全选" : "全选"}{selectedCount > 0 && !allSelected ? ` ${selectedCount}/${items.length}` : ""}
               </Button>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2"><div className="divide-y divide-border/35">{items.map((item) => {
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2"><div className="divide-y divide-border/35">{items.filter(item => showsDetail(item.id)).map((item) => {
               const selected = selectedAnalysisItemIds.includes(item.id);
               return <div key={item.id} className="grid grid-cols-[1.5rem_2.5rem_minmax(0,1fr)_1.75rem] items-center gap-2 px-2 py-2.5 text-sm transition-colors hover:bg-muted/45">
                 <button type="button" aria-pressed={selected} aria-label={`${selected ? "取消选择" : "选择"}${item.title}`} disabled={analysisAvailability.selectionDisabled} onClick={() => toggleAnalysisItem(item.id)} className={cn("flex h-4 w-4 items-center justify-center rounded border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-70", selected ? "border-primary bg-primary text-primary-foreground" : "border-border")}>
@@ -391,7 +401,7 @@ export default function MarketRadarPage() {
           </Card>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {report.signals.map((signal) => {
+            {report.signals.filter(signal => showsDetail(signal.id)).map((signal) => {
               const selected = selectedIds.includes(signal.id);
               const saved = (savedTopicsQuery.data?.data ?? []).some((topic) => topic.reportId === report.id && topic.signalId === signal.id);
               return <article key={signal.id} className={cn("rounded-xl border p-5 text-left transition hover:border-primary/50 hover:shadow-sm", selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border bg-card")}>
@@ -417,7 +427,7 @@ export default function MarketRadarPage() {
       ) : null}
       {viewTab === "saved" ? <section className="space-y-3">
         <div className="flex items-center justify-between"><div><h2 className="text-base font-semibold">热门题材列表</h2><p className="text-sm text-muted-foreground">收藏 AI 分析后认可的题材，之后可回看来源和推荐理由。</p></div><Badge variant="secondary">{savedTopicsQuery.data?.data?.length ?? 0} 个</Badge></div>
-        {(savedTopicsQuery.data?.data ?? []).length > 0 ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{savedTopicsQuery.data!.data!.map((topic) => <Card key={topic.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="font-medium">{topic.label}</div><p className="mt-1 text-sm leading-6 text-muted-foreground">{topic.summary}</p><div className="mt-2 text-xs text-muted-foreground">热度 {topic.heat} · 拥挤度 {topic.crowding}</div></div><Button type="button" variant="ghost" size="sm" aria-label={`取消收藏${topic.label}`} onClick={() => deleteTopicMutation.mutate(topic.id)}><X className="h-3.5 w-3.5" /></Button></div><div className="mt-4 flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">收藏于 {new Date(topic.createdAt).toLocaleString()}</span><Button type="button" size="sm" disabled={!topic.signalId || savedTopicBriefMutation.isPending} onClick={() => savedTopicBriefMutation.mutate(topic)}>{savedTopicBriefMutation.isPending && savedTopicBriefMutation.variables?.signalId === topic.signalId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}用此题材开书</Button></div></CardContent></Card>)}</div> : <div className="rounded-lg bg-muted/30 px-4 py-5 text-sm text-muted-foreground">完成 AI 分析后，收藏你认可的热门题材，这里会形成自己的选题参考。</div>}
+        {(savedTopicsQuery.data?.data ?? []).length > 0 ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{savedTopicsQuery.data!.data!.filter(topic => showsDetail(topic.id)).map((topic) => <Card key={topic.id}><CardContent className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="font-medium">{topic.label}</div><p className="mt-1 text-sm leading-6 text-muted-foreground">{topic.summary}</p><div className="mt-2 text-xs text-muted-foreground">热度 {topic.heat} · 拥挤度 {topic.crowding}</div></div><Button type="button" variant="ghost" size="sm" aria-label={`取消收藏${topic.label}`} onClick={() => deleteTopicMutation.mutate(topic.id)}><X className="h-3.5 w-3.5" /></Button></div><div className="mt-4 flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">收藏于 {new Date(topic.createdAt).toLocaleString()}</span><Button type="button" size="sm" disabled={!topic.signalId || savedTopicBriefMutation.isPending} onClick={() => savedTopicBriefMutation.mutate(topic)}>{savedTopicBriefMutation.isPending && savedTopicBriefMutation.variables?.signalId === topic.signalId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}用此题材开书</Button></div></CardContent></Card>)}</div> : <div className="rounded-lg bg-muted/30 px-4 py-5 text-sm text-muted-foreground">完成 AI 分析后，收藏你认可的热门题材，这里会形成自己的选题参考。</div>}
       </section> : null}
     </div>
   );

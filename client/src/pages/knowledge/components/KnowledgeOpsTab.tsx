@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { CircleAlert, CircleCheck, Clock3, Database, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ interface KnowledgeOpsTabProps {
   ragHealth?: RagHealthStatus;
   ragHealthNotice?: string;
   jobs: RagJobSummary[];
+  loading: boolean; failed: boolean; retry: () => void;
   failedJobs: RagJobSummary[];
   actionMessage?: string;
   isClearingJobs: boolean;
@@ -65,7 +67,7 @@ export default function KnowledgeOpsTab({
   disabledCount,
   ragHealth,
   ragHealthNotice,
-  jobs,
+  jobs, loading, failed, retry,
   failedJobs,
   actionMessage,
   isClearingJobs,
@@ -74,12 +76,19 @@ export default function KnowledgeOpsTab({
   onDeleteJob,
   onOpenSettings,
 }: KnowledgeOpsTabProps) {
+  const [route, update] = useRouteFields();
+  const host = useEntityListHost();
+  const jobId = route.get("jobId");
   const finishedJobCount = jobs.filter((job) => canDeleteRagJob(job)).length;
   const activeJobCount = jobs.filter((job) => job.status === "queued" || job.status === "running").length;
   const healthOk = Boolean(ragHealth?.ok);
 
   return (
     <div className="space-y-6">
+      <EntityDirectory title="资料同步记录" collection="knowledge:jobs" selection={jobId} onSelect={id => update({jobId: id})}
+        pending={loading} error={failed} retry={retry}
+        rows={jobs.map(job => ({id: job.id, label: formatOwnerLabel(job.ownerType), description: `${formatJobType(job.jobType)} · ${formatStatus(job.status)} · ${job.ownerId}`}))}/>
+      {host && jobId && !loading && !failed && !jobs.some(job => job.id === jobId) && <p>最近的同步记录中没有这项作业。 <button onClick={() => update({jobId: null}, true)}>返回列表</button></p>}
       <section
         aria-label="资料检索可用状态"
         className={`rounded-3xl px-5 py-5 sm:px-6 ${healthOk ? "bg-success/[0.065]" : "bg-destructive/[0.055]"}`}
@@ -170,7 +179,7 @@ export default function KnowledgeOpsTab({
           </div>
         ) : (
           <div className="mt-5 grid gap-3 xl:grid-cols-2">
-            {jobs.map((job) => {
+            {jobs.filter(job => !host || job.id === jobId).map((job) => {
               const failed = job.status === "failed";
               const active = job.status === "queued" || job.status === "running";
               return (

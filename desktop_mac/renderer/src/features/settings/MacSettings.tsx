@@ -1,3 +1,4 @@
+import { SettingsShell } from "@/pages/settings/components/SettingsShell";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import AppearanceSettingsPage from "@/pages/settings/views/AppearanceSettingsPage";
@@ -21,10 +22,10 @@ export function MacAppearance() {
 }
 export function MacMaintenance() {
   const environment = macEnvironment();
-  return <div className="mac-page mac-settings"><header className="mac-page-heading"><h1>连接与维护</h1></header><dl className="mac-preference-list">
+  return <SettingsShell title="连接与维护" description="查看桌面工作台使用的服务和连接模式。"><div className="mac-page mac-settings"><dl className="mac-preference-list">
     <div><dt>创作服务</dt><dd>{environment?.mode === "local" ? "本机测试服务" : "服务器 · 安全远程连接"}</dd></div>
     <div><dt>当前模式</dt><dd>{environment?.mode === "local" ? "正在使用本机测试环境，适合验收和新功能联调。" : "正在连接服务器上的创作服务，作品保存在服务器。"}</dd></div>
     <div><dt>关闭应用</dt><dd>从菜单栏选择「退出」，或关闭全部窗口。后台若仍有未完成的创作任务，本机测试服务可能会继续保留。</dd></div>
     <div><dt>服务状态</dt><dd>顶部工具栏会显示「本地测试」或「服务器」。连接异常时，请先检查网络，再重新打开应用。</dd></div>
-  </dl><p className="mac-settings-note">切换连接不会搬移小说数据。服务器作品和本机测试作品分别保存在各自的服务中。</p></div>;
+  </dl><p className="mac-settings-note">切换连接不会搬移小说数据。服务器作品和本机测试作品分别保存在各自的服务中。</p></div></SettingsShell>;
 }
