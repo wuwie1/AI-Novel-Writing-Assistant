@@ -1,5 +1,6 @@
 import { execFile, spawn, spawnSync } from 'node:child_process';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -79,7 +80,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
 
   const unload = (label, role) => measure(`等待服务注销 ${role}`, () => stopAgent(label));
 
-  async function startAgent({ role, mode, executable, args, environment = {} }) {
+  async function startAgent({ role, mode, executable, args, workingDirectory = repoRoot, environment = {} }) {
     const label = launchdLabel({ repoRealPath: repoRoot, mode, role });
     const outPath = path.join(logs, `${role}.log`); const errPath = path.join(logs, `${role}.error.log`);
     await mkdir(agents, { recursive: true, mode: 0o700 }); await mkdir(logs, { recursive: true, mode: 0o700 });
@@ -87,7 +88,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
     const plistPath = path.join(agents, `${label}.plist`);
     const supervisor = path.join(repoRoot, 'desktop_mac/infrastructure/processes/launchers/supervisor.mjs');
     const supervisorArgs = [supervisor, role, outPath, errPath, executable, ...args];
-    const plist = createLaunchdPlist({ label, executable: process.execPath, args: supervisorArgs, repoRealPath: repoRoot, logPath: '/dev/null', errorPath: errPath, pathValue, environment: { ...environment, MAC_LAUNCHD_LABEL: label } });
+    const plist = createLaunchdPlist({ label, executable: process.execPath, args: supervisorArgs, workingDirectory, logPath: '/dev/null', errorPath: errPath, pathValue, environment: { ...environment, MAC_LAUNCHD_LABEL: label } });
     await writeFile(plistPath, plist, { mode: 0o600 });
     try { await launchAgent(label, plistPath); }
     catch (error) {
@@ -290,8 +291,13 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
     async startHelpers({ mode, development, paths, build, connection }) {
       if (development) {
         await assertPortFree(config.devUiPort);
-        const args = ['--filter', '@ai-novel/desktop-mac', 'exec', 'vite', '--config', 'renderer/vite.config.ts', '--host', '127.0.0.1', '--port', String(config.devUiPort), '--strictPort'];
-        const viteRecord = await startAgent({ role: 'vite', mode, executable: pnpm, args, environment: { MAC_APP_MODE: mode, MAC_API_TARGET: connection.apiTarget } });
+        const workspace = path.join(repoRoot, 'desktop_mac');
+        const vite = path.join(workspace, 'node_modules/.bin/vite');
+        try { await access(vite, constants.X_OK); }
+        catch { throw internalError('找不到可执行的 Vite，请按 Mac 源码启动说明安装桌面开发依赖。', 2); }
+        // The workspace shim execs Vite, so the supervisor can signal the actual HTTP server.
+        const args = ['--config', 'renderer/vite.config.ts', '--host', '127.0.0.1', '--port', String(config.devUiPort), '--strictPort'];
+        const viteRecord = await startAgent({ role: 'vite', mode, executable: vite, args, workingDirectory: workspace, environment: { MAC_APP_MODE: mode, MAC_API_TARGET: connection.apiTarget } });
         return { processes: { vite: viteRecord }, uiUrl: `http://127.0.0.1:${config.devUiPort}` };
       }
       const port = config.appUiPort; await assertPortFree(port);

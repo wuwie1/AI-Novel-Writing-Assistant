@@ -55,9 +55,12 @@ test('stage durations persist for cache hits, cancelled closes and failed rollba
   assert.ok(!log.includes('private details'));
 });
 
-test('launchd escapes repository and log paths with XML characters', () => {
-  const xml = createLaunchdPlist({ label: 'test', executable: '/usr/bin/node', args: [], repoRealPath: '/books/A&B', logPath: '/books/A&B/log', errorPath: '/books/<error>', pathValue: '/bin' });
-  assert.ok(xml.includes('/books/A&amp;B'));
+test('launchd preserves the working directory of each service and escapes XML paths', () => {
+  const job = { label: 'test', executable: '/usr/bin/node', args: [], repoRealPath: '/books/A&B', logPath: '/books/A&B/log', errorPath: '/books/<error>', pathValue: '/bin' };
+  const xml = createLaunchdPlist(job);
+  assert.ok(xml.includes('<key>WorkingDirectory</key><string>/books/A&amp;B</string>'));
+  const dev = createLaunchdPlist({ ...job, workingDirectory: '/books/A&B/desktop_mac' });
+  assert.ok(dev.includes('<key>WorkingDirectory</key><string>/books/A&amp;B/desktop_mac</string>'));
   assert.ok(xml.includes('/books/&lt;error&gt;'));
   assert.ok(!xml.includes('/books/A&B'));
 });
