@@ -60,7 +60,7 @@ export function MacAppLayout() {
   const workbench = context.chapterId ? "chapter-editor"
     : context.section === "creative" ? "creative-workbench"
     : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const legacy = !entity && context.section !== "help";
+  const legacy = !entity && !["help", "tasks"].includes(context.section);
   const hasList = !!entity || legacy;
   const title = entity?.title ?? context.sidebarTitle;
   const collapseKey = entity?.collection ?? workbench ?? context.section;

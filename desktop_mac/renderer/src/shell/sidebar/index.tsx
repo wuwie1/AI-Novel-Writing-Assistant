@@ -10,7 +10,6 @@ import { listComicProjects } from "@/api/comic";
 import { queryKeys } from "@/api/queryKeys";
 import { getNovelWorkspaceHref } from "@/lib/novelRoutes";
 import { NOVEL_WORKSPACE_FLOW_STEPS } from "@/pages/novels/novelWorkspaceNavigation";
-import { readTaskStatus, taskStatusOptions } from "../../features/tasks";
 import { pathIsWithin, type MacNavigation, type NavigationLink } from "../navigation";
 
 // 列表搜索只筛选已加载的展示数据，不参与 AI 意图识别或后端任务路由。
@@ -119,18 +118,6 @@ function ProjectList({ section, search }: { section: "drama" | "comic"; search: 
   </>;
 }
 
-function TaskFilters({ search }: { search: string }) {
-  const location = useLocation();
-  const status = readTaskStatus(new URLSearchParams(location.search));
-  const options = taskStatusOptions.filter(([, label]) => matchesSearch(search, label));
-  return <>
-    <div className="mac-list-label">按状态查看</div>
-    {options.map(([value, label]) => <Link key={value} to={value ? `/tasks?status=${value}` : "/tasks"} className={`mac-list-row${status === value ? " is-selected" : ""}`} aria-current={status === value ? "page" : undefined}><span>{label}</span></Link>)}
-    {!options.length ? <p className="mac-list-message">未找到匹配的状态。</p> : null}
-    <p className="mac-list-message">查看记录后，打开对应创作页面处理后续事项。</p>
-  </>;
-}
-
 /** 每种列表只挂载自己的读取器，切换全局菜单后不保留章节查询。 */
 export function MacSidebarContent({ context, search }: { context: MacNavigation; search: string }) {
   switch (context.section) {
@@ -138,7 +125,6 @@ export function MacSidebarContent({ context, search }: { context: MacNavigation;
     case "novel": return <NovelContents key={context.novelId} context={context} search={search}/>;
     case "creative": return <CreativeConversations search={search}/>;
     case "director": return <DirectorRecords context={context} search={search}/>;
-    case "tasks": return <TaskFilters search={search}/>;
     case "drama": case "comic": return <ProjectList section={context.section} search={search}/>;
     default: return <SidebarLinks links={context.links ?? []} search={search}/>;
   }

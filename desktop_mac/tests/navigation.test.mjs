@@ -51,7 +51,8 @@ before(async () => {
           else if(config.url==='/creative-hub/threads') data=[{id:'thread-a',title:'构思对话'}];
           else if(config.url==='/director-next/records') data=[{runId:'run-a',headline:'测试创作记录',statusLabel:'完成',progressLabel:'1章',directorRoute:'/lab/director/book-a'}];
           else if(config.url==='/drama/projects' || config.url==='/comic/projects') data=[{id:'project-a',title:config.url.startsWith('/drama')?'短剧项目甲':'漫画项目甲'}];
-          else if(config.url==='/tasks') data={items:[],nextCursor:null};
+          else if(config.url==='/tasks') data={items:config.params.keyword==='无结果'?[]:['novel_pipeline','agent_run'].map((kind,i)=>({id:'same',kind,title:i?'记录乙':'记录甲',status:'succeeded',progress:100})),nextCursor:config.params.cursor?null:'older'};
+          else if(config.url.startsWith('/tasks/')) data=config.url.endsWith('/gone')?null:{id:config.url.split('/').pop(),kind:config.url.split('/')[2],title:'详情 '+config.url.split('/').slice(-2).join('/'),ownerLabel:'测试作品',status:'succeeded',steps:[]};
           else throw new Error('Unexpected test request: '+config.url);
           return {data:{success:true,data},status:200,statusText:'OK',headers:{},config};
         };
@@ -219,7 +220,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     for (const [route, title, content] of [
       ['/novels', '我的小说', '测试作品'], ['/create', '开始创作', '填写小说设定'],
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演创作', '测试创作记录'],
-      ['/tasks', '记录筛选', '进行中'], ['/settings/models', '设置分类', '模型路由'],
+      ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
       ['/knowledge', '资料与参考', '书籍分析'], ['/genres', '故事素材', '角色素材'],
       ['/prompt-workbench', '写作工具', '写作规则'],
@@ -261,10 +262,10 @@ test('record sidebar status controls the page and read-only API, including back 
     await h.go('/tasks?status=failed');
     assert.equal(document.querySelector('select[aria-label="记录状态"]').value, 'failed');
     assert.equal(h.requests.filter(({url}) => url === '/tasks').at(-1).params.status, 'failed');
-    assert.equal(h.sidebar.querySelector('[aria-current="page"]').textContent, '未完成');
+    assert.ok(h.sidebar.querySelector('select[aria-label="记录类型"]'));
     await h.go(-1);
     assert.equal(document.querySelector('select[aria-label="记录状态"]').value, '');
-    assert.equal(h.sidebar.querySelector('[aria-current="page"]').textContent, '全部状态');
+    assert.equal(h.sidebar.querySelector('[aria-current]'), null);
     assert.ok(h.requests.every(({method}) => method === 'get'));
   } finally { await h.cleanup(); }
 });
@@ -327,4 +328,26 @@ test('one page owns its portal across drawer toggles and help has a full canvas'
     assert.ok(h.sidebar.hidden && h.sidebar.hasAttribute('inert'));
     assert.equal(document.querySelector('.mac-drawer-toggle'), null);
   } finally { await h.cleanup(); window.matchMedia = media; }
+});
+
+test('task detail identity, filters, cursor, unavailable records and back are independent', async () => {
+  const h = await mount('/tasks?filterKind=agent_run&kind=agent_run&id=offpage&cursor=older');
+  try {
+    assert.match(document.querySelector('.mac-record-detail').textContent, /agent_run\/offpage/);
+    const select = async (i) => h.flush(() => h.sidebar.querySelectorAll('.mac-record-list button')[i].click());
+    await select(0); await select(1);
+    assert.match(document.querySelector('.mac-record-detail').textContent, /agent_run\/same/);
+    await h.go(-1);
+    assert.match(document.querySelector('.mac-record-detail').textContent, /novel_pipeline\/same/);
+    assert.match(h.router.state.location.search, /cursor=older/);
+    await h.flush(() => document.querySelector('[aria-label="刷新记录"]').click());
+    assert.equal(h.sidebar.querySelector('[aria-current]').querySelector('strong').textContent,'记录甲');
+    await h.go('/tasks?kind=agent_run&id=gone&q=无结果');
+    assert.match(document.querySelector('.mac-record-detail').textContent, /找不到/);
+    assert.match(h.sidebar.textContent, /没有符合/);
+    await h.go('/tasks?kind=bad&id=x');
+    assert.equal(h.router.state.location.search, '');
+    assert.ok(!h.requests.some(r => r.url.includes('/bad/')));
+    assert.ok(h.requests.every(r => r.method === 'get'));
+  } finally { await h.cleanup(); }
 });

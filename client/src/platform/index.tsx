@@ -63,3 +63,4 @@ export function useHostDraftState<T>(key: string, initial: T | (() => T)) {
 }
 
 export { EntityList, EntityListContext, useEntityListHost, type EntityCollection } from "./EntityList";
+export { useRouteFields } from "./useRouteFields";

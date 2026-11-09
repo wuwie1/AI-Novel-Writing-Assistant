@@ -59,6 +59,8 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 业务页通过 `EntityList` 注册集合标识、名称和已选键。Mac 将内容渲染进稳定的容器，Web 在原位置渲染。抽屉开关仅改变可见性与键盘可达性，避免重复挂载编辑器或请求控制器。无集合视图同时隐藏栏、开关及其焦点。
 
+运行记录按 `(kind,id)` 独立读取详情，`filterKind/status/q` 与游标只属于列表。改变筛选清空游标，保留详情。空列表与详情 404 分别呈现，角标、轮询、刷新及选行只调用读接口。
+
 ## 视觉基线与级联规则
 
 参考目录是 `/Users/likai/go/src/write/wukong`。不能只抄 `base.css` 的通用变量：wukong 的入口按 `app.css` → `base.css` → `demo.css` → `studio.css` → `side-panels.css` 导入，最终效果同时受选择器优先级和功能页面覆盖影响。灵感列表的浅蓝选中条来自 `demo.css` 的 `material-list-item.is-selected`，不是图标栏的灰色 `--active`。以正在运行的窗口和完整级联共同核对。
