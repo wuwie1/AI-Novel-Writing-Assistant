@@ -67,7 +67,7 @@ def inspect_deployment(payload, *, import_bundle=False):
             raise Refused('候选不是当前部署的后代，拒绝分叉或降级')
         if branch_tip != old and command(['git', '-C', root, 'merge-base', '--is-ancestor', branch_tip, candidate_sha], check=False).returncode:
             raise Refused('候选未包含服务器发布分支上的提交，无法快进')
-        differences = git(root, 'diff', '--name-only', old, candidate_sha).splitlines()
+        differences = command(['git', '-C', root, 'diff', '--no-renames', '--name-only', '-z', old, candidate_sha]).stdout.split('\0')[:-1]
         compatibility = git(root, 'diff', '--name-only', old, candidate_sha, '--', *COMPATIBILITY)
         old_dependencies = json.loads(git(root, 'show', old + ':server/package.json'))['dependencies']
         new_dependencies = json.loads(git(root, 'show', candidate_sha + ':server/package.json'))['dependencies']
@@ -78,7 +78,7 @@ def inspect_deployment(payload, *, import_bundle=False):
             if any(file == item or file.startswith(item + '/') for item in (*PROTECTED, *ARTIFACTS)):
                 raise Refused('候选受控文件与持久数据/产物保护清单冲突')
         # Untracked source paths must not be overwritten by fast-forward checkout.
-        untracked = set(git(root, 'ls-files', '--others', '--exclude-standard').splitlines())
+        untracked = set(command(['git', '-C', root, 'ls-files', '-z', '--others', '--exclude-standard']).stdout.split('\0'))
         if untracked.intersection(differences):
             raise Refused('候选会覆盖服务器未跟踪文件')
     states = {}
@@ -95,17 +95,19 @@ def inspect_deployment(payload, *, import_bundle=False):
     if 'validation' in payload:
         require_validation_record(payload['validation'], candidate_sha, ref)
     elif payload['dryRun'] and old != candidate_sha:
-        checks.append('正式更新时会在候选目录完成构建和回归测试，并保存本次提交的验证记录')
-    # Preserve sufficient room for old dependencies, two snapshots and a candidate.
-    sizes = command(['du', '-sk', root / 'node_modules', root / 'server/storage', db], check=False).stdout.splitlines()
-    used = sum(int(line.split()[0]) * 1024 for line in sizes if line.split() and line.split()[0].isdigit())
-    minimum = max(4 * 1024 ** 3, used * 4)
-    if shutil.disk_usage(root).free < minimum:
-        checks.append('磁盘余量不足，需至少 %s 字节；不会自动清理任何数据' % minimum)
+        checks.append('正式更新将核对线上产物，只构建受影响的部分，并记录本次验证结果')
     if states['ai-novel-api'] == 'active':
         health(config['remoteWebPort'])
     return dict(root=root, old=old, branch=branch, branchTip=branch_tip, ref=ref, sha=candidate_sha, differences=differences,
                 checks=checks, states=states, db=db, assets=assets, known=candidate_known)
+
+
+def check_build_space(info):
+    root = info['root']
+    sizes = command(['du', '-sk', root / 'node_modules', root / 'server/storage', info['db']]).stdout.splitlines()
+    minimum = max(4 * 1024 ** 3, 4 * sum(int(line.split()[0]) * 1024 for line in sizes))
+    if shutil.disk_usage(root).free < minimum:
+        raise Refused('磁盘余量不足，需至少 %s 字节' % minimum)
 
 
 def check_quiescence(payload, info):

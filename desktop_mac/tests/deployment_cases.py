@@ -13,7 +13,7 @@ CODE = pathlib.Path(__file__).resolve().parents[1] / 'application/deployment/rem
 
 def module():
     result = types.ModuleType('deployment_fixture')
-    for name in ('common.py', 'inspection.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'):
+    for name in ('common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'):
         exec(compile((CODE / name).read_text(), str(CODE / name), 'exec'), result.__dict__)
     result.emit = lambda *a, **k: None
     return result
@@ -152,7 +152,7 @@ class DeploymentTests(unittest.TestCase):
                     return original_rename(source, target)
 
                 with patch.object(m.os, 'rename', fail_once), patch.object(m.time, 'sleep', lambda *_: None):
-                    code = m.switch_transaction(dict(config=config), info, batch, candidate, dict(fingerprint='test'))
+                    code = m.switch_transaction(dict(config=config), info, batch, candidate, dict(mode='full', artifacts=list(m.ARTIFACTS)), {}, m.DeploymentTimings())
                 self.assertEqual(code, 7)
                 for name in m.ARTIFACTS:
                     self.assertEqual((root / name / 'identity').read_text(), 'old')
@@ -200,14 +200,18 @@ class DeploymentTests(unittest.TestCase):
                 m = module()
                 root = pathlib.Path(temporary).resolve()
                 (root / '.runtime').mkdir()
-                info = dict(root=root, old='b' * 40, branchTip='b' * 40, sha='a' * 40, ref='origin/ai', known=True,
+                info = dict(root=root, old='b' * 40, branchTip='b' * 40, sha='a' * 40, branch='ai', ref='origin/ai', known=True,
                             differences=[], checks=[], states={}, db=root / 'unused.db', assets=[])
                 m.inspect_deployment = Mock(return_value=info)
                 m.check_quiescence = Mock()
                 m.backup_snapshot = Mock()
                 m.switch_transaction = Mock(return_value=0)
+                m.live_artifacts = Mock(return_value={})
+                m.runtime_toolchain = Mock(return_value={})
+                m.check_build_space = Mock()
+                m.retain_release = Mock(return_value={})
                 supplied = dict(sha=info['sha'], ref=info['ref'], passed=list(m.VALIDATION_CHECKS), evidence='CI log')
-                payload = dict(dryRun=False, withBundle=False)
+                payload = dict(dryRun=False, withBundle=False, config=dict(serverDir=str(root)))
                 if external:
                     payload['validation'] = supplied
                 steps = []
@@ -227,8 +231,8 @@ class DeploymentTests(unittest.TestCase):
                             raise m.Refused('injected failure')
                         for slot in m.ARTIFACTS:
                             (cwd / slot).mkdir(parents=True, exist_ok=True)
-                        for artifact in ('server/dist/app.js', 'client/dist/index.html', 'pnpm-lock.yaml'):
-                            (cwd / artifact).touch()
+                        for artifact in (*m.ENTRYPOINTS, 'pnpm-lock.yaml'):
+                            (cwd / artifact).write_text('fixture')
                         link = cwd / 'server/node_modules/@ai-novel' / ('other' if failure == 'invalid-link' else 'shared')
                         if not link.is_symlink():
                             link.parent.mkdir()
@@ -252,6 +256,105 @@ class DeploymentTests(unittest.TestCase):
                         self.assertEqual(record, supplied)
                     else:
                         self.assertIn('node --test', pathlib.Path(record['evidence']).read_text())
+
+    def test_selective_build_inputs_and_drift(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            src = root / '.runtime/desktop_mac-deploy/prior'
+            backup = src / 'backups'
+            for path in ('preflight/release.json', 'quiesced/manifest.json'):
+                dest = backup / path
+                dest.parent.mkdir(parents=True)
+                dest.write_text('{}')
+            proof = src / 'validation.json'
+            m.write_json(proof, dict(sha='A', ref='origin/ai', evidence='old', passed=list(m.VALIDATION_CHECKS)))
+            hashes = dict.fromkeys(m.ARTIFACTS, 'digest')
+            info = dict(root=root, old='A', sha='B', branch='ai', ref='origin/ai')
+            last = dict(sha='A', result='success', backup=str(backup), validation=str(proof), release=dict(version=1, artifacts=hashes, toolchain='v1'))
+            record = dict(commit='A', branch='ai', desktopMacDeployment=last)
+            cases = [(['client/src/page.tsx'], ['client/dist'], True), (['server/src/app.ts'], ['server/dist'], True),
+                     (['server/src/x', 'client/src/y'], ['server/dist', 'client/dist'], True),
+                     (['desktop/package.json'], ['client/dist'], True), (['desktop_mac/src/app.ts', 'docs/guide.md'], [], False),
+                     (['client/tests/test.js'], [], True), (['shared/types/X.ts'], list(m.ARTIFACTS), True),
+                     (['pnpm-lock.yaml'], list(m.ARTIFACTS), True), (['unknown-build-file'], list(m.ARTIFACTS), True)]
+            for changed, slots, tests in cases:
+                with self.subTest(changed=changed):
+                    plan = m.release_plan(dict(info, differences=changed), hashes, 'v1', record)
+                    self.assertEqual((plan['slots'], plan['tests']), (slots, tests))
+            self.assertEqual(m.release_plan(info, hashes, 'v2', record)['mode'], 'full')
+            self.assertEqual(m.release_plan(info, hashes, 'v1', {})['mode'], 'full')
+            with self.assertRaisesRegex(m.Refused, '校验值不符'):
+                m.release_plan(dict(info, sha='A'), dict(hashes, node_modules='corrupted'), 'v1', record)
+
+    def test_partial_build_replaces_only_requested_output_and_isolates_dependencies(self):
+        for package in ('client', 'server'):
+            with self.subTest(package=package), tempfile.TemporaryDirectory() as directory:
+                m = module()
+                root = pathlib.Path(directory).resolve()
+                batch = root / '.runtime/test-batch'
+                batch.mkdir(parents=True)
+                for slot in m.ARTIFACTS:
+                    (root / slot).mkdir(parents=True)
+                for entry in m.ENTRYPOINTS:
+                    (root / entry).write_text('installed')
+                (root / 'node_modules/marker').write_text('live dependencies')
+                (root / 'pnpm-lock.yaml').write_text('frozen')
+                installed = m.live_artifacts(root)
+                issued = []
+                real_command = m.command
+                def command(args, cwd=None, **kwargs):
+                    if args[0] == 'cp':
+                        return real_command(args, cwd=cwd, **kwargs)
+                    if args[0] == 'git':
+                        with m.tarfile.open(args[args.index('-o') + 1], 'w') as archive:
+                            archive.add(root / 'pnpm-lock.yaml', 'pnpm-lock.yaml')
+                    elif args[0] == 'pnpm':
+                        self.assertEqual(args, ['pnpm', '--filter', '@ai-novel/' + package, 'build'])
+                        entry = next(name for name in m.ENTRYPOINTS if name.startswith(package + '/'))
+                        (cwd / entry).parent.mkdir(parents=True, exist_ok=True)
+                        (cwd / entry).write_text('new build')
+                        (cwd / 'node_modules/marker').write_text('private build writes')
+                        issued.append('build')
+                    elif args[0] == 'node':
+                        self.assertTrue((cwd / 'server/dist/app.js').is_file())
+                        issued.append('tests')
+                    else:
+                        self.assertEqual(args[0], 'chown')
+                slot = package + '/dist'
+                m.command = command
+                staged, manifest = m.build_candidate(dict(root=root, old='A', sha='B', ref='origin/ai'), batch, None,
+                    dict(slots=[slot], mode='incremental', tests=True), installed, m.DeploymentTimings())
+                self.assertEqual(issued, ['build', 'tests'])
+                self.assertEqual([key for key in m.ARTIFACTS if (staged / key).exists()], [slot])
+                self.assertEqual([key for key in m.ARTIFACTS if manifest['hashes'][key] != installed[key]], [slot])
+                self.assertEqual((root / 'node_modules/marker').read_text(), 'live dependencies')
+                validation = json.loads((batch / 'validation.json').read_text())
+                self.assertEqual(validation['reused'], ['server-build' if package == 'client' else 'client-build'])
+                self.assertFalse(list(batch.glob('build-*')))
+
+    def test_retained_artifacts_can_be_restored_and_deduplicated(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            deps = root / 'node_modules/pkg'
+            deps.mkdir(parents=True)
+            (deps / 'package.json').write_text('previous contents')
+            (root / 'node_modules/alias').symlink_to('pkg')
+            batch = root / '.runtime/desktop_mac-deploy/batch'
+            batch.mkdir(parents=True)
+            hashes = {'node_modules': m.artifact_digest(root / 'node_modules')}
+            old = m.retain_release(dict(root=root, old='old'), batch, hashes)
+            slot = pathlib.Path(old['store']) / 'node_modules' / hashes['node_modules']
+            self.assertEqual(m.artifact_digest(slot), hashes['node_modules'])
+            self.assertTrue((slot / 'alias').is_symlink())
+            with patch.object(m, 'copy_artifact', side_effect=AssertionError('copied an existing release')):
+                self.assertEqual(m.retain_release(dict(root=root, old='old'), batch, hashes), old)
+            (deps / 'package.json').write_text('new live contents')
+            self.assertEqual((slot / 'pkg/package.json').read_text(), 'previous contents')
+            (slot / 'pkg/package.json').write_text('bad backup')
+            with self.assertRaisesRegex(m.Refused, '旧产物校验失败'):
+                m.retain_release(dict(root=root, old='old'), batch, hashes)
 
     def test_update_requires_matching_preview_before_importing_candidate(self):
         m = module()
@@ -291,15 +394,25 @@ class DeploymentTests(unittest.TestCase):
                 m.git = Mock(return_value=sha)
                 m.health = Mock()
 
-                def build(info, batch, validation):
-                    candidate = batch / 'candidate'
-                    for slot in m.ARTIFACTS:
-                        (root / slot).parent.mkdir(parents=True, exist_ok=True)
-                        (candidate / slot).mkdir(parents=True)
-                    return candidate, {'fingerprint': 'verified-test-build'}
-
-                m.build_candidate = Mock(side_effect=build)
-                payload = dict(config=dict(remoteWebPort=18080, maintenanceProbePort=18081),
+                for slot in m.ARTIFACTS:
+                    (root / slot).mkdir(parents=True)
+                for entry in m.ENTRYPOINTS:
+                    (root / entry).write_text('working')
+                info['ref'] = 'origin/ai'
+                proof_dir = root / '.runtime/desktop_mac-deploy/prior'
+                backup = proof_dir / 'backups'
+                for path in (backup / 'preflight/release.json', backup / 'quiesced/manifest.json'):
+                    path.parent.mkdir(parents=True)
+                    path.write_text('{}')
+                validation = proof_dir / 'validation.json'
+                m.write_json(validation, dict(sha=sha, ref=info['ref'], evidence='previous build', passed=list(m.VALIDATION_CHECKS)))
+                prior = dict(commit=sha, branch='ai', desktopMacDeployment=dict(sha=sha, result='success', backup=str(backup),
+                             validation=str(validation), release=dict(version=1, artifacts=m.live_artifacts(root), toolchain={'node':'test'})))
+                m.write_json(root / '.runtime/deployment.json', prior)
+                m.runtime_toolchain = Mock(return_value={'node':'test'})
+                m.build_candidate = Mock(side_effect=AssertionError('same commit built artifacts'))
+                m.retain_release = Mock(side_effect=AssertionError('same commit copied dependencies'))
+                payload = dict(config=dict(serverDir=str(root), remoteWebPort=18080, maintenanceProbePort=18081),
                                dryRun=False, currentSha=sha, serverBase=sha, withBundle=False)
                 with patch.object(m.time, 'sleep'):
                     self.assertEqual(m.run_remote(payload), 0)
@@ -309,10 +422,11 @@ class DeploymentTests(unittest.TestCase):
                                          ['systemctl', 'is-active', 'ai-novel-api'],
                                          ['systemctl', 'is-active', 'ai-novel-web']])
                 self.assertEqual([c.args[0] for c in m.health.call_args_list], [18081, 18080])
-                self.assertEqual(m.backup_snapshot.call_count, 2)
-                self.assertEqual(m.verify_snapshot.call_count, 2)
+                m.backup_snapshot.assert_not_called()
+                m.verify_snapshot.assert_not_called()
                 self.assertEqual(m.check_connections.call_count, 2)
                 deployment = json.loads((root / '.runtime/deployment.json').read_text())
+                self.assertEqual(deployment, prior)
                 self.assertEqual(deployment['commit'], sha)
                 self.assertEqual(deployment['branch'], 'ai')
                 record = deployment['desktopMacDeployment']

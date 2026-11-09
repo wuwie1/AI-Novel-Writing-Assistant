@@ -67,6 +67,33 @@ def write_json(file, value):
     os.replace(temporary, file)
 
 
+class DeploymentTimings:
+    def __init__(self):
+        self.start = time.monotonic()
+        self.stages = {}
+        self.batch = None
+
+    @contextlib.contextmanager
+    def stage(self, name):
+        started = time.monotonic()
+        outcome = 'passed'
+        try:
+            yield
+        except BaseException:
+            outcome = 'failed'
+            raise
+        finally:
+            elapsed = round(time.monotonic() - started, 3)
+            self.stages[name] = dict(seconds=elapsed, result=outcome)
+            emit('timing', name=name, seconds=elapsed, result=outcome)
+
+    def finish(self):
+        report = dict(seconds=round(time.monotonic() - self.start, 3), stages=self.stages)
+        if self.batch:
+            write_json(self.batch / 'timings.json', report)
+        emit('remote_total', seconds=report['seconds'], log=str(self.batch / 'timings.json') if self.batch else None)
+
+
 def read_env(root):
     result = {}
     for raw in (root / 'server/.env').read_text().splitlines():

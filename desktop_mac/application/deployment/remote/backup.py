@@ -10,7 +10,7 @@ def archive_paths(destination, entries):
         archive.getmembers()
 
 
-def backup_snapshot(info, directory, full=False):
+def backup_snapshot(info, directory, previous_release=None):
     directory.mkdir(parents=True, mode=0o700)
     root, database = info['root'], info['db']
     target = directory / 'database.sqlite'
@@ -33,8 +33,8 @@ def backup_snapshot(info, directory, full=False):
                    if item.resolve() not in (database, pathlib.Path(str(database) + '-wal'), pathlib.Path(str(database) + '-shm'))]
     archive_paths(directory / 'assets.tar.gz', assets)
     archive_paths(directory / 'config.tar.gz', [(root / 'server/.env', 'server.env'), (root / '.runtime/nginx.conf', 'nginx.conf')])
-    if full:
-        archive_paths(directory / 'runtime.tar.gz', [(root / item, item) for item in ARTIFACTS])
+    if previous_release is not None:
+        write_json(directory / 'release.json', previous_release)
         command(['git', '-C', root, 'bundle', 'create', directory / 'source.bundle', '--all'], timeout=600)
         command(['git', '-C', root, 'bundle', 'verify', directory / 'source.bundle'])
         command(['git', '-C', root, 'archive', '--format=tar', '-o', directory / 'source.tar', info['old']], timeout=600)

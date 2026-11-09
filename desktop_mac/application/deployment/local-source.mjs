@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -28,6 +28,10 @@ async function currentCommit({ repoRealPath: root, deployRef }) {
 
 /** Only the pinned commit and its missing ancestors travel to the server. GitHub refs are untouched. */
 export async function deployCurrentSource({ config, dryRun, execute, report }) {
+  const started = performance.now();
+  const timing = (name, since, fields = {}) => report(JSON.stringify({
+    stage: 'local_timing', name, seconds: +(Math.max(0, performance.now() - since) / 1000).toFixed(3), ...fields,
+  }));
   const root = config.repoRealPath;
   const currentSha = await currentCommit(config);
   async function run(options, expectedStage, bundleFile) {
@@ -42,6 +46,7 @@ export async function deployCurrentSource({ config, dryRun, execute, report }) {
     return result;
   }
   const inspection = await run({ dryRun: true }, 'inspection');
+  timing('preview', started);
   if (inspection.candidate !== currentSha || !shaPattern.test(inspection.current) || typeof inspection.known !== 'boolean') {
     throw new Error('服务器预演未确认本次提交和部署基线。');
   }
@@ -49,6 +54,7 @@ export async function deployCurrentSource({ config, dryRun, execute, report }) {
   const apply = async (bundleFile) => {
     const result = await run({ dryRun: false, serverBase: inspection.current, withBundle: Boolean(bundleFile) }, 'deployed', bundleFile);
     if (result.sha !== currentSha || !result.backup) throw new Error('部署回执缺少目标提交或已校验的备份路径。');
+    timing('total', started, { mode: result.mode });
     return result;
   };
   if (inspection.known) return apply();
@@ -58,10 +64,12 @@ export async function deployCurrentSource({ config, dryRun, execute, report }) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'ai-novel-server-update-'));
   try {
     const bundle = path.join(directory, 'candidate.bundle');
+    const packing = performance.now();
     await git(root, 'bundle', 'create', bundle, 'HEAD', `^${inspection.current}`);
     if (await git(root, 'bundle', 'list-heads', bundle) !== `${currentSha} HEAD`) {
       throw new Error('打包期间本地 HEAD 发生变化，请重新运行服务器更新。');
     }
+    timing('package-bundle', packing, { bytes: (await stat(bundle)).size });
     return await apply(bundle);
   } finally {
     await rm(directory, { recursive: true, force: true });
