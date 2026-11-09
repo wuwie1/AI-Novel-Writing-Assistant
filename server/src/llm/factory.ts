@@ -2,11 +2,12 @@ import {attachLLMCacheRequestPolicy,resolveCacheCapability} from "../platform/ll
 import {attachExecutionSignal,assertLlmExecutionConfiguration,attachLlmExecutionPolicy,resolveScopedTaskOutputTokens} from "../platform/llm/execution";
 import type { LLMProvider, ProviderAuthMode, ReasoningEffort } from "@ai-novel/shared/types/llm";
 import type { ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
-import { ChatOpenAI } from "@langchain/openai";
+import type { ChatOpenAI } from "@langchain/openai";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
 import { secretStore } from "../services/settings/secretStore";
 import { resolveModelTemperature } from "./capabilities";
 import { createAnthropicLLM } from "./anthropicClient";
+import { createOpenAICompatibleChat } from "./openai/chatClient";
 import { attachLLMDebugLogging } from "./debugLogging";
 import { attachLLMRequestLimiter } from "./requestLimiter";
 import { attachLLMRequestGuard } from "./requestGuard";
@@ -23,6 +24,7 @@ import {
   getProviderEnvApiKey,
   getProviderEnvModel,
   isBuiltInProvider,
+  isOfficialOpenAIBaseUrl,
   providerRequiresApiKey,
   PROVIDERS,
   resolveProviderBaseUrl,
@@ -301,7 +303,9 @@ export async function resolveLLMClientOptions(
   const timeoutMs = normalizeOptionalTimeoutMs(options.timeoutMs);
   const concurrencyLimit = normalizeLimitValue(dbSecret?.concurrencyLimit);
   const requestIntervalMs = normalizeLimitValue(dbSecret?.requestIntervalMs);
-  const requestProtocol = options.requestProtocol === "anthropic" ? "anthropic" : "openai_compatible";
+  const requestProtocol = options.requestProtocol === "anthropic" && !isOfficialOpenAIBaseUrl(baseURL)
+    ? "anthropic"
+    : "openai_compatible";
   const structuredStrategy = options.structuredStrategy;
   const executionMode = options.executionMode ?? "plain";
   const structuredProfile = executionMode === "structured"
@@ -405,7 +409,7 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
       maxTokens: resolved.maxTokens,
       timeoutMs: resolved.timeoutMs,
     }) as ChatOpenAI
-    : new ChatOpenAI({
+    : createOpenAICompatibleChat({
       apiKey: resolved.apiKey ?? "ollama",
       model: resolved.model,
       modelName: resolved.model,
@@ -423,7 +427,7 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
   const meta = {
     provider: resolved.provider,
     model: resolved.model,
-    temperature: resolved.temperature,
+    temperature: resolved.requestProtocol === "anthropic" ? resolved.temperature : llm.temperature,
     maxTokens: resolved.maxTokens,
     timeoutMs: resolved.timeoutMs,
     taskType: resolved.taskType,

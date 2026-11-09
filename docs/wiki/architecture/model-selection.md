@@ -53,6 +53,7 @@
 
 ## 失败模式
 
+- OpenAI 连接测试报错时，在 LLM 日志里按模型名查看第一次失败的请求。官方地址 `https://api.openai.com/v1` 只使用 OpenAI 协议。测试与写作共用同一客户端，Chat Completions 使用 `max_completion_tokens`，默认启用推理的模型省略自定义温度。输出上限包含推理用量，连通性探针需要给可见回复留出空间。自定义网关按实际地址探测协议。[OpenAI Chat Completions 参数](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) · [OpenAI 推理模型指南](https://developers.openai.com/api/docs/guides/reasoning)
 - 重启后顶部模型跳回旧默认：先查 `AppSetting.llm.currentSelection` 是否存在，再查前端是否完成水合，最后查当前厂商是否仍在 `/api/settings/api-keys` 的可运行列表中。
 - 顶部显示的模型不可用：检查厂商是否只有静态默认模型、是否没有保存模型、模型目录是否拉取失败。
 - 设置页能看到厂商但顶部没有它：确认 `isConfigured`、`isActive` 和模型列表是否同时满足，未配置模型的厂商不应进入顶部候选。

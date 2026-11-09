@@ -1,4 +1,5 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import type { ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
 import type { ChatOpenAI } from "@langchain/openai";
 import type { TaskType } from "./modelRouter";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
@@ -14,7 +15,8 @@ let logSequence = 0;
 interface LLMDebugMeta {
   provider: LLMProvider;
   model: string;
-  temperature: number;
+  temperature?: number;
+  requestProtocol?: ModelRouteRequestProtocol;
   maxTokens?: number;
   timeoutMs?: number;
   taskType?: TaskType;
@@ -312,8 +314,11 @@ function buildHeader(method: "invoke" | "stream" | "batch", meta: LLMDebugMeta):
     `[llm.debug] ${method}`,
     `provider=${meta.provider}`,
     `model=${meta.model}`,
-    `temperature=${meta.temperature}`,
+    `temperature=${meta.temperature ?? "default"}`,
   ];
+  if (meta.requestProtocol) {
+    chunks.push(`requestProtocol=${meta.requestProtocol}`);
+  }
   if (typeof meta.maxTokens === "number") {
     chunks.push(`maxTokens=${meta.maxTokens}`);
   }
@@ -412,7 +417,8 @@ function buildFileLogBlock(input: {
     method: input.method,
     provider: input.meta.provider,
     model: input.meta.model,
-    temperature: input.meta.temperature,
+    temperature: input.meta.temperature ?? null,
+    requestProtocol: input.meta.requestProtocol ?? null,
     maxTokens: input.meta.maxTokens ?? null,
     timeoutMs: input.meta.timeoutMs ?? null,
     taskType: input.meta.taskType ?? null,

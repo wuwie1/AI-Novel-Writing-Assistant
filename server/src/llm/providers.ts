@@ -144,12 +144,22 @@ export const PROVIDERS: Record<BuiltinLLMProvider, ProviderConfig> = {
 
 export const SUPPORTED_PROVIDERS: BuiltinLLMProvider[] = [...LLM_PROVIDERS];
 
+const OPENAI_API_ORIGIN = new URL(PROVIDERS.openai.baseURL).origin;
+
+export function isOfficialOpenAIBaseUrl(baseURL: string): boolean {
+  return URL.canParse(baseURL) && new URL(baseURL).origin === OPENAI_API_ORIGIN;
+}
+
 export function isBuiltInProvider(provider: string): provider is BuiltinLLMProvider {
   return isBuiltinLLMProvider(provider);
 }
 
 export function normalizeBaseURL(baseURL: string): string {
-  return baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
+  const normalized = baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL;
+  if (URL.canParse(normalized) && new URL(normalized).href === `${OPENAI_API_ORIGIN}/`) {
+    return PROVIDERS.openai.baseURL;
+  }
+  return normalized;
 }
 
 export function getProviderEnvApiKey(provider: LLMProvider): string | undefined {
