@@ -5,10 +5,12 @@
 将下面这段指令交给仓库根目录中的 Codex 即可开始。
 
 ```text
-读取 AGENTS.md 和 plan.md，在包含当前 Mac renderer 的专用功能分支上实施。按“实施阶段”的依赖顺序，从第一个未完成的复选框开始。每阶段打通真实页面入口，运行对应检查，把勾选进度和检查结果与该阶段改动一起提交，再继续下一阶段。沿用 Web 现有的数据和操作合同。完成后交付 beta 集成结果、检查证据和用户实机验收清单。
+读取 AGENTS.md 和 plan.md，在从 ai 分支创建的 codex/mac-entity-lists 功能分支上实施（已存在则切换过去继续）。按“实施阶段”的依赖顺序，从第一个未完成的复选框开始。每阶段打通真实页面入口，运行对应检查，把勾选进度和检查结果与该阶段改动一起提交，再继续下一阶段。沿用 Web 现有的数据和操作合同，不新增服务端接口、Prompt 或数据库迁移。检查失败先在本阶段修复；遇到计划与源码冲突、需要新接口或破坏性操作时，停在当前阶段并报告原因。完成后交付本地 beta 集成结果、检查证据和用户实机验收清单，不推送远端。
 ```
 
-计划依据为本仓库 `ai@7d2a4c48` 和 `/Users/likai/go/src/write/wukong` 的 `c610746b`。实施时以当前分支源码为准。此次升级针对 `desktop_mac/renderer` 与它复用的客户端业务视图。保留现有 Mac 配色、排版、图标轨道、原生窗口及服务连接方式。
+计划依据为本仓库 `ai@1af8a381` 和 `/Users/likai/go/src/write/wukong` 的 `c610746b`。实施时以当前分支源码为准。Mac renderer 只存在于 `ai` 分支，`main` 没有 `desktop_mac/`，功能分支必须从 `ai` 创建。此次升级针对 `desktop_mac/renderer` 与它复用的客户端业务视图。保留现有 Mac 配色、排版、图标轨道、原生窗口及服务连接方式。
+
+范围边界：列表只使用现有接口和页面已有投影。某个集合缺少可用的列表数据时，该视图收起中栏，并在阶段提交说明中记录缺口，不为此新建接口、拼装假数据或回退到页面链接。
 
 ## 一、布局与参考
 
@@ -76,7 +78,7 @@
 
 - [ ] **P0 · 建立列表槽与无列表布局**
 
-  核对 `git status --short --branch`、`git branch -avv` 和 `git worktree list`，从包含当前 Mac renderer 的开发基线创建 `codex/mac-entity-lists`。在客户端平台边界、`MacAppLayout`、`navigation.ts` 和 Mac 主题接入列表槽。以“帮助”验证整宽画布，在导航组件测试中用两条记录验证列表入槽及抽屉。P1 接入正式运行记录页，未迁移页面暂留原入口。
+  核对 `git status --short --branch`、`git branch -avv` 和 `git worktree list`。工作区有非本计划的未提交改动时停下报告。从 `ai` 创建 `codex/mac-entity-lists`，分支已存在则切换并从首个未勾选阶段继续。在客户端平台边界、`MacAppLayout`、`navigation.ts` 和 Mac 主题接入列表槽。以“帮助”验证整宽画布，在导航组件测试中用两条记录验证列表入槽及抽屉。P1 接入正式运行记录页，未迁移页面暂留原入口。
 
   验收时，帮助没有空白栏，键盘跳过隐藏栏，开关抽屉只挂载一份业务控制器，Web 能在原位置操作列表。
 
@@ -126,7 +128,7 @@
 
   清除旧中栏页面链接、重复读取和过渡适配。按 `appPageIds` 逐项核对 [路由覆盖表](desktop_mac/docs/route-parity.md)。本基线有 47 个子路由条目，含首页、重定向和通配 `*`。验证 `/writing-formula`、`/auto-director/follow-up-center`、`/auto-director/followup-center` 的落点，以及世界功能开关的两种状态。同步 [Mac 架构 Wiki](docs/wiki/architecture/mac-desktop.md) 的中栏规则与[实机验收清单](desktop_mac/docs/acceptance.md)。
 
-  按项目流程将功能分支合入 `beta`，在组合后的提交上验证。编写计划时仓库可见分支中尚无 `beta`，届时先核实预发布基线与 Mac 提交祖先关系，再建立或使用本地 `beta`。记录目标 SHA、工程结果、待用户验收项。验收、修复及分支收尾按仓库流程进行。
+  按项目流程将功能分支合入 `beta`，在组合后的提交上验证。编写计划时本地与远端均无 `beta`，且 `main` 不含 `desktop_mac/`。若届时仍无 `beta`，从 `ai` 当前提交建立本地 `beta` 再合入；不要从 `main` 建立，否则会把整条 `ai` 历史一起带进预发布线。已有 `beta` 时先确认它包含 `ai` 的 Mac 提交，不包含则停下报告。只在本地合并，推送 `beta`、提升到 `main` 及删除功能分支交由用户决定。记录目标 SHA、工程结果、待用户验收项。
 
 ### 阶段检查与提交
 
