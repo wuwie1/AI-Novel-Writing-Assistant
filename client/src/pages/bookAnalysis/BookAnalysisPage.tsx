@@ -1,3 +1,4 @@
+import { EntityList, useEntityListHost } from "@/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListChecks, Plus, RefreshCw } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ import { useBookAnalysisWorkspace } from "./hooks/useBookAnalysisWorkspace";
 import { resolveBookAnalysisNextAction } from "./bookAnalysisWorkspaceViewModel";
 
 export default function BookAnalysisPage() {
+  const host = useEntityListHost();
   const workspace = useBookAnalysisWorkspace();
   const dualPanePreference = useBookAnalysisDualPanePreference();
   const chapterReader = useBookAnalysisChapterReader();
@@ -251,8 +253,9 @@ export default function BookAnalysisPage() {
           ) : null}
         />
       ) : null}
-      <div className="grid gap-6 xl:grid-cols-[252px_minmax(0,1fr)]">
+      <div className={host ? "min-w-0" : "grid gap-6 xl:grid-cols-[252px_minmax(0,1fr)]"}>
         <div className="order-2 min-w-0 xl:order-1 xl:sticky xl:top-4 xl:self-start">
+          <EntityList title="拆书记录" collection={`analysis:${workspace.analysisMode}`} selection={workspace.selectedAnalysisId || null}>
           <BookAnalysisSidebar
             analysisMode={workspace.analysisMode}
             keyword={workspace.keyword}
@@ -265,11 +268,11 @@ export default function BookAnalysisPage() {
             onStatusChange={workspace.setStatus}
             onOpenAnalysis={(analysisId) => {
               pendingResultFocusIdRef.current = analysisId;
-              setActiveView("sections");
+              // The history link opens the results view in a single navigation.
             }}
             onOpenCreateDialog={() => setCreateDialogOpen(true)}
             onRetry={workspace.retryAnalyses}
-          />
+          /></EntityList>
         </div>
 
         <div className="order-1 min-w-0 space-y-5 xl:order-2">

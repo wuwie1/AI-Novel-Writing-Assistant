@@ -18,8 +18,9 @@ before(async () => {
   for (const [name, value] of Object.entries({
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true,
+    cancelAnimationFrame: clearTimeout,
     requestAnimationFrame: (callback) => setTimeout(callback, 0),
-    ...Object.fromEntries(['Node', 'Element', 'HTMLElement', 'HTMLFormElement', 'HTMLInputElement', 'HTMLButtonElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'Event', 'CustomEvent', 'KeyboardEvent', 'MouseEvent', 'FormData', 'getComputedStyle'].map((key) => [key, typeof dom.window[key] === 'function' && key === 'getComputedStyle' ? dom.window[key].bind(dom.window) : dom.window[key]])),
+    ...Object.fromEntries(['Node', 'DocumentFragment', 'MutationObserver', 'Element', 'HTMLElement', 'HTMLFormElement', 'HTMLInputElement', 'HTMLButtonElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'Event', 'CustomEvent', 'KeyboardEvent', 'MouseEvent', 'FormData', 'getComputedStyle'].map((key) => [key, typeof dom.window[key] === 'function' && key === 'getComputedStyle' ? dom.window[key].bind(dom.window) : dom.window[key]])),
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
     restore.push(() => descriptor ? Object.defineProperty(globalThis, name, descriptor) : delete globalThis[name]);
@@ -37,6 +38,7 @@ before(async () => {
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
       import DirectorRunHistoryPage from '@/pages/directorNext/DirectorRunHistoryPage';
       import CreativeHubThreadList from '@/pages/creativeHub/components/CreativeHubThreadList';
+      import KnowledgePage from '@/pages/knowledge/KnowledgePage';
       import NovelPreview from '@/pages/novels/NovelPreview';
       import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
       import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
@@ -47,6 +49,8 @@ before(async () => {
         const requests=[],messages=[];
         window.__AI_NOVEL_MAC__={protocolVersion:1,mode:'local',backendIdentity:'test',postMessage:message=>messages.push(message)};
         const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel',updatedAt:'2026-01-01',_count:{chapters:1,characters:0},chapters:[{id:'chapter-a',title:'测试章节',order:1,content:'原文甲'},{id:'chapter-b',title:'次章',order:2,content:'原文乙'}],characters:[]};
+        let releaseDocument,failDocument=true;
+        const docs=['a','b'].map(id=>({id,title:'资料'+id,status:'enabled',activeVersionId:id+'2',activeVersionNumber:2,versions:[1,2].map(n=>({id:id+n,versionNumber:n,content:'文档版本 '+id+n,createdAt:'2026-01-01'}))}));
         apiClient.defaults.adapter=async config=>{
           requests.push({url:config.url,method:config.method,params:config.params});
           let data;
@@ -56,6 +60,10 @@ before(async () => {
           else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
+          else if(config.url==='/knowledge/documents') data=docs;
+          else if(config.url==='/rag/jobs') data=[];
+          else if(config.url==='/knowledge/documents/a') {await new Promise(resolve=>{releaseDocument=resolve});data=docs[0];}
+          else if(config.url==='/knowledge/documents/b') {if(failDocument){failDocument=false;throw Error('读取失败')} data=docs[1];}
           else if(config.url==='/creative-hub/threads') data=[{id:'thread-a',title:'构思对话'}];
           else if(config.url==='/director-next/legacy-records') data=[{runId:'old',headline:'旧版记录',sourceRoute:'/novels/book-a/edit'}];
           else if(config.url==='/director-next/records') data=[{runId:'run-b',headline:'第二次运行',directorRoute:'/lab/director/book-a'},{runId:'run-a',headline:'测试创作记录',statusLabel:'完成',progressLabel:'1章',directorRoute:'/lab/director/book-a'}];
@@ -82,7 +90,7 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
         const root=createRoot(document.getElementById('root'));
@@ -91,7 +99,7 @@ before(async () => {
         const flush=async fn=>{await act(async()=>{fn?.();await new Promise(resolve=>setTimeout(resolve,20))});await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})};
         await flush(render);
         return {
-          requests,messages,router,flush,
+          requests,messages,router,flush,releaseDocument:()=>releaseDocument(),
           get saveCount(){return saveCount},
           get pathname(){return router.state.location.pathname},
           get dialog(){return document.querySelector('[role="dialog"]')},
@@ -235,7 +243,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演运行记录', '测试创作记录'],
       ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
-      ['/knowledge', '资料与参考', '书籍分析'], ['/genres', '故事素材', '角色素材'],
+      ['/knowledge', '创作资料', '资料b'], ['/genres', '故事素材', '角色素材'],
       ['/prompt-workbench', '写作工具', '写作规则'],
     ]) {
       await h.go(route);
@@ -384,4 +392,19 @@ test('preview switches text and retains directory search only within the same bo
     assert.match(h.sidebar.textContent,/另一作品/);
     assert.ok(!h.sidebar.textContent.includes('测试章节'));
   } finally {await h.cleanup();}
+});
+
+test('knowledge keeps the selected historical version after retry and a late previous document', async () => {
+  const h = await mount('/knowledge?documentId=a');
+  try {
+    await h.go('/knowledge?documentId=b&versionId=b1');
+    assert.match(document.querySelector('main').textContent, /无法读取这份文档/);
+    await h.click('重新读取');
+    assert.match(document.querySelector('main').textContent, /文档版本 b1/);
+    const href = document.querySelector('main a[href*="versionId=b1"]').getAttribute('href');
+    assert.match(href, /documentId=b/);
+    await h.flush(h.releaseDocument);
+    assert.doesNotMatch(document.querySelector('main').textContent, /文档版本 a/);
+    assert.ok(h.requests.every(request => request.method === 'get'));
+  } finally { await h.cleanup(); }
 });

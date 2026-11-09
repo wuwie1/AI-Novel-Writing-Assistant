@@ -1,3 +1,4 @@
+import { EntityList, DirectoryRows, useEntityListHost, useRouteFields } from "@/platform";
 import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { CircleAlert, FileText, LoaderCircle, MoreHorizontal, RefreshCw, Upload, X } from "lucide-react";
@@ -24,6 +25,7 @@ function formatDocumentKind(kind: KnowledgeDocumentSummary["kind"]): string {
 }
 
 interface KnowledgeDocumentsTabProps {
+  selectedDocumentId: string;
   uploadTitle: string;
   onUploadTitleChange: (value: string) => void;
   uploadDialogOpen: boolean;
@@ -48,6 +50,7 @@ interface KnowledgeDocumentsTabProps {
 }
 
 export default function KnowledgeDocumentsTab({
+  selectedDocumentId,
   uploadTitle,
   onUploadTitleChange,
   uploadDialogOpen,
@@ -70,6 +73,8 @@ export default function KnowledgeDocumentsTab({
   onReindexDocument,
   onUpdateStatus,
 }: KnowledgeDocumentsTabProps) {
+  const host = useEntityListHost();
+  const [route] = useRouteFields();
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,7 +230,7 @@ export default function KnowledgeDocumentsTab({
             </summary>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button asChild size="sm" variant="ghost" className="rounded-full">
-                <Link to={`/book-analysis?documentId=${document.id}`}>新建拆书</Link>
+                <Link to={`/book-analysis?${new URLSearchParams({documentId: document.id, ...(route.get("versionId") ? {versionId: route.get("versionId")!} : {})})}`}>新建拆书</Link>
               </Button>
               {document.kind === "analysis_published" && document.sourceAnalysisId ? (
                 <Button asChild size="sm" variant="ghost" className="rounded-full">
@@ -260,6 +265,22 @@ export default function KnowledgeDocumentsTab({
       </article>
     );
   };
+
+  const filters = <>
+            <Input
+              value={keyword}
+              onChange={(event) => onKeywordChange(event.target.value)}
+              placeholder="按标题或文件名搜索"
+            />
+            <SelectField
+              value={status}
+              onValueChange={(value) => onStatusChange(value as KnowledgeDocumentStatus | "")}
+              options={statusOptions.map((option) => ({ ...option }))}
+              placeholder="筛选状态"
+              className="space-y-0"
+              triggerClassName="h-10"
+            />
+  </>;
 
   const hasFilters = Boolean(keyword.trim() || status);
 
@@ -319,7 +340,14 @@ export default function KnowledgeDocumentsTab({
 
   return (
     <>
-      <section className="scroll-mt-5">
+      {host ? <>
+        <EntityList title="创作资料" collection="knowledge:documents" selection={selectedDocumentId || null} tools={filters}>
+          {isLoading || errorMessage || !documents.length ? renderDocuments() : <DirectoryRows selection={selectedDocumentId}
+            rows={documents.map(doc => ({ id: doc.id, label: doc.title, description: `v${doc.activeVersionNumber} · ${formatStatus(doc.status)}` }))} onSelect={onSelectDocument}/>}
+        </EntityList>
+        <Button size="sm" variant="outline" onClick={() => onUploadDialogOpenChange(true)}>上传资料</Button>
+        {documents.filter(doc => doc.id === selectedDocumentId).map(renderDocumentRow)}
+      </> : <section className="scroll-mt-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold tracking-tight text-foreground">资料书架</h2>
@@ -332,23 +360,11 @@ export default function KnowledgeDocumentsTab({
         </div>
         <div id="knowledge-documents" className="mt-5 space-y-4 scroll-mt-5">
           <div className="grid gap-2 rounded-2xl bg-muted/20 p-3 md:grid-cols-[1fr_180px]">
-            <Input
-              value={keyword}
-              onChange={(event) => onKeywordChange(event.target.value)}
-              placeholder="按标题或文件名搜索"
-            />
-            <SelectField
-              value={status}
-              onValueChange={(value) => onStatusChange(value as KnowledgeDocumentStatus | "")}
-              options={statusOptions.map((option) => ({ ...option }))}
-              placeholder="筛选状态"
-              className="space-y-0"
-              triggerClassName="h-10"
-            />
+            {filters}
           </div>
           {renderDocuments()}
         </div>
-      </section>
+      </section>}
 
       <Dialog open={uploadDialogOpen} onOpenChange={handleDialogOpenChange}>
         <AppDialogContent

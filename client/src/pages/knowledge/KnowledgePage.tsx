@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import type { KnowledgeDocumentStatus, KnowledgeRecallTestResult } from "@ai-novel/shared/types/knowledge";
+import { useRouteFields, useEntityListHost } from "@/platform";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "@/components/ui/toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,7 +45,10 @@ export default function KnowledgePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<KnowledgeDocumentStatus | "">("");
-  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const host = useEntityListHost();
+  const [, updateRoute] = useRouteFields();
+  const selectedDocumentId = searchParams.get("documentId") ?? "";
+  const setSelectedDocumentId = (id: string) => updateRoute({ documentId: id, versionId: null });
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -287,14 +291,16 @@ export default function KnowledgePage() {
     },
   });
 
+  const recallDocument = useRef(selectedDocumentId);
+  recallDocument.current = selectedDocumentId;
   const recallTestMutation = useMutation({
     mutationFn: (payload: { documentId: string; query: string; limit?: number }) =>
       testKnowledgeDocumentRecall(payload.documentId, {
         query: payload.query,
         limit: payload.limit,
       }),
-    onSuccess: (response) => {
-      setRecallResult(response.data ?? null);
+    onSuccess: (response, request) => {
+      if (recallDocument.current === request.documentId) setRecallResult(response.data ?? null);
     },
   });
 
@@ -550,6 +556,7 @@ export default function KnowledgePage() {
 
         <TabsContent value="documents">
           <KnowledgeDocumentsTab
+            selectedDocumentId={selectedDocumentId}
             uploadTitle={uploadTitle}
             onUploadTitleChange={setUploadTitle}
             uploadDialogOpen={uploadDialogOpen}
@@ -588,6 +595,7 @@ export default function KnowledgePage() {
             disabledCount={disabledCount}
             ragHealth={ragHealthQuery.data?.data}
             ragHealthNotice={ragHealthNotice}
+            loading={ragJobsQuery.isLoading} failed={ragJobsQuery.isError} retry={() => void ragJobsQuery.refetch()}
             jobs={ragJobsQuery.data?.data ?? []}
             failedJobs={failedJobs}
             actionMessage={ragJobsActionMessage}
@@ -615,8 +623,9 @@ export default function KnowledgePage() {
         </TabsContent>
       </Tabs>
 
+      {host && selectedDocumentId && detailQuery.isError && <div role="alert">无法读取这份文档。 <button onClick={() => void detailQuery.refetch()}>重新读取</button> <button onClick={() => setSelectedDocumentId("")}>返回资料列表</button></div>}
       <KnowledgeDocumentDetailDialog
-        open={Boolean(selectedDocumentId)}
+        open={activeTab === "documents" && Boolean(selectedDocumentId) && !(host && detailQuery.isError)}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedDocumentId("");
@@ -630,8 +639,8 @@ export default function KnowledgePage() {
         recallQuery={recallQuery}
         onRecallQueryChange={setRecallQuery}
         onRecallTest={handleRecallTest}
-        recallPending={recallTestMutation.isPending}
-        recallErrorMessage={recallErrorMessage}
+        recallPending={recallTestMutation.isPending && recallTestMutation.variables?.documentId === selectedDocumentId}
+        recallErrorMessage={recallTestMutation.variables?.documentId === selectedDocumentId ? recallErrorMessage : null}
         recallResult={recallResult}
         onRestoreDocument={() => selectedDocumentId && updateStatusMutation.mutate({
           id: selectedDocumentId,
