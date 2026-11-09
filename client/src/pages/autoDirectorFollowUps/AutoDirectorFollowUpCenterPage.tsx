@@ -1,3 +1,4 @@
+import { EntityList, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -119,6 +120,8 @@ function parseEnumParam<T extends string>(value: string | null, candidates: read
 }
 
 export default function AutoDirectorFollowUpCenterPage() {
+  const host = useEntityListHost();
+  const [fields, update] = useRouteFields();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -177,7 +180,7 @@ export default function AutoDirectorFollowUpCenterPage() {
   });
 
   const items = listQuery.data?.data?.items ?? [];
-  const selectedDirectorTaskId = resolveFollowUpSelectedTaskId({
+  const selectedDirectorTaskId = (host && fields.get("followUpId")) || resolveFollowUpSelectedTaskId({
     override: selectedTaskOverride,
     contextKey: selectionContextKey,
     items,
@@ -294,6 +297,7 @@ export default function AutoDirectorFollowUpCenterPage() {
   });
 
   const handleSelectTask = (directorTaskId: string) => {
+    if (host) { update({ followUpId:directorTaskId }); return; }
     setSelectedTaskOverride({ taskId: directorTaskId, contextKey: selectionContextKey });
   };
 
@@ -484,7 +488,8 @@ export default function AutoDirectorFollowUpCenterPage() {
         onSectionChange={handleSectionChange}
       />
 
-      <div className={AUTO_DIRECTOR_MOBILE_CLASSES.followUpMasterDetailGrid}>
+      <div className={host ? "min-w-0" : AUTO_DIRECTOR_MOBILE_CLASSES.followUpMasterDetailGrid}>
+        <EntityList collection="director-follow-ups" title="导演跟进" selection={selectedDirectorTaskId || null}>
         <AutoDirectorFollowUpListPanel
           items={items}
           pagination={listQuery.data?.data?.pagination ?? null}
@@ -511,6 +516,7 @@ export default function AutoDirectorFollowUpCenterPage() {
           }}
         />
 
+        </EntityList>
         <AutoDirectorFollowUpDetailPanel
           detail={detailQuery.data?.data ?? null}
           selectedItem={items.find((item) => item.directorTaskId === selectedDirectorTaskId) ?? null}

@@ -46,7 +46,7 @@ export function MacAppLayout() {
     refetchInterval: 20_000,
   });
   const directorAttention = useQuery({
-    queryKey: queryKeys.directorNext.runs(true),
+    queryKey: queryKeys.directorNext.runs(true,20),
     queryFn: () => listDirectorRuns({ needsAttention: true, limit: 20 }),
     staleTime: 20_000,
     refetchInterval: 20_000,
@@ -60,7 +60,7 @@ export function MacAppLayout() {
   const workbench = context.chapterId ? "chapter-editor"
     : context.section === "creative" ? "creative-workbench"
     : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const legacy = !entity && !["help", "tasks", "create", "shelf"].includes(context.section) && !(context.section === "novel" && context.primary === "/novels");
+  const legacy = !entity && !["help", "tasks", "create", "shelf", "novel", "director", "creative"].includes(context.section);
   const hasList = !!entity || legacy;
   const title = entity?.title ?? context.sidebarTitle;
   const collapseKey = entity?.collection ?? workbench ?? context.section;
@@ -157,7 +157,7 @@ export function MacAppLayout() {
     </aside>
     {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${title}`} onClick={closeDrawer}/> : null}
     <main className="mac-workspace">
-      <section className="mac-canvas" aria-label={context.title}>{context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">{createLinks.map(([href,label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}</nav>}<Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider></Suspense></section>
+      <section className="mac-canvas" aria-label={context.title}>{context.section === "director" && location.pathname !== "/lab/director/preview" && <nav className="mac-view-links" aria-label="导演工作区"><Link to="/lab/director">运行记录</Link><Link to="/auto-director/follow-ups">导演跟进</Link></nav>}{context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">{createLinks.map(([href,label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}</nav>}<Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider></Suspense></section>
     </main>
     <VisualAssetLibraryDialog
       open={visualAssetsOpen}

@@ -1,0 +1,1 @@
+export { BookResourcePicker } from "./BookResourcePicker";

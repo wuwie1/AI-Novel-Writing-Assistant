@@ -7,7 +7,7 @@ import type {
   CreativeHubTurnSummary,
 } from "@ai-novel/shared/types/creativeHub";
 import type { WorkspaceTone } from "@/components/workspace";
-import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
+import { toUserFacingErrorText } from "../../../lib/userFacingErrorText.ts";
 
 export type CreativeHubWorkspaceAction =
   | "retry_threads"

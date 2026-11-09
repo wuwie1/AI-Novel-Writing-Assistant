@@ -108,7 +108,9 @@
 
   跨书后不得出现上一书的章或卷。同书切章保留目录搜索，预览选章仍在预览，取消离开编辑时原文、高亮和焦点仍对应原章。
 
-- [ ] **P4 · 接通导演与创作中枢**（依赖 P1、P3）
+- [x] **P4 · 接通导演与创作中枢**（依赖 P1、P3）
+
+  工程验证通过。导航 13 项、两端 typecheck、创作与运行合同 40 项、书级恢复投影 16 项。。 现有跟进入口会清理旧任务参数，使用 followUpId 保存实际 directorTaskId。
 
   在 `DirectorRunHistoryPage`、`AutoDirectorFollowUpCenterPage`、书内 `NovelWorkspace` 和 `CreativeHubPage` 的状态所有者接入列表。保留当前/旧版运行、跟进和书内审阅的来源。导演角标取 20 条、历史页取 50 条，区分缓存键中的读取范围，避免只看待处理时误用角标的截断结果。
 

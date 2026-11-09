@@ -1,3 +1,5 @@
+import { BookResourcePicker } from "./directory";
+import { useEntityListHost } from "@/platform";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ResizableWorkspace } from "@/components/layout/resizableWorkspace";
 import { ResourceDirectory } from "./ResourceDirectory";
@@ -20,6 +22,7 @@ const WorldMapView = lazy(()=>import("./visualizations").then(module=>({default:
 const CharacterGraphView = lazy(()=>import("./visualizations").then(module=>({default:module.CharacterGraphView})));
 
 export function NovelWorkspace({ book, preview = false, review, onLeaveReview, followGeneration = false, generation = null, activity, onEditChapter, editedChapter }: { book: WorkspaceBook; preview?: boolean; review?:URLSearchParams; onLeaveReview?:()=>void; followGeneration?:boolean; generation?:DirectorGenerationSnapshot|null; activity?:DirectorWorkspaceActivity; onEditChapter?:(chapterId:string)=>void; editedChapter?:{id:string;revision:number}|null }) {
+  const host = useEntityListHost();
   const {preferences: readingDisplay, updatePreferences: onReadingDisplayChange} = useReadingDisplayPreferences();
   const live = followGeneration && generation?.novelId === book.novel.id ? generation : null;
   // Planning/polling may not yet include the newly created chapter. The preview is read-only.
@@ -77,7 +80,7 @@ export function NovelWorkspace({ book, preview = false, review, onLeaveReview, f
         : selected.kind === "beat" || selected.kind === "plan" || (selected.kind === "volume" && book.planning) ? null : <AssetDetail book={book} selected={selected} onCharacter={openCharacter} onSelect={select} preview={preview} />}
     </section>;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-    {directoryOpen ? <ResizableWorkspace id="director-resource-layout" className="min-h-0 flex-1" label="调整目录与正文宽度" defaultLeft={27} minLeft={180} minRight={340} breakpoint={560} left={directory} right={content}/> : <>{directory}{content}</>}
+    {host ? <><BookResourcePicker book={displayBook} selected={directorySelected} onSelect={select}/>{content}</> : directoryOpen ? <ResizableWorkspace id="director-resource-layout" className="min-h-0 flex-1" label="调整目录与正文宽度" defaultLeft={27} minLeft={180} minRight={340} breakpoint={560} left={directory} right={content}/> : <>{directory}{content}</>}
     {character ? <CharacterDrawer key={character.id} book={book} character={character} readingOrder={chapter?.order ?? readingOrder} preview={preview} onClose={() => setCharacterId(null)} onChapter={id => select({kind:"chapter",id})} onPlan={id => select({kind:"plan",id})} onResources={id=>{setCharacterId(null);select({kind:"character_resources",id});}}/> : null}
   </div>;
 }

@@ -35,6 +35,8 @@ before(async () => {
       import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
       import {MacDocumentProtection} from './renderer/src/platform/MacDocumentProtection';
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
+      import DirectorRunHistoryPage from '@/pages/directorNext/DirectorRunHistoryPage';
+      import CreativeHubThreadList from '@/pages/creativeHub/components/CreativeHubThreadList';
       import NovelPreview from '@/pages/novels/NovelPreview';
       import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
       import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
@@ -55,7 +57,8 @@ before(async () => {
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
           else if(config.url==='/creative-hub/threads') data=[{id:'thread-a',title:'构思对话'}];
-          else if(config.url==='/director-next/records') data=[{runId:'run-a',headline:'测试创作记录',statusLabel:'完成',progressLabel:'1章',directorRoute:'/lab/director/book-a'}];
+          else if(config.url==='/director-next/legacy-records') data=[{runId:'old',headline:'旧版记录',sourceRoute:'/novels/book-a/edit'}];
+          else if(config.url==='/director-next/records') data=[{runId:'run-b',headline:'第二次运行',directorRoute:'/lab/director/book-a'},{runId:'run-a',headline:'测试创作记录',statusLabel:'完成',progressLabel:'1章',directorRoute:'/lab/director/book-a'}];
           else if(config.url==='/drama/projects' || config.url==='/comic/projects') data=[{id:'project-a',title:config.url.startsWith('/drama')?'短剧项目甲':'漫画项目甲'}];
           else if(config.url==='/tasks') data={items:config.params.keyword==='无结果'?[]:['novel_pipeline','agent_run'].map((kind,i)=>({id:'same',kind,title:i?'记录乙':'记录甲',status:'succeeded',progress:100})),nextCursor:config.params.cursor?null:'older'};
           else if(config.url.startsWith('/tasks/')) data=config.url.endsWith('/gone')?null:{id:config.url.split('/').pop(),kind:config.url.split('/')[2],title:'详情 '+config.url.split('/').slice(-2).join('/'),ownerLabel:'测试作品',status:'succeeded',steps:[]};
@@ -72,9 +75,14 @@ before(async () => {
           });
           return <div>编辑区</div>;
         }
+        function Threads() {
+          const [id,select]=React.useState('one'), [busy,setBusy]=React.useState(false);
+          const rows=['one','two'].map((id,i)=>({id,title:i?'第二会话':'构思对话',resourceBindings:{},status:'idle'}));
+          return <><EntityList collection="creative-threads" title="创作对话" selection={id}><CreativeHubThreadList threads={rows} activeThreadId={id} onSelect={select} actionDisabled={busy}/></EntityList><button onClick={()=>setBusy(true)}>测试忙碌</button></>;
+        }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
         const root=createRoot(document.getElementById('root'));
@@ -224,7 +232,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     const chapterReads = h.requests.filter(({url}) => url.endsWith('/chapters')).length;
     for (const [route, title, content] of [
       ['/novels', '我的小说', '测试作品'],
-      ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演创作', '测试创作记录'],
+      ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演运行记录', '测试创作记录'],
       ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
       ['/knowledge', '资料与参考', '书籍分析'], ['/genres', '故事素材', '角色素材'],
@@ -232,10 +240,6 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     ]) {
       await h.go(route);
       assert.equal(h.sidebar.getAttribute('aria-label'), title);
-      if (route === '/creative-hub') {
-        assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
-        await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
-      }
       assert.ok(h.sidebar.textContent.includes(content), route);
       assert.ok(!h.sidebar.textContent.includes('测试章节'), route);
     }
@@ -244,21 +248,20 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
   } finally { await h.cleanup(); }
 });
 
-test('self-contained workbenches remember their own directory preference without hiding other menus', async () => {
-  const h = await mount('/lab/director/book-a');
+test('director history distinguishes runs in one book and from legacy records; busy threads keep selection', async () => {
+  const h = await mount('/lab/director');
   try {
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
-    await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
+    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[1].click());
+    assert.match(h.router.state.location.search,/runId=run-a/);
+    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[2].click());
+    assert.equal(document.querySelector('main a[href="/novels/book-a/edit"]').textContent,'打开小说');
+    await h.go(-1);
+    assert.ok(document.querySelector('main a[href="/lab/director/book-a"]'));
     await h.go('/creative-hub');
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
-    await h.go('/knowledge');
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
-    await h.go('/lab/director/book-a');
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
-    await h.go('/novels/book-a/chapters/chapter-a');
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
-  } finally { await h.cleanup(); }
+    await h.click('测试忙碌');
+    assert.ok(h.sidebar.querySelector('button[aria-current]').disabled);
+    assert.ok(h.requests.every(r=>r.method==='get'));
+  } finally {await h.cleanup();}
 });
 
 test('record sidebar status controls the page and read-only API, including back navigation', async () => {
