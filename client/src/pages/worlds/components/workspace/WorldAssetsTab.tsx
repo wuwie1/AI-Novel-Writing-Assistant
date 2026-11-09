@@ -1,4 +1,5 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { EntityDirectory, useDirectorySelection, useRouteFields } from "@/platform";
+import { type Dispatch, type SetStateAction } from "react";
 import { GitCompareArrows, GitFork, Map, Network, Workflow } from "lucide-react";
 import type { World, WorldSnapshot } from "@ai-novel/shared/types/world";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,8 @@ interface WorldLibraryItem {
 
 interface WorldAssetsTabProps {
   worldId: string;
+  libraryState: {pending: boolean; error: boolean; retry: () => void};
+  snapshotState: WorldAssetsTabProps["libraryState"];
   world?: World;
   selectedLayerPrimaryField: "background" | "magicSystem" | "politics" | "cultures" | "history" | "conflicts";
   libraryKeyword: string;
@@ -120,7 +123,9 @@ function AssetToolButton({
 }
 
 export default function WorldAssetsTab(props: WorldAssetsTabProps) {
-  const [activeTool, setActiveTool] = useState<AssetTool>("visualAssets");
+  const [route, update] = useRouteFields();
+  const activeTool = route.get("tool") ?? "visualAssets";
+  const setActiveTool = (tool: AssetTool) => update({tool, assetId: null});
   const {
     selectedLayerPrimaryField,
     libraryKeyword,
@@ -160,8 +165,13 @@ export default function WorldAssetsTab(props: WorldAssetsTabProps) {
     onImport,
   } = props;
 
+  const rows = activeTool === "library" ? libraryItems.map(item => ({id: item.id, label: item.name, description: item.sourceWorldId === props.worldId ? "来自本世界" : "可引用素材"}))
+    : snapshots.map(item => ({id: item.id, label: item.label || "世界快照", description: new Date(item.createdAt).toLocaleString()}));
+  const directory = useDirectorySelection("assetId", rows);
   return (
     <section className="space-y-6">
+      {(activeTool === "library" || activeTool === "snapshots") && <EntityDirectory {...directory} collection={JSON.stringify(["world",props.worldId,activeTool])}
+        title={activeTool === "library" ? "可用世界素材" : "本世界快照"} rows={rows} {...(activeTool === "library" ? props.libraryState : props.snapshotState)}/>}
         <div>
           <h2 className="text-xl font-semibold tracking-tight">世界资料与版本</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">管理参考资料、可复用素材、版本备份以及导入导出，地图与图谱能力也从这里进入。</p>
@@ -240,7 +250,7 @@ export default function WorldAssetsTab(props: WorldAssetsTabProps) {
         {activeTool === "references" ? (
           <div className="rounded-3xl border border-border/35 bg-card/70 p-5">
             <div className="mb-3 font-medium">参考资料</div>
-            <KnowledgeBindingPanel targetType="world" targetId={props.worldId} title="参考资料" />
+            <KnowledgeBindingPanel showDirectory targetType="world" targetId={props.worldId} title="参考资料" />
           </div>
         ) : null}
 
@@ -307,7 +317,7 @@ export default function WorldAssetsTab(props: WorldAssetsTabProps) {
                 placeholder="可选描述（留空时默认使用当前分层内容）"
               />
             </div>
-            {libraryItems.map((item) => (
+            {libraryItems.filter(item => directory.includes(item.id)).map((item) => (
               <div key={item.id} className="space-y-3 rounded-2xl border border-border/35 p-4 text-sm">
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -346,7 +356,7 @@ export default function WorldAssetsTab(props: WorldAssetsTabProps) {
               创建快照
             </Button>
           </div>
-          {snapshots.map((snapshot) => (
+          {snapshots.filter(item => directory.includes(item.id)).map((snapshot) => (
             <div key={snapshot.id} className="flex items-center justify-between rounded-2xl bg-muted/20 p-3 text-sm">
               <div>
                 {snapshot.label ?? snapshot.id.slice(0, 8)} / {new Date(snapshot.createdAt).toLocaleString()}

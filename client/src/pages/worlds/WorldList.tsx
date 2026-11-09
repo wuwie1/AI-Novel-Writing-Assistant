@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Castle, ChevronDown, Compass, GitBranch, LibraryBig, MapPin, Pencil, Sparkles, Trash2 } from "lucide-react";
@@ -231,6 +232,7 @@ export default function WorldList() {
   });
 
   const worlds = worldListQuery.data?.data ?? [];
+  const directory = useDirectorySelection("worldId", worlds);
 
   const handleDelete = (worldId: string, worldName: string) => {
     const confirmed = window.confirm(`确认删除世界样本「${worldName}」？此操作不可恢复。`);
@@ -242,6 +244,9 @@ export default function WorldList() {
 
   return (
     <div className="space-y-6">
+      <EntityDirectory collection="worlds" title="世界样本" {...directory}
+        rows={worlds.map(world => ({id: world.id, label: world.name, description: world.worldType}))}
+        pending={worldListQuery.isLoading} error={worldListQuery.isError} retry={() => void worldListQuery.refetch()}/>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/[0.07] text-primary">
@@ -302,7 +307,7 @@ export default function WorldList() {
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {worlds.map((world) => {
+          {worlds.filter(world => directory.includes(world.id)).map((world) => {
             const preview = buildWorldLibraryProjection(world);
 
             return (

@@ -38,6 +38,7 @@ before(async () => {
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
       import DirectorRunHistoryPage from '@/pages/directorNext/DirectorRunHistoryPage';
       import CreativeHubThreadList from '@/pages/creativeHub/components/CreativeHubThreadList';
+      import GenreManagementPage from '@/pages/genres/GenreManagementPage';
       import KnowledgePage from '@/pages/knowledge/KnowledgePage';
       import NovelPreview from '@/pages/novels/NovelPreview';
       import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
@@ -60,6 +61,7 @@ before(async () => {
           else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
+          else if(config.url==='/genres') data=['one','two'].map((id,i)=>({id,name:'同名题材',description:i?'定位乙':'定位甲',children:[],novelCount:0,childCount:0}));
           else if(config.url==='/knowledge/documents') data=docs;
           else if(config.url==='/rag/jobs') data=[];
           else if(config.url==='/knowledge/documents/a') {await new Promise(resolve=>{releaseDocument=resolve});data=docs[0];}
@@ -90,7 +92,7 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
         const root=createRoot(document.getElementById('root'));
@@ -243,8 +245,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演运行记录', '测试创作记录'],
       ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
-      ['/knowledge', '创作资料', '资料b'], ['/genres', '故事素材', '角色素材'],
-      ['/prompt-workbench', '写作工具', '写作规则'],
+      ['/knowledge', '创作资料', '资料b'], ['/genres', '题材目录', '同名题材'],
     ]) {
       await h.go(route);
       assert.equal(h.sidebar.getAttribute('aria-label'), title);
@@ -406,5 +407,22 @@ test('knowledge keeps the selected historical version after retry and a late pre
     await h.flush(h.releaseDocument);
     assert.doesNotMatch(document.querySelector('main').textContent, /文档版本 a/);
     assert.ok(h.requests.every(request => request.method === 'get'));
+  } finally { await h.cleanup(); }
+});
+
+test('same-name tree nodes stay distinct across consecutive selections, tool switches and history', async () => {
+  const h = await mount('/genres?selectedId=one');
+  try {
+    const detail = () => document.getElementById('selected-genre-title').parentElement.textContent;
+    assert.match(detail(), /定位甲/);
+    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[1].click());
+    assert.match(detail(), /定位乙/);
+    assert.match(h.router.state.location.search, /selectedId=two/);
+    await h.go('/titles');
+    assert.ok(h.sidebar.hidden);
+    await h.go(-1);
+    assert.match(detail(), /定位乙/);
+    await h.go(-1);
+    assert.match(detail(), /定位甲/);
   } finally { await h.cleanup(); }
 });

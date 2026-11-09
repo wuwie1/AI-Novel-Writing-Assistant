@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { useRouteFields } from "./useRouteFields";
 import { EntityList, useEntityListHost, type EntityCollection } from "./EntityList";
 
 export interface DirectoryRow { id: string; label: string; description?: string | null; group?: string; disabled?: boolean }
 interface DirectoryProps extends EntityCollection {
   rows: DirectoryRow[];
   onSelect: (id: string) => void;
+  onClear?: () => void;
   pending?: boolean;
   error?: boolean;
   retry?: () => void;
@@ -36,5 +38,24 @@ function SearchableDirectory(props: DirectoryProps) {
 
 /** Search belongs to this collection, independent of the currently selected row. */
 export function EntityDirectory(props: DirectoryProps) {
-  return useEntityListHost() ? <SearchableDirectory key={props.collection} {...props}/> : <>{props.inline}</>;
+  const host = useEntityListHost();
+  if (!host) return <>{props.inline}</>;
+  const unavailable = props.onClear && props.selection && !props.pending && !props.error
+    && !props.rows.some(row => row.id === props.selection);
+  return <><SearchableDirectory key={props.collection} {...props}/>
+    {unavailable && <p role="status">当前列表中没有选中的条目。 <button onClick={props.onClear}>返回列表</button></p>}
+  </>;
+}
+
+/** A collection with list-only projections can resolve an ID only inside its own rows. */
+export function useDirectorySelection(field: string, rows: readonly {id: string}[]) {
+  const host = useEntityListHost();
+  const [params, update] = useRouteFields();
+  const selection = params.get(field) ?? (host && !host.narrow ? rows[0]?.id ?? null : null);
+  return {
+    host, selection,
+    onSelect: (id: string) => update({[field]: id}),
+    onClear: () => update({[field]: null}, true),
+    includes: (id: string) => !host || id === selection,
+  };
 }
