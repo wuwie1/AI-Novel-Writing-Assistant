@@ -31,11 +31,6 @@ def start_and_check(info, port):
     raise Refused('新版本未通过 API、网页与小说读取检查')
 
 
-def restore_service_state(info):
-    if info['states']['ai-novel-api'] == 'inactive':
-        command(['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'])
-
-
 def switch_transaction(payload, info, batch, candidate, manifest):
     root, config = info['root'], payload['config']
     nginx_path = root / '.runtime/nginx.conf'
@@ -89,14 +84,11 @@ def switch_transaction(payload, info, batch, candidate, manifest):
         set_nginx(root, original, reload=True)
         maintenance = False
         health(config['remoteWebPort'])
-        if 'currentSha' in payload:
-            if git(root, 'rev-parse', 'HEAD') != info['sha']:
-                raise Refused('实际部署提交与本次候选不符')
-            for unit in info['states']:
-                if command(['systemctl', 'is-active', unit], check=False).stdout.strip() != 'active':
-                    raise Refused(unit + ' 重启后未处于 active 状态')
-        else:
-            restore_service_state(info)
+        if git(root, 'rev-parse', 'HEAD') != info['sha']:
+            raise Refused('实际部署提交与本次候选不符')
+        for unit in info['states']:
+            if command(['systemctl', 'is-active', unit], check=False).stdout.strip() != 'active':
+                raise Refused(unit + ' 重启后未处于 active 状态')
         record_path = root / '.runtime/deployment.json'
         record = json.loads(record_path.read_text()) if record_path.exists() else {}
         record['desktopMacDeployment'] = dict(sha=info['sha'], previousSha=info['old'], backup=str(batch / 'backups'), fingerprint=manifest['fingerprint'], result='success', time=datetime.datetime.now(datetime.timezone.utc).isoformat())
@@ -126,7 +118,8 @@ def switch_transaction(payload, info, batch, candidate, manifest):
             maintenance = False
             if stopped and info['states']['ai-novel-api'] == 'active':
                 start_and_check(info, config['remoteWebPort'])
-            restore_service_state(info)
+            if info['states']['ai-novel-api'] == 'inactive':
+                command(['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'])
             journal['phase'] = 'rolled_back' if switched else 'aborted'; write_json(journal_path, journal)
             emit('rolled_back' if switched else 'aborted', sha=info['old'], detached=switched and info['old'] != info['sha'], backup=str(batch / 'backups'), reason=str(failure))
             return 7 if switched else 6

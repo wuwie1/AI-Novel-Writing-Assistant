@@ -44,23 +44,23 @@ export async function remoteRunner({ config, payload, source, bundleFile, report
 }
 
 /** Dry run does not acquire even a local lock or upload any persistent file. */
-export async function runDeployment({ repoRoot, env = process.env, dryRun = false, currentSource = false, remote = remoteRunner, report = console.log }) {
+export async function runDeployment({ repoRoot, env = process.env, dryRun = false, remote = remoteRunner, report = console.log }) {
   const config = await loadConfig({ repoRoot, env });
   let validation = null;
   if (env.DEPLOY_VALIDATION_FILE) validation = JSON.parse(await readFile(env.DEPLOY_VALIDATION_FILE, 'utf8'));
   const sources = await Promise.all(['common.py', 'inspection.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'].map((name) => readFile(path.join(directory, 'remote', name), 'utf8')));
   const quiescence = await readFile(path.join(repoRoot, 'desktop_mac/infrastructure/processes/quiescence.mjs'), 'utf8');
   const source = sources.join('\n');
-  const execute = (options, output = report, bundleFile) => remote({ config,
+  const execute = (options, output, bundleFile) => remote({ config,
     payload: { config, validation, quiescence, ...options }, source, report: output, bundleFile });
-  const operation = currentSource ? 'server_update' : 'up_app';
-  const deploy = () => currentSource ? deployCurrentSource({ config, dryRun, validation, execute, report }) : execute({ dryRun });
-  report(`[${operation}] ${dryRun ? '只读预演' : '部署'} ${config.sshTarget}:${config.serverDir} · ${config.deployRef}`);
+  const deploy = () => deployCurrentSource({ config, dryRun, validation, execute, report });
+  report(`[server_update] ${dryRun ? '只读预演' : '部署'} ${config.sshTarget}:${config.serverDir} · ${config.deployRef}`);
   if (dryRun) return deploy();
   const paths = getRepoPaths(config.repoRealPath);
-  const lifecycle = await acquireLock(paths.lifecycleLock, { repoRealPath: config.repoRealPath, operation });
+  const owner = { repoRealPath: config.repoRealPath, operation: 'server_update' };
+  const lifecycle = await acquireLock(paths.lifecycleLock, owner);
   try {
-    const deployLock = await acquireLock(path.join(paths.runtimeDir, 'deploy.lock'), { repoRealPath: config.repoRealPath, operation });
+    const deployLock = await acquireLock(path.join(paths.runtimeDir, 'deploy.lock'), owner);
     try { return await deploy(); } finally { await deployLock.release(); }
   } finally { await lifecycle.release(); }
 }

@@ -7,23 +7,22 @@ import { createRuntimeAdapters } from '../application/lifecycle/runtime-adapters
 import { createStageTimer, timeLifecycleAdapters } from '../application/lifecycle/timings.mjs';
 
 const command = process.argv[2];
-const isDeployment = command === 'up_app' || command === 'server_update';
-const allowed = new Set(['dev_app', 'app', 'stop_app', 'restart_app', 'up_app', 'server_update']);
+const isDeployment = command === 'server_update';
+const allowed = new Set(['dev_app', 'app', 'stop_app', 'restart_app', 'server_update']);
 if (!allowed.has(command)) {
-  process.stderr.write('Usage: node desktop_mac/scripts/mac.mjs <dev_app|app|stop_app|restart_app|up_app|server_update>\n');
+  process.stderr.write(`Usage: node desktop_mac/scripts/mac.mjs <${[...allowed].join('|')}>\n`);
   process.exit(2);
 }
 
 async function main() {
   if (isDeployment) {
-    const deployment = await import('../application/deployment/index.mjs');
-    if (typeof deployment.runDeployment !== 'function') throw Object.assign(new Error('Deployment module does not export runDeployment yet'), { exitCode: 6 });
+    const { runDeployment } = await import('../application/deployment/index.mjs');
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-    return deployment.runDeployment({ repoRoot, env: process.env, dryRun: process.env.DRY_RUN === '1', currentSource: command === 'server_update' });
+    return runDeployment({ repoRoot, env: process.env, dryRun: process.env.DRY_RUN === '1' });
   }
   if (command === 'dev_app' && process.env.APP_MODE && process.env.APP_MODE !== 'local') throw Object.assign(new Error('APP_MODE conflicts with dev_app, which always uses local mode'), { exitCode: 2 });
   if (command === 'app' && process.env.APP_MODE && process.env.APP_MODE !== 'remote') throw Object.assign(new Error('APP_MODE conflicts with app, which always uses remote mode'), { exitCode: 2 });
-  if (command !== 'restart_app' && process.env.DRY_RUN) throw Object.assign(new Error('DRY_RUN is only valid with up_app or server_update'), { exitCode: 2 });
+  if (command !== 'restart_app' && process.env.DRY_RUN) throw Object.assign(new Error('DRY_RUN is only valid with server_update'), { exitCode: 2 });
   if (command === 'restart_app' && process.env.APP_MODE && !['local', 'remote'].includes(process.env.APP_MODE)) throw Object.assign(new Error('APP_MODE must be local or remote'), { exitCode: 2 });
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const { logDir } = getRepoPaths(repoRoot);

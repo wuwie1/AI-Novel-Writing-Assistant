@@ -114,14 +114,27 @@ class DeploymentTests(unittest.TestCase):
         m.backup_snapshot = lambda *_: self.fail('dry-run wrote a backup')
         self.assertEqual(m.run_remote(dict(dryRun=True)), 0)
 
-    def test_changed_server_head_refuses_update_before_importing_candidate(self):
+    def test_candidate_requires_pinned_local_commit_without_remote_lookup(self):
+        m = module()
+        m.git = Mock()
+        root = pathlib.Path('.')
+        for sha in (None, 'origin/ai', 'abc123'):
+            with self.subTest(sha=sha), self.assertRaisesRegex(m.Refused, '完整的 Git 提交 SHA'):
+                m.candidate_commit(root, sha)
+        sha = 'a' * 40
+        self.assertEqual(m.candidate_commit(root, sha), sha)
+        m.git.assert_not_called()
+
+    def test_update_requires_matching_preview_before_importing_candidate(self):
         m = module()
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary).resolve()
-            m.git = Mock(side_effect=[str(root), 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git', 'a' * 40])
             m.candidate_commit = Mock()
-            with self.assertRaisesRegex(m.Refused, '预演后变化'):
-                m.inspect_deployment(dict(config=dict(serverDir=str(root)), serverBase='b' * 40), fetch=True)
+            for baseline in ({}, {'serverBase': 'b' * 40}):
+                m.git = Mock(side_effect=[str(root), 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git', 'a' * 40])
+                payload = dict(config=dict(serverDir=str(root)), dryRun=False, **baseline)
+                with self.subTest(baseline=baseline), self.assertRaisesRegex(m.Refused, '预演基线不符'):
+                    m.inspect_deployment(payload, import_bundle=True)
             m.candidate_commit.assert_not_called()
 
     def test_explicit_current_version_update_restarts_both_units_and_leaves_them_serving(self):
@@ -136,7 +149,7 @@ class DeploymentTests(unittest.TestCase):
                 (root / template).write_text(original)
                 (root / '.runtime/nginx.conf').write_text(original.replace('@ROOT@', str(root)))
                 sha = 'a' * 40
-                info = dict(root=root, old=sha, sha=sha, branch='ai', healthy=initial == 'active',
+                info = dict(root=root, old=sha, sha=sha, branch='ai',
                             known=True, differences=[], checks=[], db=root / 'test.db', assets=[],
                             states=dict.fromkeys(('ai-novel-api', 'ai-novel-web'), initial))
                 m.inspect_deployment = Mock(return_value=info)
@@ -158,12 +171,10 @@ class DeploymentTests(unittest.TestCase):
                     return candidate, {'fingerprint': 'verified-test-build'}
 
                 m.build_candidate = Mock(side_effect=build)
-                payload = dict(config=dict(remoteWebPort=18080, maintenanceProbePort=18081), dryRun=False)
-                if initial == 'active':
-                    self.assertEqual(m.run_remote(payload), 0)
-                    m.build_candidate.assert_not_called()
+                payload = dict(config=dict(remoteWebPort=18080, maintenanceProbePort=18081),
+                               dryRun=False, currentSha=sha, serverBase=sha, withBundle=False)
                 with patch.object(m.time, 'sleep'):
-                    self.assertEqual(m.run_remote(dict(payload, currentSha=sha, serverBase=sha)), 0)
+                    self.assertEqual(m.run_remote(payload), 0)
                 units = [c.args[0] for c in m.command.call_args_list]
                 self.assertEqual(units, [['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'],
                                          ['systemctl', 'start', 'ai-novel-api', 'ai-novel-web'],

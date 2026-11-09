@@ -63,7 +63,7 @@ make dev_app
 | 服务器 Web | 18080 | `REMOTE_WEB_PORT` |
 | 维护探测 | 18081 | `MAINTENANCE_PROBE_PORT` |
 | 服务目录 | /data/write/AI-Novel-Writing-Assistant | `SERVER_DIR` |
-| 发布线 | origin/ai | `DEPLOY_REF` |
+| 本地与服务器须匹配的发布分支 | origin/ai | `DEPLOY_REF` |
 
 配置文件、运行状态和构建放在 `.runtime/desktop_mac/`，日志放在 `.logs/desktop_mac/`，每个输出流单文件最多 10 MiB，最多保留 5 个文件。状态损坏、未知端口或进程身份变化时脚本拒绝猜测和停止进程；先查看错误中的日志、状态与锁路径。不要用批量 `pkill node` 或删除数据库来解决启动问题。
 
@@ -76,20 +76,11 @@ make server_update DRY_RUN=1
 make server_update DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
 ```
 
-`server_update` 锁定当前干净工作区的 HEAD，要求本地和服务器位于配置的发布分支。服务器缺少候选对象时，经 SSH 传输从服务器基线到该提交的 Git bundle。版本相同时可直接运行 `make server_update`，仍会重启并检查 API 和网页服务。切换版本所需的验证记录格式见下文。
+`server_update` 锁定本地干净工作区的 HEAD。本地和服务器的 `origin` 须指向指定 fork，两端都须检出 `DEPLOY_REF` 指定的分支（默认 `ai`）。尚未推送的提交也可部署。服务器缺少候选对象时，本机会通过 SSH 传输增量 Git bundle。
 
-要部署 fork 远端发布分支的版本，可使用 `up_app`。
+预演显示服务器当前提交、本地候选 SHA、服务与数据位置、兼容性检查和任务状态。若服务器还没有候选对象，兼容性要在正式更新导入 bundle 后才能验证。
 
-```bash
-make up_app DRY_RUN=1
-make up_app DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
-```
-
-预演只读检查远端发布 SHA、服务与数据位置、兼容性和任务静止状态；不会 fetch、创建远端目录/锁、构建或停服。候选 Git 对象不在服务器时会说明尚未验证，不能把预演输出当成部署通过。
-
-目标仓库的 origin 必须匹配指定 fork。`up_app` 通过该 fork 的 HTTPS 地址查询并抓取发布分支，`server_update` 通过现有 SSH 连接传输本地候选。
-
-真实更新只允许当前发布分支的快进，候选 SHA 需要验证记录。例如：
+服务器已是同一提交时，直接运行 `make server_update` 也会重启并检查 API 和网页服务。切换版本须能从服务器当前提交快进，并提供本地候选 SHA 的验证记录。
 
 ```json
 {

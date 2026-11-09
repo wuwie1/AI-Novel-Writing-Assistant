@@ -3,7 +3,7 @@ def run_remote(payload):
     info = inspect_deployment(payload)
     emit('inspection', current=info['old'], candidate=info['sha'], known=info['known'], differences=info['differences'], checks=info['checks'], artifacts=list(ARTIFACTS), protected=list(PROTECTED), database=str(info['db']), assets=[str(item) for item in info['assets']])
     if payload['dryRun']:
-        # No fetch, locks, mkdir, writes, builds or signals in this path.
+        # Dry runs only inspect the existing deployment and running tasks.
         check_quiescence(payload, info)
         emit('dry_run', candidate=info['sha'], verified=not info['checks'], steps=['验证发布记录与迁移边界', '隔离构建候选', '备份并验证数据库、资产、配置、源码及依赖', '锁定服务并关闭新 API 请求', '两次静止与连接检查', '停服并保存最终备份', '源码快进及产物事务替换', '健康检查或完整代码回滚'])
         return 0
@@ -11,10 +11,7 @@ def run_remote(payload):
     if not (root / '.runtime').is_dir():
         raise Refused('运行目录不存在，不能作为已部署服务更新')
     with remote_lock(root / '.runtime/deploy.lock'):
-        info = inspect_deployment(payload, fetch=True)
-        if info['old'] == info['sha'] and info['healthy'] and 'currentSha' not in payload:
-            emit('unchanged', sha=info['old'])
-            return 0
+        info = inspect_deployment(payload, import_bundle=payload['withBundle'])
         if info['checks']:
             raise Refused('; '.join(info['checks']))
         check_quiescence(payload, info)

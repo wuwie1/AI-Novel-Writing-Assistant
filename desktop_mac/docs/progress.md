@@ -38,18 +38,14 @@
 | shared / server build | 成功，`/tmp/mac-server-build.log`；未修改后端代码 |
 | 共享客户端针对性测试 | 15 项通过：章节草稿、质量债务、任务队列和恢复；不重复全量测试 |
 | 继承的后端增量回归 | `initialCharacterSchedule.test.js` + `volumeChapterListChunking.test.js` 共 27 项通过；Node 22 + 临时 SQLite 路径，未用现有小说库做测试 |
-| Make | `make list` 中文说明正确；`make -n dev_app app stop_app restart_app up_app` 仅打印命令，无解析期副作用 |
+| Make | `make list` 的中文说明正确，对当时的启动、停止、重启和部署目标执行 `make -n` 均仅打印命令 |
 | Git 范围 | `git diff --check` 通过；相对 MAC_BASE_SHA 的受保护目录及 Web CSS 无改动 |
 
 部署 Python 隔离用例包含 SQLite 备份完整性与损坏拒绝、维护入口的 health/GET 限制、14 个产物 rename 故障点的代码与依赖回滚、dry run 不进入写操作。没有以真实停服代替测试。
 
-## 服务器只读预演
+## 2026-11-06 服务器只读预演
 
-执行 `make up_app DRY_RUN=1`，服务器当前为 `eaa4bd8f0cb82972319290ff3b123025986e8641`，发布候选为 `origin/ai` 的 `09c9db638ff08e4c45f2dee4e0f496d2fdc93e19`。API、小说读取、服务归属及任务静止检查通过。候选对象尚未在服务器，且缺少绑定此 SHA 的验证记录，输出 `verified=false`；不宣称可部署。
-
-服务器 Git SSH 无可用主机信任记录，部署器在确认 origin 属于指定公开 fork 后，通过同一仓库的 HTTPS 读取/fetch。没有改变服务器 origin、主机密钥或网络暴露面。
-
-本轮未运行真实 up_app；没有 fetch 到服务器、创建远端部署目录/锁、更新源码、迁移、停服或开放端口。
+当次预演通过 HTTPS 查询 fork 发布线，服务器提交为 `eaa4bd8f0cb82972319290ff3b123025986e8641`，候选为 `origin/ai` 的 `09c9db638ff08e4c45f2dee4e0f496d2fdc93e19`。API、小说读取、服务归属及任务静止检查通过。候选对象和绑定该 SHA 的验证记录均缺失，结果为 `verified=false`。当次仅执行只读检查。当前版本的部署和预演用法见[更新服务器](../README.md#更新服务器)。
 
 ## 实施决定与已知边界
 
@@ -60,7 +56,7 @@
 - Node 26 缺预编译 SQLite 且源码编译出现 V8 API 不兼容；使用机器已有 Node 22 重建依赖成功。启动器以内存 DB 探测兼容性；直接启动原 ts-node-dev 服务入口，避免原 dev 脚本隐式数据库同步。
 - 红色关闭隐藏窗口并保留 WebView，Dock 重开；⌘Q/stop_app 正常退出。新窗口失败且拒绝关闭时保留全套辅助服务，不再打开另一窗口。
 - SSH supervisor 自动重连传输，不重放写请求；辅助日志每流最多 5×10 MiB。
-- 部署采用 `.runtime/desktop_mac-deploy/<时间>-<SHA>/` 批次目录；有 preflight/quiesced 两次快照和事务恢复记录。普通 up_app 不覆盖持久数据、不执行迁移。
+- 每个部署批次保存 preflight、quiesced 两次快照及事务恢复记录。代码与依赖的切换保留持久数据，数据库迁移需单独处理。
 - 临时验证日志位于 /tmp；长期规则保存在 wiki，交接证据以此表和 Git 提交为准。没有公开打包或发布。
 
 ## Beta 集成范围

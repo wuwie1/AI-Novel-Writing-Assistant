@@ -44,7 +44,7 @@ def git(root, *args, check=True):
     try:
         return command(['git', '-c', 'core.fsmonitor=false', '-C', root, *args], env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_TERMINAL_PROMPT': '0'}, check=check).stdout.strip()
     except Refused:
-        raise Refused('Git %s 检查失败，请核对网络、仓库权限和发布线；未跳过检查' % args[0])
+        raise Refused('服务器 Git %s 失败，请核对部署目录的仓库权限、提交和发布分支' % args[0])
 
 
 def digest(file):

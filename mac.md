@@ -7,7 +7,7 @@
 ## 0. 给执行 Codex 的约定
 
 1. 先读当前 `AGENTS.md`，再按本文件阶段顺序执行。用户之后的明确要求优先于本计划；本文件中的历史探测结果不代替实施时检查。
-2. “执行本计划”默认指实现代码、必要配置、文档、阶段提交和代码级验证。允许只读核查服务器；不能据此自动执行真实 `up_app`、推送、晋级 `main` 或公开上传。用户明确要求部署/推送时再执行相应步骤，已有同次会话授权不重复询问。
+2. “执行本计划”默认指实现代码、必要配置、文档、阶段提交和代码级验证，包含服务器只读核查。真实部署、推送、晋级 `main` 或公开上传按用户明确要求执行，已有同次会话授权不重复询问。
 3. 下文列出的技术栈、模式、端口、配置优先级和命令语义是实施默认值，不留给执行者重新选型。只有源码证据表明不可行时才记录原因、影响和替代方案；不得静默改用 Electron、远程网页套壳或改后端绕过问题。
 4. 阶段有两类完成状态：`engineering_done` 表示代码与针对性验证完成；`user_acceptance_pending` 表示等待样式/原生交互验收。等待用户验收时可以继续后续独立工程工作，不得误报完整交付，也不必停止所有开发。
 5. 每阶段维护 `desktop_mac/docs/progress.md`：基线提交、变更范围、执行命令及结果、复用验证依据、待用户检查项、下一步。失败只阻塞依赖它的步骤；真实发布必须等相关验收通过。
@@ -26,7 +26,7 @@
 | `make app` | 启动 Mac 桌面版，连接指定服务器上的后端 |
 | `make stop_app` | 关闭本项目桌面程序及其自有本机辅助进程 |
 | `make restart_app` | 按最近一次请求的模式重新构建并启动桌面程序 |
-| `make up_app` | 更新指定服务器上的服务版本，重启后端并检查可用性 |
+| `make server_update` | 部署本地发布分支的当前提交，重启并检查服务器的 API 和网页服务 |
 | `make list` | 列出可用 Make 命令、用途和必要配置 |
 
 实施边界：
@@ -69,7 +69,7 @@
 | `web/src/components/layout/NavigationSidebar.jsx` | 图标导航、书籍选择、tooltip、选中状态与计数 |
 | `GNUmakefile`、`scripts/app_mode.sh` | 命令入口、请求模式与成功模式、先构建再切换 |
 
-wukong 的 `make app` 仍在 Mac 本地运行其业务后端，通过 SSH 连接服务器数据库；本项目的 `make app` 必须连接服务器上的完整 Node 后端，不能照搬这一拓扑。wukong 使用 `re_app`，未发现 `restart_app` 和 `up_app`；本项目按用户要求实现后两个名称。
+wukong 的 `make app` 在 Mac 本地运行业务后端，通过 SSH 连接服务器数据库。本项目的 `make app` 连接服务器上的完整 Node 后端，桌面重启使用 `make restart_app`，服务器更新使用 `make server_update`。
 
 ### 2.3 服务器只读检查结论
 
@@ -185,7 +185,7 @@ desktop_mac/
 | `serverDir` | `SERVER_DIR` | `/data/write/AI-Novel-Writing-Assistant` |
 | `deployRef` | `DEPLOY_REF` | `origin/ai`，保持现有服务器发布线；完整规则见 5.5 |
 | 无持久化字段 | `APP_MODE` | 只用于 `restart_app`，取 `local` 或 `remote`；与 `app` / `dev_app` 固定语义冲突时报告参数错误 |
-| 无持久化字段 | `DRY_RUN` | 只用于 `up_app`，`1` 为预览，省略为真实执行 |
+| 无持久化字段 | `DRY_RUN` | `server_update` 取 `1` 时只读预演，省略时执行更新 |
 
 同一台机器上的界面、API、隧道或维护探测端口必须互不冲突。首次运行无配置文件也应按默认值工作；配置只存非敏感值，文件权限 `0600`，SSH 身份由系统配置解决。
 
@@ -338,27 +338,27 @@ flowchart LR
 - 不部署服务器，也不把重启桌面解释成恢复创作任务。
 - 同模式 start 已健康时聚焦现有窗口，不重复构建/重启；需要重新构建用 `restart_app`。不同模式 start 等价于一次显式模式切换，也必须走保存/退出协议。新模式启动失败时尝试恢复上一个成功版本及模式，requested mode 保留失败目标供再次重试。
 
-### 5.5 `make up_app`
+### 5.5 `make server_update`
 
 作用为部署服务器服务；不负责更新本机 `.app`，也不自动执行 Git 推送、功能分支合并或公开桌面包上传。
 
-默认主机和目录为用户指定值。**默认 `DEPLOY_REF=origin/ai`**，对应当前服务器已使用的发布线；每次先核对 `origin` 是否为本 fork，再将该远端 ref 解析成固定 SHA。真实执行可以 fetch，dry run 使用只读 `ls-remote`/现有对象检查，不能用本地未推送 HEAD 冒充远端版本。完整 SHA 也必须能证明属于配置的发布线且有对应验证记录。
+默认主机和目录为用户指定值。**默认 `DEPLOY_REF=origin/ai`**，本地与服务器的 `origin` 须为指定 fork，两端都须检出 `ai`。部署锁定本地干净工作区的 HEAD，包含尚未推送的提交。预演对比本地候选和服务器基线。正式更新需要补齐 Git 对象时，经 SSH 传输增量 bundle，并在服务器部署锁内校验。
 
-这不是将新 Mac 功能从 feature 直接发布到 `ai` 的许可。Mac 功能仍经 feature → beta → main；需要将服务器发布线改为 `origin/main` 时明确修改部署配置并记录迁移决定，不能根据分支名猜测。候选 SHA 必须等于当前部署或是其后代；不允许自动降级、强制覆盖分叉或切换服务器分支。候选与当前相同且健康时幂等返回，无需重启。
+Mac 功能仍经 feature → beta → main 验收。变更服务器发布线时须明确修改部署配置并记录迁移决定。候选 SHA 必须等于当前部署或是其后代。两种情况下都会重启 API 和网页服务并进行健康检查。
 
-本次约束“不修改后端代码”指 Mac 实施不得编辑后端业务；`up_app` 可以部署已在发布线上完成验证的现有后端版本，但不能顺带合并、修复或生成后端改动。
+部署范围限于发布分支上已提交并通过验证的代码，Mac 运维命令不编辑后端业务。
 
 执行顺序：
 
 1. 获取本机生命周期/部署锁和服务器 `.runtime/deploy.lock`，记录旧提交、服务状态、数据绝对路径、候选 SHA 和验证依据。服务器受控源码有修改、分支分叉、未知部署状态、空间不足或验证依据缺失时退出，不 stash/reset 服务器工作区。备份、候选、旧产物必须有足够空间，不能靠删除旧数据腾空间。
-2. 比较两种 Prisma schema、两套 migrations、启动数据库兼容逻辑及相应依赖变更。存在待应用迁移或无法证明回滚兼容时，普通 `up_app` 拒绝执行；不得只比较迁移目录就宣布无需迁移。
-3. 在服务器 `.runtime/desktop_mac-deploy/candidates/<sha>/` 准备完整受控源码，按 `infra/server/README.md` 冻结安装 server/client 依赖、构建 shared、离线刷新注入依赖、生成 SQLite Prisma client、构建 server/client。候选不启动业务进程，不连接生产库，不带入生产模型密钥；不在 Mac 生成 Linux 原生依赖。
+2. 比较两种 Prisma schema、两套 migrations、启动数据库兼容逻辑及相应依赖变更。存在待应用迁移或无法证明回滚兼容时，停止普通部署，单独核验数据库升级方案。
+3. 在服务器本批次的 `.runtime/desktop_mac-deploy/<批次>/candidate/` 准备完整受控源码，按 `infra/server/README.md` 冻结安装 server/client 依赖、构建 shared、离线刷新注入依赖、生成 SQLite Prisma client、构建 server/client。候选不启动业务进程，不连接生产库，不带入生产模型密钥；不在 Mac 生成 Linux 原生依赖。
 4. 构建前后都不覆盖运行目录。生成部署清单，列出要切换的源码、`node_modules`、各包依赖目录及 shared/server/client 构建产物；校验 pnpm 相对链接在最终根目录仍可解析，不允许链接回会被清理的候选绝对路径。
-5. 在 `.runtime/desktop_mac-deploy/backups/<timestamp>-<oldSha>/preflight/` 保存旧提交的 Git bundle、受控文件快照、完整旧依赖与构建产物、配置副本、数据库一致快照和资产归档。SQLite 使用 backup API / `.backup`，检查文件存在、非零、`PRAGMA integrity_check=ok`；资产/配置记录清单和校验值。目录 `0700`，秘密文件 `0600`，不输出密钥，不自动删除备份。
-6. 再获取与现有脚本相同的 `.runtime/service-control.lock`，进入下述维护窗口并再次核验静止状态；停服务后在同一备份批次的 `quiesced/` 保存数据库、资产和配置的最终一致备份并复验，不覆盖 preflight 快照。所有检查通过后才切换，保留两项服务的原启停状态。
+5. 在本批次的 `backups/preflight/` 保存旧提交的 Git bundle、受控文件快照、完整旧依赖与构建产物、配置副本、数据库一致快照和资产归档。SQLite 使用 backup API / `.backup`，检查文件存在、非零、`PRAGMA integrity_check=ok`；资产/配置记录清单和校验值。目录 `0700`，秘密文件 `0600`，不输出密钥，不自动删除备份。
+6. 获取与现有脚本相同的 `.runtime/service-control.lock`，进入维护窗口并再次核验静止状态。停服务后保存并复验同批的 `quiesced/` 最终备份。所有检查通过后才切换代码，原启停状态用于失败回滚。
 7. **首版使用原部署根目录内的停机事务式切换**，不改 systemd WorkingDirectory、不引入未经实现的 `current` 软链布局：受控源码只做 `git merge --ff-only <sha>`；旧依赖/产物按明确清单重命名到 rollback 槽，再把候选对应目录移入原位置。日志记录每个完成步骤，失败或进程中断后可以从记录恢复。保护目录永不进入替换清单。
 8. 在锁内通过 systemd 启动这两项既有服务。adapter 必须沿用 `infra/server/control.sh` 的工作目录归属校验、Nginx 校验和健康标准；已持有同一锁时不能递归调用会再次加锁的 `control.sh`。先从维护探测入口检查 API、网页及小说读取，再撤销维护配置并检查正常 `18080` 入口；记录 SHA、构建 fingerprint、备份路径和结果。更新 `.runtime/deployment.json` 时保留已有未知字段，同时保存本模块的详细记录。
-9. 失败则保持维护入口、停止失败版本、按记录恢复旧依赖/产物，并用非强制 `git switch --detach <oldSha>` 恢复旧源码后启动。不得 hard reset、覆盖未提交变化或回退数据库。回滚后如为 detached HEAD，报告该状态，后续部署必须先核对恢复发布分支；不能假装仍跟踪正常发布线。
+9. 切换失败时停止失败版本，按记录恢复旧依赖、产物和服务状态。跨提交回滚使用 `git switch --detach <oldSha>` 恢复旧源码，随后核对并恢复发布分支。同提交重启失败时保留原分支。两种回滚均保留数据库和用户文件。
 
 事务范围必须包含依赖和运行时资源，不能只备份 `server/dist`。保护清单至少为 `.git`（由受控 Git 命令管理）、`server/.env`、`data/` 及 WAL/SHM、`server/storage/`、`.runtime/`、`logs/`、`.logs/`；远端 `.env` 中指向的其他持久路径也要枚举。候选新增同名受控文件或符号链接指向保护路径时拒绝发布。全过程不进行删除式 rsync、数据库还原或清理旧发布。
 
@@ -371,7 +371,7 @@ flowchart LR
 - 关闭新请求入口后至少两次静止检查，间隔 5 秒；同时检查旧 Nginx worker/现存 API 连接，确保 reload 前建立的流式请求已经结束。直连 `13000` 的其他调用方或未识别连接也计入占用，不能只看 Nginx 新 worker。确认没有活动请求/租约及可自动启动队列，随后停止 API 和 Web。任务条件变化即恢复原 Nginx 配置并退出，不强行停止正在生成的内容；覆盖不足时拒绝部署，不设跳过保护的 FORCE 参数。
 - 任一步失败都恢复原代理配置和适当的旧服务状态；临时 `18081` 监听也必须消失。锁顺序固定为本机生命周期锁 → 本机部署锁 → 远端 deploy.lock → 远端 service-control.lock，失败路径反向释放。维护完成的成功/失败通知写到命令输出与部署记录，不向任务中心添加操作入口。
 
-实现 `make up_app DRY_RUN=1`：仅输出目标主机、目录、固定提交、差异摘要、备份/替换清单、将执行的步骤和检查结果，不传输、不 fetch 到远端仓库、不创建远端锁/目录、不构建、不停止、不改代理、不切换服务。若只读信息不足，标为“尚未验证”，不能宣称可部署。自动测试使用隔离的假 SSH/进程适配器，不以真实服务器部署代替测试。
+`make server_update DRY_RUN=1` 只读检查目标主机、目录、当前与候选提交、已知差异及任务状态，并列出部署步骤和保护范围。候选对象将在正式执行时按需传输，预演中无法核实的兼容性标为“尚未验证”。自动化部署测试使用隔离环境。
 
 ### 5.6 `make list`
 
@@ -446,7 +446,7 @@ Make 目标全部声明 `.PHONY`，默认目标为 `list`；直接 `make` 不启
 ### 阶段 5：六个命令与部署闭环
 
 - [x] 完成幂等启动、模式持久化、进程归属、正常退出、重启及日志。
-- [x] 完成 `up_app` 的 dry run、固定版本构建、备份校验、切换与代码回滚。
+- [x] 完成部署预演、固定版本构建、备份校验、切换与代码回滚。
 - [x] 完成 `make list` 与可直接照做的使用说明。
 - [x] 使用隔离测试覆盖端口冲突、残留 PID、SSH 失败、构建失败、未保存退出取消和部署失败。
 
@@ -496,7 +496,7 @@ pnpm --filter @ai-novel/client build:desktop
 
 # 新 Makefile 已建立后：只读帮助与配方预览
 make list
-make -n dev_app app stop_app restart_app up_app
+make -n dev_app app stop_app restart_app server_update
 ```
 
 `MAC_BASE_SHA` 必须来自阶段 0 的真实基线，不得留空；scope 检查中 `server/shared/desktop` 应无本次新增差异。已有后端服务不受改动时无需全量 server 测试；beta 若包含先前未验证的 fork 后端改动，另做对应集成检查，不用 Mac 类型检查代替。`build:desktop` 只验证现有 Windows renderer 入口，不等于 Windows 安装包验收。构建已包含相同代码的 typecheck 时，记录该覆盖并复用，不机械地重复；相同输入的近期成功构建也按项目规则复用。避免在 Make 解析期使用有副作用的 `$(shell ...)`，保证 `make -n` 真正不启动服务。
@@ -528,7 +528,7 @@ make -n dev_app app stop_app restart_app up_app
 4. 断开网络后界面保留输入并提示连接失败；恢复网络只重新读取状态，不自动再次提交生成。切回本地不出现服务器缓存。
 5. 按 4.3 的尺寸和页面覆盖表对照 wukong，重点检查中文输入法、撤销重做、分栏、弹窗、长列表、文件保存及唤醒恢复。
 6. `make stop_app` 后本项目窗口和自有界面 helper 结束，服务器服务、borrowed 后端/隧道和 wukong 继续运行；owned 本机 API 有任务时保留并有说明，空闲时可关闭。重复停止成功返回。
-7. `make list` 无需连接服务器即可显示说明。部署先看 `make up_app DRY_RUN=1` 的固定 SHA 和清单；只有实际部署在当前授权范围内才运行真实命令并核对记录。
+7. `make list` 在本机显示说明。部署先看 `make server_update DRY_RUN=1` 的固定 SHA 和清单，实际部署在当前授权范围内时再执行并核对记录。
 
 ### 7.4 最终完成条件
 
