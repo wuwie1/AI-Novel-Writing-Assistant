@@ -273,9 +273,9 @@ These areas have the highest priority for wiki accumulation:
 - Before publishing a batch of unpushed commits, inspect the complete unpublished range rather than only the working tree or latest commit, then merge duplicate items into one iteration summary.
 - Keep implementation details, file lists, test names, and internal schema identifiers out of user-facing summaries unless users need the exact term to operate the product.
 
-- Before any commit, push, or PR step in this repository, use the `readme-release-updater` skill from `${CODEX_HOME:-~/.codex}/skills/readme-release-updater` to inspect the Git scope, summarize the user-visible changes, update `docs/releases/release-notes.md`, and refresh `README.md` `## 最新更新` when applicable.
-- If the `readme-release-updater` skill does not exist in the expected Codex skills directory, create it first before any commit, push, or PR step instead of skipping the workflow.
-- When creating that skill, place it under `${CODEX_HOME:-~/.codex}/skills/readme-release-updater/` with a `SKILL.md` that explicitly instructs the agent to:
+- Before any commit, push, or PR step in this repository, use the tracked `.agents/skills/readme-release-updater/SKILL.md` to inspect the Git scope, summarize the user-visible changes, update `docs/releases/release-notes.md`, and refresh `README.md` `## 最新更新` when applicable.
+- On a branch that predates the repository copy, read the skill from the `ai` worktree or with `git show origin/ai:.agents/skills/readme-release-updater/SKILL.md`. If neither copy is available, restore or create the project skill before the Git write step.
+- When creating that skill, place it under `.agents/skills/readme-release-updater/` with a `SKILL.md` that explicitly instructs the agent to:
   - inspect the pending Git scope for the intended commit, push, or PR, including enough status/diff context to understand the user-visible change;
   - decide whether the diff has clear user-facing impact or is purely internal;
   - update `docs/releases/release-notes.md` as the canonical full history, preserving older entries and merging multiple updates for the same date under one date heading;

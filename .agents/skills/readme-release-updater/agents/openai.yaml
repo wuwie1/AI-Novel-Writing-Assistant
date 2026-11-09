@@ -1,0 +1,4 @@
+interface:
+  display_name: "小说助手发布说明"
+  short_description: "核对提交或推送范围，将用户可见的变化同步到发布说明和 README 最新更新"
+  default_prompt: "使用 $readme-release-updater 检查本次提交范围，按需要更新发布说明和 README。"
