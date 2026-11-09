@@ -1,3 +1,4 @@
+import { prisma } from "../db/prisma";
 import type { PlannerInput, PlannerResult } from "./types";
 import { compileIntentToPlan, toPlannedActions } from "./planner/compiler";
 import { parseIntentWithLLM } from "./planner/parser";
@@ -9,7 +10,16 @@ const CREATIVE_HUB_EXECUTION_INTENTS = new Set<StructuredIntent["intent"]>([
   "write_chapter", "rewrite_chapter", "save_chapter_draft", "start_pipeline", "ideate_novel_setup",
 ]);
 
-export async function createStructuredPlan(input: PlannerInput): Promise<PlannerResult> {
+async function withNovelForm(input: PlannerInput): Promise<PlannerInput> {
+  if (!input.novelId || input.novelForm) {
+    return input;
+  }
+  const novel = await prisma.novel.findUnique({ where: { id: input.novelId }, select: { narrativeForm: true } });
+  return novel ? { ...input, novelForm: novel.narrativeForm } : input;
+}
+
+export async function createStructuredPlan(rawInput: PlannerInput): Promise<PlannerResult> {
+  const input = await withNovelForm(rawInput);
   const parsedIntent = await parseIntentWithLLM(input);
   const structuredIntent = input.profile === "creative_hub_readonly"
     && CREATIVE_HUB_EXECUTION_INTENTS.has(parsedIntent.intent)

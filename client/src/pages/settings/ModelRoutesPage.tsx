@@ -240,7 +240,7 @@ export default function ModelRoutesPage() {
       model: structuredFallback?.model ?? "deepseek-chat",
       temperature: structuredFallback != null ? String(structuredFallback.temperature) : "0.2",
       maxTokens: structuredFallback?.maxTokens != null ? String(structuredFallback.maxTokens) : "",
-      retryCount: structuredFallback != null ? String(structuredFallback.retryCount) : "1",
+      retryCount: structuredFallback != null ? String(structuredFallback.retryCount) : "2",
       requestProtocol: "auto",
       structuredResponseFormat: "auto",
     };
@@ -274,7 +274,7 @@ export default function ModelRoutesPage() {
                 <RouteStatusDot
                   state={modelRouteConnectivityQuery.isPending || modelRouteConnectivityQuery.isFetching
                     ? "checking"
-                    : connectivitySummary.failed > 0
+                    : modelRouteConnectivityQuery.isError || connectivitySummary.failed > 0
                       ? "failed"
                       : connectivitySummary.total > 0
                         ? "healthy"
@@ -282,6 +282,10 @@ export default function ModelRoutesPage() {
                 />
                 {modelRouteConnectivityQuery.isPending || modelRouteConnectivityQuery.isFetching
                   ? "正在检测生效路由..."
+                  : modelRouteConnectivityQuery.isError
+                    ? (modelRouteConnectivityQuery.error instanceof Error
+                      ? modelRouteConnectivityQuery.error.message
+                      : "模型路由检测失败，请稍后重试。")
                   : connectivitySummary.total > 0
                     ? `检测结果：${connectivitySummary.total} 条路由，健康 ${connectivitySummary.healthy}，异常 ${connectivitySummary.failed}`
                     : "尚未执行模型兼容性检测"}
@@ -290,6 +294,13 @@ export default function ModelRoutesPage() {
                 <span>检测时间：{new Date(connectivitySummary.testedAt).toLocaleString()}</span>
               ) : null}
             </div>
+            {modelRouteConnectivityQuery.isError ? (
+              <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {modelRouteConnectivityQuery.error instanceof Error
+                  ? modelRouteConnectivityQuery.error.message
+                  : "模型路由检测失败。请确认已配置可用模型，再点「重新检测」。"}
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <Button

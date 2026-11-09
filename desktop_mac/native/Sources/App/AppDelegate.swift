@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func backFromMenu(_: Any?) { web?.navigateHistory(-1) }
     @objc private func forwardFromMenu(_: Any?) { web?.navigateHistory(1) }
 
+    func windowDidBecomeKey(_: Notification) { web?.notifyWindowActivated() }
     func windowWillEnterFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = true }
     func windowWillExitFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = true }
     func windowDidEnterFullScreen(_: Notification) { frameRecovery.isTransitioningFullScreen = false }

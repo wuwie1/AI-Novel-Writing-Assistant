@@ -341,7 +341,9 @@ export default function NovelEdit() {
     currentState: "",
     currentGoal: "",
   });
-  const shouldLoadVolumeWorkspace = activeTab === "outline" || activeTab === "structured";
+  // Always load the volume workspace on the novel edit page so leave-guards
+  // compare against the saved baseline instead of an empty placeholder.
+  const shouldLoadVolumeWorkspace = true;
   const shouldLoadStoryMacro = activeTab === "story_macro";
   const shouldLoadWorldSlice = activeTab === "basic" || activeTab === "world";
   const shouldLoadQualityReport = activeTab === "pipeline";
@@ -1931,7 +1933,7 @@ export default function NovelEdit() {
     sourceNovelBookAnalysisOptions,
     sourceBookAnalysesLoading: sourceBookAnalysesQuery.isLoading,
     sourceBookAnalysesFetching: sourceBookAnalysesQuery.isFetching,
-    hydrateVolumeDraftFromDetail: !shouldLoadVolumeWorkspace,
+    hydrateVolumeDraftFromDetail: false,
     setBasicForm,
     setVolumeDraft,
     setPipelineForm,

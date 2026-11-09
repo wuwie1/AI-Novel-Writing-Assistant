@@ -32,11 +32,26 @@ async function main() {
     : command === 'app' ? await lifecycle.startRemote()
       : command === 'stop_app' ? await lifecycle.stop()
         : await lifecycle.restart(process.env.APP_MODE || undefined);
+  const summary = result?.status === 'started' ? '桌面已启动。'
+    : result?.status === 'focused' ? '桌面已在运行，已切换到现有窗口。'
+      : result?.status === 'stopped' ? (result.retained?.length ? '桌面已退出，本机创作服务暂时保留。' : '桌面已退出，辅助服务已全部关闭。')
+        : null;
+  if (summary) process.stdout.write(`[${command}] ${summary}\n`);
   process.stdout.write(`[${command}] ${JSON.stringify(result)}\n`);
 }
 
+const FAILURE_HINTS = {
+  2: '运行条件不满足，请按下方详情补齐依赖或配置后重试。',
+  3: '操作已取消，现有窗口和服务保持不变。',
+  4: '无法确认相关进程属于本仓库，为安全起见没有停止任何进程。',
+  5: '启动或构建没有完成，请查看日志目录中的详细原因后重试。',
+};
+
 main().catch((error) => {
   const code = Number.isInteger(error.exitCode) ? error.exitCode : 5;
-  process.stderr.write(`[${command}] failed at ${error.stage ?? 'lifecycle'}: ${error.message}\nMAC_EXIT_CODE=${code}\n`);
+  const hint = error.lockBusy
+    ? '另一个桌面启动或关闭命令正在运行，请等它结束后再试。'
+    : FAILURE_HINTS[code] ?? FAILURE_HINTS[5];
+  process.stderr.write(`[${command}] 失败：${hint}\n[${command}] 详情（${error.stage ?? 'lifecycle'}）：${error.message}\nMAC_EXIT_CODE=${code}\n`);
   process.exitCode = code;
 });

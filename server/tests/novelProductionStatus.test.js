@@ -243,3 +243,24 @@ test("NovelProductionStatusService reports delivery-ready facts without a job", 
   assert.equal(status.factProgress.draftedChapterCount, 20);
   assert.equal(status.factProgress.committedChapterCount, 20);
 });
+
+test("NovelProductionStatusService reports short story progress from saved segments", async () => {
+  const novel = {
+    ...buildNovel({ chapterCount: 0 }),
+    title: "《短篇进展》",
+    narrativeForm: "short_story",
+    targetWordCount: 6000,
+    shortStoryPlan: { status: "completed", targetWordCount: 6000 },
+    shortStorySegments: [
+      { order: 2, status: "completed", content: "乙".repeat(40) },
+      { order: 1, status: "completed", content: "甲".repeat(60) },
+    ],
+  };
+  const status = await createService(novel, null, null).getNovelProductionStatus({ novelId: "novel-1" });
+  assert.equal(status.narrativeForm, "short_story");
+  assert.equal(status.title, "短篇进展");
+  assert.equal(status.currentStage, "完整作品已完成");
+  assert.equal(status.summary, "《短篇进展》是一部短篇，已完成 2/2 段，约 100 字。");
+  assert.doesNotMatch(status.recoveryHint, /世界观|章节/);
+  assert.equal(status.factProgress.totalPercent, 100);
+});

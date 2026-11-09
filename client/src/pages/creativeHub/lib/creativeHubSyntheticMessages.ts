@@ -4,6 +4,7 @@ import type { CreativeHubStreamFrame } from "@ai-novel/shared/types/api";
 import type { LangChainMessage } from "@assistant-ui/react-langgraph";
 import type { CreativeHubDebugTraceEntry } from "../components/CreativeHubDebugTraceCard";
 import { getIntentDisplayLabel, getPlannerSourceDisplayLabel } from "./plannerLabels";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 function compactArgs(record: Record<string, string | boolean | null | undefined>) {
   return Object.fromEntries(
@@ -372,6 +373,7 @@ export function buildInlineStateMessages(
   }
 
   if (diagnostics?.failureSummary) {
+    const readableSummary = toUserFacingErrorText(diagnostics.failureSummary);
     const toolCallId = "failure_diagnostic_current";
     messages.push({
       id: "assistant_failure_diagnostic",
@@ -382,13 +384,13 @@ export function buildInlineStateMessages(
         name: "failure_diagnostic",
         args: compactArgs({
           failureCode: diagnostics.failureCode ?? null,
-          failureSummary: diagnostics.failureSummary,
+          failureSummary: readableSummary,
           failureDetails: diagnostics.failureDetails ?? null,
           recoveryHint: diagnostics.recoveryHint ?? null,
         }),
         partial_json: JSON.stringify(compactArgs({
           failureCode: diagnostics.failureCode ?? null,
-          failureSummary: diagnostics.failureSummary,
+          failureSummary: readableSummary,
           failureDetails: diagnostics.failureDetails ?? null,
           recoveryHint: diagnostics.recoveryHint ?? null,
         })),
@@ -405,9 +407,9 @@ export function buildInlineStateMessages(
       type: "tool",
       tool_call_id: toolCallId,
       name: "failure_diagnostic",
-      content: diagnostics.failureSummary,
+      content: readableSummary,
       artifact: {
-        summary: diagnostics.failureSummary,
+        summary: readableSummary,
         output: diagnostics,
         success: false,
         errorCode: diagnostics.failureCode ?? undefined,

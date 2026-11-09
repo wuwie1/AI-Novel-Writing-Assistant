@@ -8,6 +8,7 @@ import {
   type ChapterExecutionProgressSummary,
 } from "./director/runtime/ChapterExecutionProgressInspector";
 import { parseStructuredOutline } from "./novelProductionHelpers";
+import { buildShortStoryProductionStatus } from "../../modules/novel/short-story/application/ShortStoryProductionStatus";
 
 export interface ProductionStatusStage {
   key: string;
@@ -71,6 +72,7 @@ interface ProductionNovelWorldState {
 export interface ProductionStatusResult {
   novelId: string;
   title: string;
+  narrativeForm?: "short_story";
   worldId: string | null;
   worldName: string | null;
   chapterCount: number;
@@ -121,6 +123,8 @@ export class NovelProductionStatusService {
             characters: { select: { id: true } },
             chapters: { select: { id: true, order: true }, orderBy: { order: "asc" } },
             generationJobs: { orderBy: { createdAt: "desc" }, take: 1 },
+            shortStoryPlan: { select: { status: true, targetWordCount: true } },
+            shortStorySegments: { select: { order: true, status: true, content: true } },
           },
         })
       : await this.db.novel.findFirst({
@@ -135,11 +139,16 @@ export class NovelProductionStatusService {
             characters: { select: { id: true } },
             chapters: { select: { id: true, order: true }, orderBy: { order: "asc" } },
             generationJobs: { orderBy: { createdAt: "desc" }, take: 1 },
+            shortStoryPlan: { select: { status: true, targetWordCount: true } },
+            shortStorySegments: { select: { order: true, status: true, content: true } },
           },
           orderBy: { updatedAt: "desc" },
         });
     if (!novel) {
       throw new Error("未找到当前小说。");
+    }
+    if (novel.narrativeForm === "short_story") {
+      return buildShortStoryProductionStatus(novel, buildRuntimeStatus(novel.generationJobs[0] ?? null));
     }
 
     const [factSummary, inspectedChapterProgress] = await Promise.all([

@@ -65,6 +65,12 @@ export function classifyResponseEvidence(
   return error ? "unknown" : null;
 }
 
+export function terminalResponseMessage(reason?: StructuredFailureReason | null): string {
+  if (reason === "output_budget_exhausted" || reason === "reasoning_budget_exhausted") return "模型输出达到长度上限，结果不完整。";
+  if (reason === "blocked") return "模型拒绝或拦截了这次请求。";
+  return "模型未返回完整可用的结构化结果。";
+}
+
 export function terminalResponseReason(reason?: StructuredFailureReason | null): boolean {
   return reason === "blocked" || reason === "cancelled" || reason === "reasoning_budget_exhausted"
     || reason === "output_budget_exhausted" || reason === "empty_response";

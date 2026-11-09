@@ -58,10 +58,16 @@ export interface ModelRouteConnectivityStatus extends LLMConnectivityStatus {
 }
 
 function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
+  const raw = error instanceof Error && error.message.trim()
+    ? error.message.trim()
+    : "";
+  if (!raw) {
+    return "连接测试失败。";
   }
-  return "连接测试失败。";
+  if (/fetch failed|connection error|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(raw)) {
+    return "无法连接到模型服务。请确认网络可用、服务地址正确，本机服务（如 Ollama）已启动。";
+  }
+  return raw;
 }
 
 function getProtocolCandidates(baseURL: string, preferred?: ModelRouteRequestProtocol): ModelRouteRequestProtocol[] {

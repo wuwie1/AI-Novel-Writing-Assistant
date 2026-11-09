@@ -236,9 +236,9 @@ export class NovelPipelineExecutor {
     });
     const persistedPayload = this.parsePipelinePayload(existingJob?.payload);
     const runtimePayload: PipelinePayload = {
-      provider: persistedPayload.provider ?? options.provider ?? "deepseek",
-      model: persistedPayload.model ?? options.model ?? "",
-      temperature: persistedPayload.temperature ?? options.temperature ?? 0.8,
+      provider: persistedPayload.provider ?? options.provider,
+      model: persistedPayload.model ?? (options.model?.trim() || undefined),
+      temperature: persistedPayload.temperature ?? options.temperature,
       controlPolicy: persistedPayload.controlPolicy ?? options.controlPolicy,
       issueGovernanceVersion: persistedPayload.issueGovernanceVersion ?? options.issueGovernanceVersion,
       issuePolicySnapshot: persistedPayload.issuePolicySnapshot ?? options.issuePolicySnapshot,

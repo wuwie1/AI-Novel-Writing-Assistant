@@ -19,6 +19,7 @@ before(async () => {
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true,
     requestAnimationFrame: (callback) => setTimeout(callback, 0),
+    ...Object.fromEntries(['Node', 'Element', 'HTMLElement', 'HTMLFormElement', 'HTMLInputElement', 'HTMLButtonElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'Event', 'CustomEvent', 'KeyboardEvent', 'MouseEvent', 'FormData', 'getComputedStyle'].map((key) => [key, typeof dom.window[key] === 'function' && key === 'getComputedStyle' ? dom.window[key].bind(dom.window) : dom.window[key]])),
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
     restore.push(() => descriptor ? Object.defineProperty(globalThis, name, descriptor) : delete globalThis[name]);
@@ -97,15 +98,20 @@ before(async () => {
     alias: { '@': path.resolve(macRoot, '../client/src') },
     define: { 'import.meta.env': '{}' }, outfile: output, logLevel: 'silent',
     plugins: [{ name: 'isolated-ui', setup(build) {
+      build.onResolve({ filter: /^@\/components\/common\/LLMSelector$/ }, (args) => ({ path: args.path, namespace: 'test-llm' }));
+      build.onLoad({ filter: /.*/, namespace: 'test-llm' }, () => ({ resolveDir: macRoot, loader: 'tsx', contents: 'export default function LLMSelector(){return null;}' }));
       build.onResolve({ filter: /^@\/components\/ui\/(dialog|button|toast)$/ }, (args) => ({ path: args.path, namespace: 'test-ui' }));
       build.onLoad({ filter: /.*/, namespace: 'test-ui' }, () => ({ resolveDir: macRoot, loader: 'tsx', contents: `
         import React from 'react';
         export const Dialog=({open,children})=>open?<div role="dialog">{children}</div>:null;
-        export const DialogContent=({children})=><div>{children}</div>;
+        const Pass=({children})=><div>{children}</div>;
+        export const DialogContent=Pass, AppDialogContent=Pass, DialogHeader=Pass, DialogFooter=Pass, DialogPortal=Pass, DialogOverlay=()=>null, DialogTrigger=Pass, DialogClose=Pass;
         export const DialogTitle=({children})=><h2>{children}</h2>;
         export const DialogDescription=({children})=><p>{children}</p>;
-        export const Button=({variant,children,...props})=><button {...props}>{children}</button>;
-        export const toast={info:()=>{},error:()=>{}};
+        export const Button=({variant,size,asChild,children,...props})=><button {...props}>{children}</button>;
+        const noop=()=>{};
+        export const toast=Object.assign(noop,{info:noop,error:noop,success:noop,warning:noop,dismiss:noop});
+        export const Toaster=()=>null;
       ` }));
     } }],
   });
@@ -185,7 +191,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
       ['/novels', '我的小说', '测试作品'], ['/create', '开始创作', '填写小说设定'],
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演创作', '测试创作记录'],
       ['/tasks', '记录筛选', '进行中'], ['/settings/models', '设置分类', '模型路由'],
-      ['/drama', '短剧项目', '短剧项目甲'], ['/comic', '漫画项目', '漫画项目甲'],
+      ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
       ['/knowledge', '资料与参考', '书籍分析'], ['/genres', '故事素材', '角色素材'],
       ['/prompt-workbench', '写作工具', '写作规则'], ['/help', '创作指南', '创作路线'],
     ]) {

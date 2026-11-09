@@ -9,6 +9,7 @@ import { ensureRendererDependencies } from '../../infrastructure/dependencies/re
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
 import { inspectProcess, processMatches, stableHash } from '../../infrastructure/processes/identity.mjs';
+import { readProcessArgv } from '../../infrastructure/processes/argv.mjs';
 import { nativeSocketPath, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
 import { backendIdentity as makeBackendIdentity } from '../../infrastructure/processes/identity.mjs';
 import { inspectSqliteQuiescence, resolveLocalDatabasePath } from '../../infrastructure/processes/quiescence.mjs';
@@ -121,6 +122,42 @@ export function createRuntimeAdapters(config) {
     return record;
   }
 
+  const supervisorPath = path.join(repoRoot, 'desktop_mac/infrastructure/processes/launchers/supervisor.mjs');
+
+  /** A repository-scoped launchd label is ours only while it still runs our supervisor for that role. */
+  async function inspectOwnAgent(label, role) {
+    let agent;
+    try { agent = await printAgent(label); } catch { return { loaded: false, owned: false, pid: null }; }
+    const pid = parsePid(agent.stdout);
+    if (!pid) return { loaded: true, owned: true, pid: null };
+    const argv = await readProcessArgv(pid);
+    return { loaded: true, owned: Array.isArray(argv) && argv[1] === supervisorPath && argv[2] === role, pid };
+  }
+
+  async function descendsFrom(pid, ancestorPid) {
+    let current = pid;
+    for (let depth = 0; current > 1 && depth < 12; depth += 1) {
+      if (current === ancestorPid) return true;
+      try { current = Number((await exec('/bin/ps', ['-o', 'ppid=', '-p', String(current)])).stdout.trim()); }
+      catch { return false; }
+    }
+    return false;
+  }
+
+  /** ts-node-dev respawns the API with a new PID; the listener still belongs to our launchd supervisor. */
+  async function adoptOwnAgentForListener(role, mode, listenerPid) {
+    const label = launchdLabel({ repoRealPath: repoRoot, mode, role });
+    const agent = await inspectOwnAgent(label, role);
+    if (!agent.loaded || !agent.owned || !agent.pid || !await descendsFrom(listenerPid, agent.pid)) return null;
+    const info = await inspectProcess(agent.pid);
+    if (!info) return null;
+    return {
+      ownership: 'owned', role, mode, repoRealPath: repoRoot, pid: agent.pid, startTime: info.startTime, command: info.command,
+      commandIdentity: stableHash(info.command), label, logPath: path.join(logs, `${role}.log`), errorLogPath: path.join(logs, `${role}.error.log`),
+      plistPath: path.join(agents, `${label}.plist`),
+    };
+  }
+
   async function stopRecord(role, record, expected) {
     const label = launchdLabel({ repoRealPath: expected.repoRealPath, mode: expected.mode ?? record.mode, role });
     if (record.label !== label) throw internalError(`Refusing to stop ${role}: launchd label does not match`, 4);
@@ -132,7 +169,15 @@ export function createRuntimeAdapters(config) {
       await stopAgent(label);
       return;
     }
-    if (!await processMatches(record, { ...expected, role })) throw internalError(`Refusing to stop ${role}: process ownership could not be verified`, 4);
+    if (!await processMatches(record, { ...expected, role })) {
+      // A different start time or command proves the recorded PID was reused by another program.
+      // Never signal that PID; only unload the label if it still runs this repository's supervisor.
+      const agent = await inspectOwnAgent(label, role);
+      if (!agent.loaded) return;
+      if (!agent.owned) throw internalError(`Refusing to stop ${role}: process ownership could not be verified`, 4);
+      try { await stopAgent(label); } catch { throw internalError(`Could not stop owned ${role}; inspect ${record.errorLogPath}`); }
+      return;
+    }
     let agent;
     try { agent = await printAgent(label); } catch { throw internalError(`Refusing to stop ${role}: launchd ownership could not be verified`, 4); }
     if (parsePid(agent.stdout) !== record.pid) throw internalError(`Refusing to stop ${role}: launchd PID does not match the recorded process`, 4);
@@ -226,10 +271,15 @@ export function createRuntimeAdapters(config) {
           const pids = listenPid(config.localApiPort);
           if (pids.length > 1) throw internalError(`Several processes own local API port ${config.localApiPort}; inspect the listeners`, 4);
           if (pids.length === 1) {
-            const pid = pids[0]; const info = await inspectProcess(pid); const cwd = await workingDirectory(pid);
-            const verifiedEntry = info && (/(?:@ai-novel\/server|server\/(?:src|dist)|dev:api)/.test(info.command) || info.command.includes('ts-node-dev') && info.command.includes('src/app.ts'));
-            if (!info || cwd !== path.join(repoRoot, 'server') || !verifiedEntry) throw internalError(`Port ${config.localApiPort} belongs to an unverified process (pid ${pid}); stop or inspect it manually`, 4);
-            processes['local-api'] = { ownership: 'borrowed', role: 'local-api', mode, repoRealPath: repoRoot, pid, startTime: info.startTime, command: info.command, commandIdentity: stableHash(info.command), cwd, databaseIdentity: backendIdentity, databasePath: localDbPath };
+            const pid = pids[0];
+            const adopted = await adoptOwnAgentForListener('local-api', mode, pid);
+            if (adopted) processes['local-api'] = { ...adopted, databaseIdentity: backendIdentity, databasePath: localDbPath };
+            else {
+              const info = await inspectProcess(pid); const cwd = await workingDirectory(pid);
+              const verifiedEntry = info && (/(?:@ai-novel\/server|server\/(?:src|dist)|dev:api)/.test(info.command) || info.command.includes('ts-node-dev') && info.command.includes('src/app.ts'));
+              if (!info || cwd !== path.join(repoRoot, 'server') || !verifiedEntry) throw internalError(`Port ${config.localApiPort} belongs to an unverified process (pid ${pid}); stop or inspect it manually`, 4);
+              processes['local-api'] = { ownership: 'borrowed', role: 'local-api', mode, repoRealPath: repoRoot, pid, startTime: info.startTime, command: info.command, commandIdentity: stableHash(info.command), cwd, databaseIdentity: backendIdentity, databasePath: localDbPath };
+            }
           } else {
             const launcher = path.join(repoRoot, 'desktop_mac/infrastructure/processes/server-launcher.mjs');
             const node = selectServerNode(repoRoot);
@@ -313,6 +363,21 @@ export function createRuntimeAdapters(config) {
       return result.safeToStop === true;
     },
     async stopOwned(role, record, expected) { return stopRecord(role, record, expected); },
+    /** Unload window helpers that run this repository's supervisor but are missing from state. */
+    async cleanupOrphanAgents(current) {
+      const tracked = new Set(Object.values(current?.processes ?? {}).map((record) => record?.label).filter(Boolean));
+      const stopped = [];
+      for (const mode of ['local', 'remote']) {
+        for (const role of ['mac-proxy', 'vite', 'native-watcher']) {
+          const label = launchdLabel({ repoRealPath: repoRoot, mode, role });
+          if (tracked.has(label)) continue;
+          const agent = await inspectOwnAgent(label, role);
+          if (!agent.loaded || !agent.owned) continue;
+          try { await stopAgent(label); stopped.push(`${mode}/${role}`); } catch {}
+        }
+      }
+      return stopped;
+    },
     async cleanupWindowHelpers(current) {
       for (const [role, record] of Object.entries(current.processes ?? {})) if (!['app', 'local-api', 'tunnel'].includes(role) && record.ownership === 'owned' && await processMatches(record, { repoRealPath: repoRoot, role, mode: record.mode ?? current.runningMode })) await stopRecord(role, record, { repoRealPath: repoRoot, mode: record.mode ?? current.runningMode });
     },

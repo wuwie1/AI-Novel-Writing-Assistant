@@ -286,6 +286,10 @@ function composeUnbindWorldAnswer(
 }
 
 function composeFactProductionStatusText(status: Record<string, unknown>, fallbackTitle = "当前小说"): string {
+  if (status.narrativeForm === "short_story" && typeof status.summary === "string") {
+    const hint = typeof status.recoveryHint === "string" ? status.recoveryHint.trim() : "";
+    return [status.summary.trim(), hint ? `建议：${hint}` : ""].filter(Boolean).join("");
+  }
   const title = typeof status.title === "string" && status.title.trim() ? status.title.trim() : fallbackTitle;
   const currentStage = typeof status.currentStage === "string" && status.currentStage.trim()
     ? status.currentStage.trim()

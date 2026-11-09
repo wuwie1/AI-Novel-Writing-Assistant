@@ -218,6 +218,7 @@ html[data-app-shell="mac"] .mac-list-row:hover { background: rgb(255 255 255 / 5
 html[data-app-shell="mac"] .mac-list-row.is-selected { background: var(--mac-list-selected); color: #30383c; }
 html[data-app-shell="mac"] .mac-list-row.is-selected::before { content: ""; position: absolute; top: 9px; bottom: 9px; left: 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--mac-list-indicator); }
 html[data-app-shell="mac"] .mac-list-row.is-selected small { color: #66757c; }
+html[data-app-shell="mac"] .mac-list-row.is-within { color: #30383c; font-weight: 500; }
 html[data-app-shell="mac"] .mac-list-row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html[data-app-shell="mac"] .mac-list-row > .mac-chapter-order { flex: 0 0 24px; color: var(--mac-muted); font-size: 11px; text-align: right; }
 html[data-app-shell="mac"] .mac-list-message { padding: 10px 8px; color: var(--mac-muted); font-size: 12px; line-height: 1.5; }
@@ -240,6 +241,8 @@ html[data-app-shell="mac"] .mac-toolbar {
 }
 html[data-app-shell="mac"] .mac-toolbar-library { display: flex; align-items: center; gap: 8px; width: var(--mac-secondary-width); min-width: 0; padding: 0 10px; }
 html[data-app-shell="mac"] .mac-drawer-toggle { display: inline-grid; flex-shrink: 0; }
+html[data-app-shell="mac"] .mac-drawer-toggle:has(.mac-drawer-toggle-label) { display: inline-flex; align-items: center; gap: 5px; width: auto; padding: 0 8px; }
+html[data-app-shell="mac"] .mac-drawer-toggle-label { font-size: 12px; white-space: nowrap; }
 html[data-app-shell="mac"] .mac-toolbar-title { min-width: 0; flex: 1; overflow: hidden; color: var(--mac-text); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 html[data-app-shell="mac"] .mac-toolbar-book { max-width: 35%; padding: 5px 7px; overflow: hidden; border: 0; border-radius: 5px; background: transparent; color: var(--mac-muted); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 html[data-app-shell="mac"] .mac-toolbar-book:hover { background: var(--mac-hover); color: var(--mac-text); }
@@ -254,6 +257,7 @@ html[data-app-shell="mac"] .mac-drawer-scrim { display: none; }
 /* Shared client screens: normalize typography, controls and transient surfaces within Mac only. */
 html[data-app-shell="mac"] #root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
 html[data-app-shell="mac"] #root :is(h1, h2, h3, h4) { color: var(--mac-text); }
+html[data-app-shell="mac"] #root .text-white :is(h1, h2, h3, h4) { color: inherit; }
 html[data-app-shell="mac"] #root :where(input:not([type="checkbox"]):not([type="radio"]), textarea, select) { border-color: #d0d0cc; border-radius: 6px; background-color: #fff; }
 html[data-app-shell="mac"] #root :is(input, textarea, select):focus { border-color: #8ebce9; outline: none; box-shadow: 0 0 0 2px rgb(10 132 255 / 10%); }
 html[data-app-shell="mac"] #root :is(button, [role="button"]) { transition-duration: 120ms; }
@@ -266,10 +270,28 @@ html[data-app-shell="mac"] .mac-canvas :is(.prose, [data-writing-canvas], .chapt
 @media (max-width: 960px) {
   html[data-app-shell="mac"] .mac-shell { grid-template-columns: 64px minmax(0, 1fr); }
   html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
-  html[data-app-shell="mac"] .mac-secondary { position: fixed; z-index: 35; top: 40px; bottom: 0; left: 64px; width: min(244px, calc(100vw - 64px)); transform: translateX(-105%); transition: transform 180ms ease; box-shadow: 10px 0 28px rgb(0 0 0 / 12%); }
+  html[data-app-shell="mac"] .mac-secondary {
+    position: fixed;
+    z-index: 35;
+    top: 40px;
+    bottom: 0;
+    left: 64px;
+    width: min(244px, calc(100vw - 64px));
+    transform: translateX(-105%);
+    transition: transform 180ms ease, opacity 180ms ease;
+    box-shadow: 10px 0 28px rgb(0 0 0 / 12%);
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
   html[data-app-shell="mac"] .mac-workspace { grid-column: 2; }
   html[data-app-shell="mac"] .mac-canvas { border-top-left-radius: 16px; }
-  html[data-app-shell="mac"] .mac-secondary.is-open { transform: translateX(0); }
+  html[data-app-shell="mac"] .mac-secondary.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
   html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary.is-open { visibility: visible; opacity: 1; pointer-events: auto; }
   html[data-app-shell="mac"] .mac-secondary-close { display: inline-grid; }
   html[data-app-shell="mac"] .mac-drawer-scrim { position: fixed; z-index: 34; inset: 40px 0 0 64px; display: block; border: 0; background: rgb(0 0 0 / 18%); }
@@ -286,3 +308,18 @@ html[data-app-shell="mac"] .mac-canvas :is(.prose, [data-writing-canvas], .chapt
   html[data-app-shell="mac"] .mac-shell,
   html[data-app-shell="mac"] .mac-list-row { transition-duration: 0.01ms; }
 }
+
+html[data-app-shell="mac"] .mac-toolbar { user-select:none; -webkit-user-select:none; }
+html[data-app-shell="mac"] .mac-toolbar input,
+html[data-app-shell="mac"] .mac-toolbar textarea,
+html[data-app-shell="mac"] .mac-toolbar [contenteditable="true"] { user-select:text; -webkit-user-select:text; }
+html[data-app-shell="mac"] .mac-toolbar-model { display:flex; align-items:center; min-width:0; max-width:min(420px,46vw); margin-left:auto; margin-right:10px; }
+html[data-app-shell="mac"] .mac-toolbar-model > * { min-width:0; width:100%; }
+html[data-app-shell="mac"] .mac-version-link { flex:0 0 auto; color:#777772; font-size:11px; text-decoration:none; background:transparent; border:0; padding:0; cursor:pointer; }
+html[data-app-shell="mac"] .mac-version-link:hover { color:var(--mac-text); }
+html[data-app-shell="mac"] .mac-rail-badge {
+  position:absolute; top:2px; right:2px; min-width:14px; height:14px; padding:0 3px;
+  border-radius:999px; background:#c45b52; color:#fff; font-size:9px; line-height:14px; text-align:center;
+  pointer-events:none;
+}
+html[data-app-shell="mac"] .mac-mode-indicator { margin-left:0; }

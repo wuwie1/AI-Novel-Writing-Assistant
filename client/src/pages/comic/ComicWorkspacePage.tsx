@@ -562,11 +562,7 @@ export default function ComicWorkspacePage() {
         <Card className="py-16 text-center">
           <CardContent className="flex flex-col items-center gap-4">
             <FilePen className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-muted-foreground">还没有漫画项目，点击「新建项目」开始</p>
-            <Button type="button" onClick={() => setShowWizard(true)}>
-              <Plus className="h-4 w-4" />
-              新建项目
-            </Button>
+            <p className="text-muted-foreground">还没有漫画项目，点右上角「新建项目」开始。</p>
           </CardContent>
         </Card>
       )}

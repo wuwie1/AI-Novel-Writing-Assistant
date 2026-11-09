@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 import SelectControl from "@/components/common/SelectControl";
 import { Link } from "react-router-dom";
 
@@ -43,8 +44,8 @@ interface CreativeHubSidebarProps {
   onQuickAction?: (prompt: string) => void;
 }
 
-function bindingStatusLabel(value: string | null | undefined): string {
-  return value?.trim() ? "已绑定" : "未绑定";
+function bindingStatusLabel(value: string | null | undefined, boundLabel = "已绑定", emptyLabel = "可先不选"): string {
+  return value?.trim() ? boundLabel : emptyLabel;
 }
 
 function pipelineStatusLabel(status: string | null | undefined): string {
@@ -124,9 +125,8 @@ function buildBlockerCardData(input: {
   if (input.diagnostics?.failureSummary) {
     return {
       title: "当前风险",
-      summary: input.diagnostics.failureSummary,
+      summary: toUserFacingErrorText(input.diagnostics.failureSummary),
       details: [
-        input.diagnostics.failureCode ? `错误码: ${input.diagnostics.failureCode}` : "",
         input.diagnostics.recoveryHint ? `恢复建议: ${input.diagnostics.recoveryHint}` : "",
       ].filter(Boolean),
       tone: "border-destructive/30 bg-destructive/5 text-foreground",
@@ -138,7 +138,7 @@ function buildBlockerCardData(input: {
   if (input.productionStatus?.failureSummary) {
     return {
       title: "当前阻塞",
-      summary: input.productionStatus.failureSummary,
+      summary: toUserFacingErrorText(input.productionStatus.failureSummary),
       details: [
         input.productionStatus.recoveryHint ? `恢复建议: ${input.productionStatus.recoveryHint}` : "",
         `当前阶段: ${input.productionStatus.currentStage}`,
@@ -293,12 +293,12 @@ export default function CreativeHubSidebar({
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <div>章节: {bindingStatusLabel(bindings.chapterId)}</div>
-              <div>世界观: {bindingStatusLabel(bindings.worldId)}</div>
-              <div>任务: {bindingStatusLabel(bindings.taskId)}</div>
-              <div>拆书分析: {bindingStatusLabel(bindings.bookAnalysisId)}</div>
-              <div>写作公式: {bindingStatusLabel(bindings.formulaId)}</div>
-              <div>基础角色: {bindingStatusLabel(bindings.baseCharacterId)}</div>
+              <div>章节：{bindingStatusLabel(bindings.chapterId)}</div>
+              <div>世界观：{bindingStatusLabel(bindings.worldId)}</div>
+              <div>任务：{bindingStatusLabel(bindings.taskId, "已关联任务")}</div>
+              <div>拆书分析：{bindingStatusLabel(bindings.bookAnalysisId)}</div>
+              <div>写作公式：{bindingStatusLabel(bindings.formulaId)}</div>
+              <div>基础角色：{bindingStatusLabel(bindings.baseCharacterId)}</div>
             </div>
             <div>知识文档: {bindings.knowledgeDocumentIds?.length ?? 0} 份</div>
           </div>

@@ -92,7 +92,7 @@ export default function ProviderSettingsSection(props: {
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle>模型厂商</CardTitle>
-              <Badge variant={visibleViewModels.length ? "default" : "outline"}>{visibleViewModels.length} 个可用连接</Badge>
+              <Badge variant={visibleViewModels.length ? "default" : "outline"}>{visibleViewModels.length} 个厂商</Badge>
             </div>
           <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
               添加一个可用文本模型后就能开始创作；路由和高级参数可按需再设置。

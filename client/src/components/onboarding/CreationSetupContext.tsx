@@ -104,6 +104,7 @@ export function CreationSetupProvider({ children }: { children: ReactNode }) {
       readyForCreation,
       pathname: location.pathname,
       modelSettingsOpen,
+      dismissed: window.localStorage.getItem(DISMISSED_STORAGE_KEY) === "true",
     })) {
       setForceConfiguration(false);
       setDialogOpen(true);

@@ -52,6 +52,12 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         sendEvent("requestSave", requestId: UUID().uuidString)
     }
 
+    /// WKWebView does not emit visibilitychange when another app takes key focus, so data refresh needs this signal.
+    func notifyWindowActivated() {
+        guard isReady else { return }
+        sendEvent("windowActivated", requestId: UUID().uuidString)
+    }
+
     private func sendEvent(_ type: String, requestId: String) {
         let js = "window.dispatchEvent(new CustomEvent('ai-novel-mac',{detail:{protocolVersion:1,type:\(Self.js(type)),requestId:\(Self.js(requestId))}}));"
         view.evaluateJavaScript(js)
@@ -142,7 +148,13 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download)
     }
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = suggestedFilename; panel.canCreateDirectories = true
+        let panel = NSSavePanel()
+        panel.title = "导出文件"
+        panel.message = "选择保存位置"
+        panel.prompt = "导出"
+        panel.nameFieldLabel = "存储为："
+        panel.nameFieldStringValue = suggestedFilename
+        panel.canCreateDirectories = true
         panel.beginSheetModal(for: hostWindow ?? NSApp.keyWindow!) { completionHandler($0 == .OK ? panel.url : nil) }
     }
 

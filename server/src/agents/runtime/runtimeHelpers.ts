@@ -264,6 +264,9 @@ export function summarizeOutput(tool: string, output: Record<string, unknown>): 
 }
 
 export function summarizeFailure(tool: string, error: unknown): string {
+  if (error instanceof Error && "code" in error && error.message.trim()) {
+    return error.message.trim();
+  }
   return `${tool} 执行失败：${error instanceof Error ? error.message : "unknown error"}`;
 }
 

@@ -204,6 +204,17 @@ V2 拆章按每个节奏段的计划章数分配输出额度：`min(32768, 900 +
 
 UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`lockedBeatCount`、`defaultImpactAction` 和 `advancedImpactActions`，但这些都是投影 / 决策摘要，不需要数据库迁移。只有结构级角色或全局卖点变化明显影响整卷战略时，才提示高级动作，例如重跑节奏板或卷战略。
 
+## Leave Guard Baseline
+
+前端离开保护必须只在「已加载的卷工作区基线」与「当前草稿」真正不一致时标记 dirty：
+
+- 小说编辑页始终加载卷工作区，作为 dirty 比较的唯一基线；不能拿空数组或 `novel.detail.volumes` 去冒充已保存工作区。
+- 工作区尚未返回、或草稿尚未从工作区同步完成前，离开保护必须视为干净。
+- dirty 比较覆盖 volumes、strategyPlan、critiqueReport、beatSheets、rebalanceDecisions 整份工作区快照，不只看卷列表字段。
+- 离开弹窗的「保存并离开」必须绑定真实 `updateNovelVolumes` 保存合同；没有 save 处理器时不能把用户逼到只能点「放弃」。
+
+这条规则同时约束 Web 与 Mac。Mac 没有 Web 的 8 步侧栏时，更容易在默认「项目设定」页触发误报，因此基线加载与对齐不能依赖当前 `stage` 才发起。
+
 ## Downstream Gap
 
 卷规划的价值最终要进入章节执行。当前已存在 `VolumeWindowContext.keyMilestoneGuards` 字段，但卷规划服务尚未完整填充它。这个缺口会导致章节生成仍可能提前兑现后续里程碑或重复卷级高潮。

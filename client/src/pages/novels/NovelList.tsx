@@ -65,15 +65,21 @@ export interface NovelListPresentation {
   setSearch: (value: string) => void;
   status: StatusFilter;
   setStatus: (value: StatusFilter) => void;
+  writingMode: WritingModeFilter;
+  setWritingMode: (value: WritingModeFilter) => void;
   narrativeForm: "all" | "short_story" | "long_novel";
   setNarrativeForm: (value: "all" | "short_story" | "long_novel") => void;
+  sort: "updated" | "created" | "progress";
+  setSort: (value: "updated" | "created" | "progress") => void;
+  view: "shelf" | "workbench";
+  setView: (value: "shelf" | "workbench") => void;
   setPage: (page: number) => void;
   refetch: () => void;
   openNovel: (id: string) => void;
   openCockpit: (id: string) => void;
   openCover: (id: string) => void;
   download: (input: { novelId: string; novelTitle: string }) => void;
-  remove: (id: string, title: string) => void;
+  remove: (id: string, title: string, options?: { confirmed?: boolean }) => void;
   downloadPendingId: string | null;
   deletePendingId: string | null;
 }
@@ -86,16 +92,29 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   const initialView = searchParams.get("view") === "workbench" || searchParams.get("view") === "shelf"
     ? searchParams.get("view") as "shelf" | "workbench"
     : storedView === "workbench" ? "workbench" : "shelf";
+  const initialStatus = (["all", "draft", "published"].includes(searchParams.get("status") ?? "")
+    ? searchParams.get("status")
+    : "all") as StatusFilter;
+  const initialWritingMode = (["all", "original", "continuation"].includes(searchParams.get("writingMode") ?? "")
+    ? searchParams.get("writingMode")
+    : "all") as WritingModeFilter;
+  const initialNarrativeForm = (["all", "short_story", "long_novel"].includes(searchParams.get("narrativeForm") ?? "")
+    ? searchParams.get("narrativeForm")
+    : "all") as "all" | "short_story" | "long_novel";
+  const initialSort = (["updated", "created", "progress"].includes(searchParams.get("sort") ?? "")
+    ? searchParams.get("sort")
+    : "updated") as "updated" | "created" | "progress";
+  const initialSearch = searchParams.get("q")?.trim() ?? "";
   const [view, setView] = useState<"shelf" | "workbench">(initialView);
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [writingMode, setWritingMode] = useState<WritingModeFilter>("all");
-  const [narrativeForm, setNarrativeForm] = useState<"all" | "short_story" | "long_novel">("all");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<"updated" | "created" | "progress">("updated");
+  const [status, setStatus] = useState<StatusFilter>(initialStatus);
+  const [writingMode, setWritingMode] = useState<WritingModeFilter>(initialWritingMode);
+  const [narrativeForm, setNarrativeForm] = useState<"all" | "short_story" | "long_novel">(initialNarrativeForm);
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [search, setSearch] = useState(initialSearch);
+  const [sort, setSort] = useState<"updated" | "created" | "progress">(initialSort);
   const [cockpitNovelId, setCockpitNovelId] = useState<string | null>(null);
   const [coverNovelId, setCoverNovelId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(Math.max(1, Number(searchParams.get("page") || "1") || 1));
   const { candidateCount: recoveryCandidateCount, openDialog: openRecoveryDialog } = useTaskRecovery();
   const effectiveSearch = render || view === "shelf" ? search : "";
   const effectiveNarrativeForm = render || view === "shelf" ? narrativeForm : "all";
@@ -134,6 +153,26 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   useEffect(() => {
     setPage(1);
   }, [view, search, status, writingMode, narrativeForm, sort]);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const assign = (key: string, value: string, fallback: string) => {
+      if (!value || value === fallback) next.delete(key);
+      else next.set(key, value);
+    };
+    assign("view", view, "shelf");
+    assign("status", status, "all");
+    assign("writingMode", writingMode, "all");
+    assign("narrativeForm", narrativeForm, "all");
+    assign("sort", sort, "updated");
+    assign("q", search, "");
+    assign("page", String(page), "1");
+    const current = searchParams.toString();
+    const upcoming = next.toString();
+    if (current !== upcoming) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [narrativeForm, page, search, searchParams, setSearchParams, sort, status, view, writingMode]);
 
   const cockpitProjectionQuery = useQuery({
     queryKey: cockpitNovelId
@@ -220,15 +259,17 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   const summary = useMemo(() => buildNovelListSummary(allNovels), [allNovels]);
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
+    if (page > Math.max(1, totalPages)) {
+      setPage(Math.max(1, totalPages));
     }
   }, [page, totalPages]);
 
-  const handleDelete = (novelId: string, title: string) => {
-    const confirmed = window.confirm(`确认删除《${title}》吗？该操作会直接删除当前小说。`);
-    if (!confirmed) {
-      return;
+  const handleDelete = (novelId: string, title: string, options?: { confirmed?: boolean }) => {
+    if (!options?.confirmed) {
+      const confirmed = window.confirm(`确认删除《${title}》吗？该操作会直接删除当前小说。`);
+      if (!confirmed) {
+        return;
+      }
     }
     deleteNovelMutation.mutate(novelId);
   };
@@ -311,7 +352,9 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
       {render ? render({
         novels, total: totalNovels, page, totalPages,
         isPending: novelListQuery.isPending, isError: novelListQuery.isError, isFetching: novelListQuery.isFetching,
-        search: searchInput, setSearch: setSearchInput, status, setStatus, narrativeForm, setNarrativeForm,
+        search: searchInput, setSearch: setSearchInput, status, setStatus,
+        writingMode, setWritingMode, narrativeForm, setNarrativeForm, sort, setSort,
+        view, setView: handleViewChange,
         setPage, refetch: () => { void novelListQuery.refetch(); }, openNovel: openNovelEditor,
         openCockpit: setCockpitNovelId, openCover: setCoverNovelId,
         download: downloadNovelMutation.mutate, remove: handleDelete,

@@ -420,7 +420,7 @@ export class NovelCorePipelineService {
         matchedChapters: chapters.length,
         availableRange: `${chapterStats._min.order ?? 1}-${chapterStats._max.order ?? 1}`,
         maxRetries,
-        provider: options.provider ?? "deepseek",
+        provider: options.provider ?? "model-route",
         model: options.model ?? "",
       });
 
@@ -441,9 +441,9 @@ export class NovelCorePipelineService {
           maxRetries,
           currentStage: "queued",
           payload: this.stringifyPipelinePayload({
-            provider: options.provider ?? "deepseek",
-            model: options.model ?? "",
-            temperature: options.temperature ?? 0.8,
+            provider: options.provider,
+            model: options.model,
+            temperature: options.temperature,
             controlPolicy: options.controlPolicy,
             issueGovernanceVersion: DIRECTOR_ISSUE_GOVERNANCE_VERSION,
             issuePolicySnapshot,

@@ -18,6 +18,7 @@ interface RouteSetupPromptInput {
   readyForCreation: boolean;
   pathname: string;
   modelSettingsOpen?: boolean;
+  dismissed?: boolean;
 }
 
 interface FirstNovelHandoffInput {
@@ -39,6 +40,7 @@ export function shouldOpenAutomaticSetupPrompt(input: AutomaticSetupPromptInput)
 export function shouldOpenSetupPromptForRoute(input: RouteSetupPromptInput): boolean {
   return input.statusResolved
     && !input.readyForCreation
+    && !input.dismissed
     && !input.modelSettingsOpen
     && GATED_ROUTE_PREFIXES.some((prefix) => input.pathname.startsWith(prefix));
 }

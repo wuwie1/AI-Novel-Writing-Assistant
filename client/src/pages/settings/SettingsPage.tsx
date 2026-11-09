@@ -386,9 +386,12 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
           }));
         },
         onError: (error) => {
+          const message = error instanceof Error ? error.message : "连接测试失败。";
           setProviderTestResults((prev) => ({
             ...prev,
-            [provider.provider]: error instanceof Error ? error.message : "连接测试失败。",
+            [provider.provider]: /fetch failed/i.test(message)
+              ? "无法连接到模型服务。请确认网络可用、服务地址正确，本机服务（如 Ollama）已启动。"
+              : message,
           }));
         },
       },
@@ -410,7 +413,10 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
           setDialogTestResult(formatConnectionTestResult(response));
         },
         onError: (error) => {
-          setDialogTestResult(error instanceof Error ? error.message : "连接测试失败。");
+          const message = error instanceof Error ? error.message : "连接测试失败。";
+          setDialogTestResult(/fetch failed/i.test(message)
+            ? "无法连接到模型服务。请确认网络可用、服务地址正确，本机服务（如 Ollama）已启动。"
+            : message);
         },
       },
     );

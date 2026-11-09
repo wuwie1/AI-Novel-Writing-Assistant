@@ -1,20 +1,52 @@
 import { Suspense, useEffect, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { BookOpen, CircleHelp, Plus, PanelLeft, MoreHorizontal, Settings2, Sparkles, Workflow, X, ScrollText } from "lucide-react";
+import { VisualAssetLibraryDialog } from "@/components/visualAssets";
+import LLMSelector from "@/components/common/LLMSelector";
+import { listTasks } from "@/api/tasks";
+import { listDirectorRuns } from "@/api/directorNext";
+import { queryKeys } from "@/api/queryKeys";
 import { macEnvironment } from "../platform/native";
 import { moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
+import { MacReleaseNotesDialog, MacVersionBadge } from "./MacReleaseNotes";
 import { MacSidebarContent } from "./sidebar";
 
 const primaryIcons = [Plus, BookOpen, Sparkles, Workflow, ScrollText];
 
 export function MacAppLayout() {
   const location = useLocation();
-  const context = resolveMacNavigation(location.pathname);
+  const navigate = useNavigate();
+  const context = resolveMacNavigation(location.pathname, location.search);
   const [moreOpen, setMoreOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listSearch, setListSearch] = useState("");
+  const [visualAssetsOpen, setVisualAssetsOpen] = useState(false);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 960px)").matches);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const attentionTasks = useQuery({
+    queryKey: ["mac-rail", "attention-tasks"],
+    queryFn: () => listTasks({ status: "waiting_approval", limit: 20 }),
+    staleTime: 20_000,
+    refetchInterval: 20_000,
+  });
+  const failedTasks = useQuery({
+    queryKey: ["mac-rail", "failed-tasks"],
+    queryFn: () => listTasks({ status: "failed", limit: 20 }),
+    staleTime: 20_000,
+    refetchInterval: 20_000,
+  });
+  const directorAttention = useQuery({
+    queryKey: queryKeys.directorNext.runs(true),
+    queryFn: () => listDirectorRuns({ needsAttention: true, limit: 20 }),
+    staleTime: 20_000,
+    refetchInterval: 20_000,
+    retry: false,
+  });
+  const taskBadgeCount = (attentionTasks.data?.data?.items.length ?? 0)
+    + (failedTasks.data?.data?.items.length ?? 0);
+  const directorBadgeCount = directorAttention.data?.data?.length ?? 0;
   // These workbenches own their document/thread directory. Keep one directory
   // visible initially, while allowing the user to reopen the global navigator.
   const workbench = context.chapterId ? "chapter-editor"
@@ -23,6 +55,13 @@ export function MacAppLayout() {
   const collapseKey = workbench ?? context.section;
   const collapsed = collapsedSections[collapseKey] ?? Boolean(workbench);
   const mode = macEnvironment()?.mode;
+
+  useEffect(() => {
+    if (location.hash === "#visual-assets") {
+      setVisualAssetsOpen(true);
+      setMoreOpen(false);
+    }
+  }, [location.hash, location.key]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 960px)");
@@ -52,14 +91,25 @@ export function MacAppLayout() {
         {primaryLinks.map(([to, label], index) => {
           const Icon = primaryIcons[index];
           const active = context.primary === to;
-          return <Link key={to} to={to} className={`mac-rail-link${index === 0 ? " mac-rail-create" : ""}${active ? " is-active" : ""}`} aria-label={label} aria-current={active ? "page" : undefined} data-tooltip={label}><Icon size={16} strokeWidth={1.5}/></Link>;
+          const badge = to === "/tasks"
+            ? taskBadgeCount
+            : to === "/lab/director"
+              ? directorBadgeCount
+              : 0;
+          return <Link key={to} to={to} className={`mac-rail-link${index === 0 ? " mac-rail-create" : ""}${active ? " is-active" : ""}`} aria-label={badge > 0 ? `${label}，${badge} 条待处理` : label} aria-current={active ? "page" : undefined} data-tooltip={label} onClick={(event) => {
+            if (narrow && active) { event.preventDefault(); setDrawerOpen((open) => !open); }
+          }}><Icon size={16} strokeWidth={1.5}/>{badge > 0 ? <span className="mac-rail-badge" aria-hidden="true">{badge > 9 ? "9+" : badge}</span> : null}</Link>;
         })}
         <div className="mac-rail-divider" role="separator"/>
         <div className="mac-more-wrap">
           <button className={`mac-rail-link${moreOpen || context.primary === "more" ? " is-active" : ""}`} aria-label="更多功能" aria-expanded={moreOpen} data-tooltip="更多功能" onClick={() => setMoreOpen((open) => !open)}><MoreHorizontal size={16} strokeWidth={1.5}/></button>
           {moreOpen ? <>
             <button className="mac-dismiss" aria-label="关闭更多功能菜单" onClick={() => setMoreOpen(false)}/>
-            <div className="mac-more-menu" role="menu" aria-label="更多功能">{moreLinks.map(([to, label]) => <Link key={to} role="menuitem" to={to} className={pathIsWithin(location.pathname, to) ? "is-active" : ""}>{label}</Link>)}</div>
+            <div className="mac-more-menu" role="menu" aria-label="更多功能">{moreLinks.map(([to, label]) => (
+              to.startsWith("#")
+                ? <button key={to} type="button" role="menuitem" className={visualAssetsOpen ? "is-active" : ""} onClick={() => { setMoreOpen(false); setVisualAssetsOpen(true); }}>{label}</button>
+                : <Link key={to} role="menuitem" to={to} className={pathIsWithin(location.pathname, to) ? "is-active" : ""} onClick={() => setMoreOpen(false)}>{label}</Link>
+            ))}</div>
           </> : null}
         </div>
       </div>
@@ -73,10 +123,14 @@ export function MacAppLayout() {
         <button className="mac-icon-button mac-drawer-toggle" aria-label={`${(narrow ? !drawerOpen : collapsed) ? "展开" : "收起"}${context.sidebarTitle}`} title={context.sidebarTitle} aria-expanded={narrow ? drawerOpen : !collapsed} onClick={() => {
           if (narrow) setDrawerOpen((open) => !open);
           else setCollapsedSections((current) => ({ ...current, [collapseKey]: !collapsed }));
-        }}><PanelLeft size={16} strokeWidth={1.5}/></button>
+        }}><PanelLeft size={16} strokeWidth={1.5}/>{narrow ? <span className="mac-drawer-toggle-label">{context.sidebarTitle}</span> : null}</button>
         <div className="mac-toolbar-title">{context.title}</div>
       </div>
+      <div className="mac-toolbar-model" aria-label="当前创作模型">
+        <LLMSelector compact showCompactTemperature showHelperText={false} showBadge={false} />
+      </div>
       <span className={`mac-mode-indicator${mode === "local" ? " is-local" : ""}`}><span/>{mode === "local" ? "本地测试" : mode === "remote" ? "服务器" : "桌面"}</span>
+      <MacVersionBadge onOpenNotes={() => setReleaseNotesOpen(true)} />
     </header>
     <aside className={`mac-secondary${drawerOpen ? " is-open" : ""}`} aria-label={context.sidebarTitle} inert={narrow ? !drawerOpen : collapsed} aria-hidden={narrow ? !drawerOpen : collapsed}>
       <div className="mac-list-tools">
@@ -91,5 +145,15 @@ export function MacAppLayout() {
     <main className="mac-workspace">
       <section className="mac-canvas" aria-label={context.title}><Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><Outlet/></Suspense></section>
     </main>
+    <VisualAssetLibraryDialog
+      open={visualAssetsOpen}
+      onOpenChange={(open) => {
+        setVisualAssetsOpen(open);
+        if (!open && location.hash === "#visual-assets") {
+          navigate({ pathname: location.pathname, search: location.search }, { replace: true });
+        }
+      }}
+    />
+    <MacReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
   </div>;
 }

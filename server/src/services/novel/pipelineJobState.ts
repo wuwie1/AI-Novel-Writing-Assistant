@@ -231,7 +231,7 @@ export function parsePipelinePayload(payload: string | null | undefined): Pipeli
     return {
       provider: typeof parsed.provider === "string" ? (parsed.provider as PipelinePayload["provider"]) : undefined,
       directorNext: parsePipelineDirectorSnapshot(parsed.directorNext),
-      model: typeof parsed.model === "string" ? parsed.model : undefined,
+      model: typeof parsed.model === "string" && parsed.model.trim() ? parsed.model.trim() : undefined,
       temperature: typeof parsed.temperature === "number" ? parsed.temperature : undefined,
       workflowTaskId: typeof parsed.workflowTaskId === "string" ? parsed.workflowTaskId : undefined,
       taskStyleProfileId: typeof parsed.taskStyleProfileId === "string" ? parsed.taskStyleProfileId : undefined,
@@ -274,9 +274,9 @@ export function stringifyPipelinePayload(input: PipelinePayload): string {
   return JSON.stringify({
     ...(input.directorNext ? {directorNext: parsePipelineDirectorSnapshot(input.directorNext)} : {}),
     ...(input.styleSignalPolicy ? { styleSignalPolicy: styleSignalPolicySchema.parse(input.styleSignalPolicy) } : {}),
-    provider: input.provider ?? "deepseek",
-    model: input.model ?? "",
-    temperature: input.temperature ?? 0.8,
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+    ...(typeof input.temperature === "number" ? { temperature: input.temperature } : {}),
     ...(input.workflowTaskId?.trim() ? { workflowTaskId: input.workflowTaskId.trim() } : {}),
     ...(input.taskStyleProfileId?.trim() ? { taskStyleProfileId: input.taskStyleProfileId.trim() } : {}),
     ...(typeof input.maxRetries === "number" ? { maxRetries: input.maxRetries } : {}),

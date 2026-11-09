@@ -54,7 +54,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/shortStory/shortStory.prompts").shortStoryRevisionImpactPrompt as UnknownPromptAsset,
   },
   {
-    key: "planner.intent.parse@v2",
+    key: "planner.intent.parse@v3",
     load: () => require("../prompts/agent/plannerIntent.prompt").plannerIntentPrompt as UnknownPromptAsset,
   },
   {

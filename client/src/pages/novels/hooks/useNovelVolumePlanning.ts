@@ -12,6 +12,7 @@ import type {
   VolumeStrategyPlan,
 } from "@ai-novel/shared/types/novel";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import { updateNovelVolumes } from "@/api/novel/volumes";
 import { queryKeys } from "@/api/queryKeys";
 import {
   buildVolumePlanningReadiness,
@@ -55,7 +56,7 @@ import {
 import {
   buildGenerationNotice,
   resolveCustomVolumeCountInput,
-  serializeVolumeDraftSnapshot,
+  serializeVolumeWorkspaceSnapshot,
 } from "./useNovelVolumePlanning.utils";
 
 interface LlmSettings {
@@ -109,9 +110,39 @@ export function useNovelVolumePlanning({
     () => normalizeVolumeDraft(savedWorkspace?.volumes ?? []),
     [savedWorkspace?.volumes],
   );
-  const hasUnsavedVolumeDraft = useMemo(
-    () => serializeVolumeDraftSnapshot(normalizedVolumeDraft) !== serializeVolumeDraftSnapshot(normalizedSavedVolumes),
-    [normalizedSavedVolumes, normalizedVolumeDraft],
+  const savedWorkspaceSnapshot = useMemo(
+    () => (savedWorkspace ? serializeVolumeWorkspaceSnapshot(savedWorkspace) : null),
+    [savedWorkspace],
+  );
+  const draftWorkspaceSnapshot = useMemo(
+    () => serializeVolumeWorkspaceSnapshot({
+      volumes: normalizedVolumeDraft,
+      strategyPlan,
+      critiqueReport,
+      beatSheets,
+      rebalanceDecisions,
+    }),
+    [beatSheets, critiqueReport, normalizedVolumeDraft, rebalanceDecisions, strategyPlan],
+  );
+  // Parent hydrates volumeDraft from the saved workspace in an effect. Until
+  // that catch-up finishes, keep the leave-guard clean.
+  const [alignedWorkspaceSnapshot, setAlignedWorkspaceSnapshot] = useState<string | null>(null);
+  useEffect(() => {
+    setAlignedWorkspaceSnapshot(null);
+  }, [novelId]);
+  useEffect(() => {
+    if (!savedWorkspaceSnapshot) {
+      setAlignedWorkspaceSnapshot(null);
+      return;
+    }
+    if (draftWorkspaceSnapshot === savedWorkspaceSnapshot) {
+      setAlignedWorkspaceSnapshot(savedWorkspaceSnapshot);
+    }
+  }, [draftWorkspaceSnapshot, savedWorkspaceSnapshot]);
+  const hasUnsavedVolumeDraft = Boolean(
+    savedWorkspaceSnapshot
+    && alignedWorkspaceSnapshot === savedWorkspaceSnapshot
+    && draftWorkspaceSnapshot !== savedWorkspaceSnapshot,
   );
   const readiness = useMemo(
     () => buildVolumePlanningReadiness({
@@ -488,8 +519,43 @@ export function useNovelVolumePlanning({
     return () => window.clearInterval(timer);
   }, [generateMutation.isPending, generateMutation.variables?.scope, novelId, queryClient]);
 
-  useDocumentGuard({ label: "卷章规划", dirty: hasUnsavedVolumeDraft, busy: generateMutation.isPending || isGeneratingChapterDetailBundle,
-    discard: () => setVolumeDraft(normalizedSavedVolumes) });
+  useDocumentGuard({
+    label: "卷章规划",
+    dirty: hasUnsavedVolumeDraft,
+    busy: generateMutation.isPending || isGeneratingChapterDetailBundle,
+    save: async () => {
+      if (!savedWorkspace) {
+        throw new Error("卷章规划还在加载，请稍后再保存。");
+      }
+      const response = await updateNovelVolumes(novelId, {
+        volumes: normalizedVolumeDraft,
+        strategyPlan,
+        critiqueReport,
+        beatSheets,
+        rebalanceDecisions,
+        source: savedWorkspace.source ?? "volume",
+        activeVersionId: savedWorkspace.activeVersionId ?? null,
+      });
+      const nextDocument = response.data;
+      if (nextDocument) {
+        setVolumeDraft(nextDocument.volumes ?? []);
+        setStrategyPlan(nextDocument.strategyPlan ?? null);
+        setCritiqueReport(nextDocument.critiqueReport ?? null);
+        setBeatSheets(nextDocument.beatSheets ?? []);
+        setRebalanceDecisions(nextDocument.rebalanceDecisions ?? []);
+        queryClient.setQueryData(queryKeys.novels.volumeWorkspace(novelId), response);
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.novels.volumeWorkspace(novelId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.novels.detail(novelId) });
+    },
+    discard: () => {
+      setVolumeDraft(normalizedSavedVolumes);
+      setStrategyPlan(savedWorkspace?.strategyPlan ?? null);
+      setCritiqueReport(savedWorkspace?.critiqueReport ?? null);
+      setBeatSheets(savedWorkspace?.beatSheets ?? []);
+      setRebalanceDecisions(savedWorkspace?.rebalanceDecisions ?? []);
+    },
+  });
 
   return {
     normalizedVolumeDraft,

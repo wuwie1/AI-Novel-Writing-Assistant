@@ -71,14 +71,36 @@ export default function ProviderStatusCard(props: {
     : "不支持图像生成";
   const visibleModels = modelsOpen ? provider.models : provider.models.slice(0, 8);
   const canUseProvider = provider.isConfigured && provider.isActive && Boolean(provider.currentModel);
-  const testDisabledReason = provider.isConfigured ? "" : "配置 API Key 后可以测试连接。";
+  const isLocalProvider = provider.requiresApiKey === false;
+  const statusLabel = !provider.isConfigured
+    ? "未配置"
+    : !provider.isActive
+      ? "已停用"
+      : isLocalProvider
+        ? "本机服务"
+        : "已配置";
+  const statusHint = !provider.isConfigured
+    ? "完成配置后可用于创作任务。"
+    : !provider.isActive
+      ? "已停用，不会用于创作任务。"
+      : isLocalProvider
+        ? "已填写本机地址与模型。请先点「测试连接」，确认服务真正可用。"
+        : "已保存密钥与模型。建议先点「测试连接」，再用于创作。";
+  const statusTone = canUseProvider && !isLocalProvider
+    ? "bg-emerald-600 text-white hover:bg-emerald-600"
+    : "";
+  const testDisabledReason = provider.isConfigured
+    ? ""
+    : provider.requiresApiKey === false
+      ? "填写模型和服务地址后可以测试连接。"
+      : "配置 API Key 后可以测试连接。";
   const refreshDisabledReason = provider.isConfigured ? "" : "配置 API Key 后可以刷新模型列表。";
 
   return (
     <div
       className={cn(
         "min-w-0 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md",
-        canUseProvider ? "border-primary/25 hover:border-primary/45" : "border-border",
+        canUseProvider && !isLocalProvider ? "border-primary/25 hover:border-primary/45" : "border-border",
       )}
     >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -88,14 +110,14 @@ export default function ProviderStatusCard(props: {
             {provider.kind === "custom" ? <Badge variant="outline">自定义</Badge> : null}
           </div>
           <div className={`text-xs text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
-            {canUseProvider ? "可用于创作任务。" : "完成配置后可用于创作任务。"}
+            {statusHint}
           </div>
         </div>
         <Badge
-          variant={canUseProvider ? "default" : "outline"}
-          className={canUseProvider ? "bg-emerald-600 text-white hover:bg-emerald-600" : ""}
+          variant={canUseProvider && !isLocalProvider ? "default" : "outline"}
+          className={statusTone}
         >
-          {canUseProvider ? "可用" : provider.isConfigured ? "已配置" : "未配置"}
+          {statusLabel}
         </Badge>
       </div>
 

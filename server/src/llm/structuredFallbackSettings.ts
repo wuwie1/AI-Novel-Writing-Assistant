@@ -15,7 +15,7 @@ const DEFAULT_STRUCTURED_FALLBACK_SETTINGS: StructuredFallbackSettings = {
   model: "deepseek-chat",
   temperature: 0.2,
   maxTokens: null,
-  retryCount: 1,
+  retryCount: 2,
 };
 
 let cachedSettings: StructuredFallbackSettings | null = null;

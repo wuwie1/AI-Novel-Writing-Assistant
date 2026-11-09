@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beginStructuredDiagnostic, finishStructuredDiagnostic, type StructuredDiagnosticContext } from "../platform/llm/diagnostics/StructuredDiagnosticStore";
-import { emptyResponseEvidence, observeStructuredChunk, classifyResponseEvidence, terminalResponseReason } from "../platform/llm/diagnostics/structuredEvidence";
+import { emptyResponseEvidence, observeStructuredChunk, classifyResponseEvidence, terminalResponseMessage, terminalResponseReason } from "../platform/llm/diagnostics/structuredEvidence";
 import type { ZodType } from "zod";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
@@ -87,7 +87,7 @@ interface StructuredAttemptTarget {
   preferredStrategy: StructuredOutputStrategy | null;
 }
 
-const DEFAULT_TRANSPORT_RETRY_COUNT = 1;
+const DEFAULT_TRANSPORT_RETRY_COUNT = 2;
 const MAX_TRANSPORT_RETRY_COUNT = 3;
 
 function normalizeTransportRetryCount(value: number | undefined): number {
@@ -101,7 +101,8 @@ function waitForTransportRetry(signal: AbortSignal | undefined, retryAttempt: nu
   if (signal?.aborted) {
     return Promise.reject(signal.reason ?? new Error("请求已取消。"));
   }
-  const delayMs = retryAfterMs ?? Math.min(2_000, 500 * 2 ** (retryAttempt - 1));
+  // Local networks drop for seconds at a time; spacing retries out lets one short outage recover.
+  const delayMs = retryAfterMs ?? Math.min(8_000, 1_000 * 3 ** (retryAttempt - 1));
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
@@ -313,7 +314,7 @@ async function invokeStructuredAttempt<T>(input: {
     const rawContent = collected.rawContent;
     evidence.failureReason = classifyResponseEvidence(evidence);
     if (terminalResponseReason(evidence.failureReason)) throw buildStructuredError({
-      message: "模型未返回完整可用的结构化结果。", category: "transport_error", strategy: input.strategy,
+      message: terminalResponseMessage(evidence.failureReason), category: "transport_error", strategy: input.strategy,
       retryWithNextStrategy: evidence.failureReason === "empty_response" && input.strategy !== "prompt_json",
       profile: resolved.structuredProfile ?? input.target.profile,
     });

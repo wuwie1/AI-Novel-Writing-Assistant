@@ -60,6 +60,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       }
       const requested = { ...current, requestedMode: mode };
       await save(requested);
+      await adapters.cleanupOrphanAgents?.(requested);
       try {
         build ??= await adapters.prepare({ mode, development, config, paths });
         const connection = await adapters.ensureConnection({ mode, config, current: snapshot });
@@ -139,8 +140,10 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         await adapters.stopOwned?.(role, record, { repoRealPath: config.repoRealPath, mode: record.mode ?? current.runningMode });
       }
       const processes = Object.fromEntries(Object.entries(current.processes).filter(([role, record]) => role === 'app' ? false : retained.includes(role) || record?.ownership === 'borrowed'));
-      await save({ ...current, runningMode: null, backendIdentity: retained.includes('local-api') ? current.backendIdentity : null, processes, retainedReasons: retained.length ? { 'local-api': 'active-or-unknown-tasks' } : {} });
-      if (retained.length) await adapters.report?.('Desktop closed; local creation service remains running because task activity could not be confirmed idle.');
+      const next = { ...current, runningMode: null, backendIdentity: retained.includes('local-api') ? current.backendIdentity : null, processes, retainedReasons: retained.length ? { 'local-api': 'active-or-unknown-tasks' } : {} };
+      await save(next);
+      await adapters.cleanupOrphanAgents?.(next);
+      if (retained.length) await adapters.report?.('桌面已关闭。本机创作服务仍在运行，因为还不能确认所有创作任务都已空闲；任务结束后再运行一次 make stop_app 即可关闭。');
       return { status: 'stopped', retained };
     } finally { await guard.release(); }
   }

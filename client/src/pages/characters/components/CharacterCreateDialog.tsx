@@ -8,6 +8,7 @@ import { queryKeys } from "@/api/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 import SelectControl from "@/components/common/SelectControl";
 
 function createDefaultConstraints(): CharacterGenerateConstraints {
@@ -66,8 +67,12 @@ export function CharacterCreateDialog({ onCreated }: CharacterCreateDialogProps)
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.baseCharacters.all });
+      toast.success(`角色「${form.name.trim()}」已创建。`);
       onCreated?.();
       setIsOpen(false);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "创建角色失败，请检查必填项后重试。");
     },
   });
 
@@ -82,9 +87,13 @@ export function CharacterCreateDialog({ onCreated }: CharacterCreateDialogProps)
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.baseCharacters.all });
+      toast.success("角色已生成并入库。");
       onCreated?.();
       setAIDescription("");
       setIsOpen(false);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "生成角色失败，请稍后重试。");
     },
   });
 
@@ -109,39 +118,60 @@ export function CharacterCreateDialog({ onCreated }: CharacterCreateDialogProps)
               <CardTitle>手动创建角色</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2 md:grid-cols-2">
-              <input
-                className="rounded-md border p-2 text-sm"
-                placeholder="角色名称"
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-              />
-              <input
-                className="rounded-md border p-2 text-sm"
-                placeholder="角色定位（主角/反派/配角）"
-                value={form.role}
-                onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value }))}
-              />
-              <input
-                className="rounded-md border p-2 text-sm"
-                placeholder="性格特征"
-                value={form.personality}
-                onChange={(event) => setForm((prev) => ({ ...prev, personality: event.target.value }))}
-              />
-              <input
-                className="rounded-md border p-2 text-sm"
-                placeholder="背景故事"
-                value={form.background}
-                onChange={(event) => setForm((prev) => ({ ...prev, background: event.target.value }))}
-              />
-              <input
-                className="rounded-md border p-2 text-sm md:col-span-2"
-                placeholder="成长轨迹"
-                value={form.development}
-                onChange={(event) => setForm((prev) => ({ ...prev, development: event.target.value }))}
-              />
+              <label className="space-y-1 text-sm">
+                <span>角色名称<span className="text-destructive"> *</span></span>
+                <input
+                  className="w-full rounded-md border p-2 text-sm"
+                  placeholder="例如：陈静"
+                  value={form.name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>角色定位</span>
+                <input
+                  className="w-full rounded-md border p-2 text-sm"
+                  placeholder="主角/反派/配角"
+                  value={form.role}
+                  onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>性格特征</span>
+                <input
+                  className="w-full rounded-md border p-2 text-sm"
+                  placeholder="可选"
+                  value={form.personality}
+                  onChange={(event) => setForm((prev) => ({ ...prev, personality: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>背景故事</span>
+                <input
+                  className="w-full rounded-md border p-2 text-sm"
+                  placeholder="可选"
+                  value={form.background}
+                  onChange={(event) => setForm((prev) => ({ ...prev, background: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span>成长轨迹</span>
+                <input
+                  className="w-full rounded-md border p-2 text-sm"
+                  placeholder="可选"
+                  value={form.development}
+                  onChange={(event) => setForm((prev) => ({ ...prev, development: event.target.value }))}
+                />
+              </label>
               <Button
                 className="md:col-span-2"
-                onClick={() => createMutation.mutate()}
+                onClick={() => {
+                  if (!form.name.trim()) {
+                    toast.error("请先填写角色名称。");
+                    return;
+                  }
+                  createMutation.mutate();
+                }}
                 disabled={createMutation.isPending || !form.name.trim()}
               >
                 {createMutation.isPending ? "创建中..." : "创建角色"}

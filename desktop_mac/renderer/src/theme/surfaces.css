@@ -67,3 +67,28 @@ html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] > div > .rounded
 html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] .grid > div.rounded-lg.bg-background { border:0; background:transparent; }
 html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] :is(aside,section).rounded-lg.bg-background { border:0; border-radius:6px; background:var(--mac-soft); }
 html[data-app-shell="mac"] [data-mac-page="comic/projects/:id"] aside button.border-primary { border-color:transparent; background:var(--mac-list-selected); box-shadow:inset 3px 0 var(--mac-list-indicator); }
+
+html[data-app-shell="mac"] [data-mac-page="comic"] header .mac-action + .mac-action,
+html[data-app-shell="mac"] [data-mac-page="comic"] .mac-feature header button + button { display:none; }
+html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .prompt-workbench-theme { flex-direction:column; }
+html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .prompt-workbench-theme > div:first-child { width:100%; max-width:none; min-width:0; max-height:220px; }
+html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid.lg\:grid-cols-\[240px_minmax\(0\,1fr\)_280px\],
+html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid.lg\:grid-cols-\[220px_minmax\(0\,1fr\)_260px\],
+html[data-app-shell="mac"] [data-mac-page="prompt-workbench"] .grid[class*="lg:grid-cols-["] { grid-template-columns:minmax(0,1fr); }
+html[data-app-shell="mac"] .mac-appearance-host [data-slot="card"],
+html[data-app-shell="mac"] .mac-appearance-host .border { border-color:transparent; box-shadow:none; }
+html[data-app-shell="mac"] .mac-appearance-notes { margin-top:18px; }
+
+/* Flatten nested bordered cards inside shared business surfaces. */
+html[data-app-shell="mac"] .mac-feature [data-ui="card"] [data-ui="card"],
+html[data-app-shell="mac"] .mac-feature [data-slot="card"] [data-slot="card"],
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) [data-ui="card"],
+html[data-app-shell="mac"] :is([role="dialog"],[role="alertdialog"]) [data-slot="card"] {
+  border-color:transparent; box-shadow:none; background:var(--mac-soft);
+}
+
+html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary {
+  overflow:hidden; border:0; padding:0; width:0; min-width:0;
+}
+html[data-app-shell="mac"] .mac-shell.is-secondary-collapsed .mac-secondary-close,
+html[data-app-shell="mac"] .mac-secondary:not(.is-open) .mac-secondary-close { display:none; }

@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 interface CreativeHubToolResultCardProps {
   toolName: string;
@@ -340,7 +341,7 @@ export default function CreativeHubToolResultCard({
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const payload = asRecord(output);
-  const summaryText = compactText(summary, 160) || "工具已返回结果。";
+  const summaryText = compactText(success ? summary : toUserFacingErrorText(summary), 160) || "工具已返回结果。";
   const cardContent = (() => {
     if (toolName === "list_novels") {
       return renderNovelList(payload, onQuickAction);

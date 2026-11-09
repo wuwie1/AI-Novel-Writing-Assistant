@@ -24,7 +24,10 @@ html[data-app-shell="mac"] [style*="--cte-font-size"] [role="toolbar"] { font-si
 }
 @container (max-width:999px) {
   html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] { grid-template-columns:minmax(0,1fr); overflow:auto; }
-  html[data-app-shell="mac"] [style*="--cte-font-size"] { min-height:600px; }
+  /* Keep the writing canvas first on narrow widths so side panels do not bury the chapter text. */
+  html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] > .relative { order:1; min-height:min(70vh,720px); }
+  html[data-app-shell="mac"] :is([data-mac-page="novels/:id/chapters/:chapterId"],[role="dialog"]:has([style*="--cte-font-size"])) .grid[class*="xl:grid-cols-"] > :not(.relative) { order:2; }
+  html[data-app-shell="mac"] [style*="--cte-font-size"] { min-height:min(70vh,720px); }
 }
 html[data-app-shell="mac"] [data-mac-page="lab/director/:novelId"] { height:100%; min-height:0; padding:12px 16px; }
 html[data-app-shell="mac"] [data-mac-page="lab/director/:novelId"] > div { height:100%; }

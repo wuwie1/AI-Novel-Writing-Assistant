@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 function normalizeTarget(form: NarrativeForm, value: number): number {
   if (form === "short_story") return Math.max(3000, Math.min(30000, Math.round(value)));
@@ -114,9 +115,13 @@ export default function CreationStudioPage() {
     onSuccess: (response) => {
       const created = response.data;
       if (!created) return;
-      ideaDraft.clear();
       setSearchParams({ taskId: created.taskId, ...(referenceRequested ? {form:"short_story"} : {}) }, { replace: true });
-      if (created.status === "failed") { toast.error(created.diagnostic?.message ?? created.error ?? "创作方向未完成，请查看失败信息后继续。"); return; }
+      if (created.status === "failed") {
+        // Keep the local idea draft so leaving and coming back still restores the text.
+        toast.error(created.diagnostic?.message ?? created.error ?? "创作方向未完成，请查看失败信息后继续。");
+        return;
+      }
+      ideaDraft.clear();
       toast.success("AI 已整理好两个可选方向。");
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "暂时无法理解这个想法，请重试。"),
@@ -155,8 +160,13 @@ export default function CreationStudioPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "开始创作失败。"),
   });
 
-  useDocumentGuard({ label: "创作想法（保存为本机草稿）", dirty: !taskId && ideaDraft.dirty,
-    busy: interpretMutation.isPending || confirmMutation.isPending || regenerateMutation.isPending, save: ideaDraft.save, discard: ideaDraft.discard });
+  useDocumentGuard({
+    label: "创作想法（保存为本机草稿）",
+    dirty: (!taskId || task?.status === "failed") && (ideaDraft.dirty || Boolean(idea.trim())),
+    busy: interpretMutation.isPending || confirmMutation.isPending || regenerateMutation.isPending,
+    save: ideaDraft.save,
+    discard: ideaDraft.discard,
+  });
 
   if (taskId && taskQuery.isLoading) {
     return <CenteredStatus label="正在恢复你的创作想法…" />;
@@ -191,7 +201,7 @@ export default function CreationStudioPage() {
       </section>
 
       {task?.status === "failed" ? <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm" role="status">
-        <p>{task.diagnostic?.message ?? task.error ?? "方向生成未完成，可以从本页继续。"}</p>
+        <p>{task.diagnostic?.message ?? (toUserFacingErrorText(task.error) || "方向生成未完成，可以从本页继续。")}</p>
         {task.diagnostic ? <p className="mt-2 text-xs text-muted-foreground">诊断标识：{task.diagnostic.id} · 本次尝试 {task.diagnostic.attempts} 次 · {task.diagnostic.model ?? "模型未知"}</p> : null}
         {retryWaiting && retryAt ? <p className="mt-2 text-xs text-muted-foreground">可在 {new Date(retryAt).toLocaleTimeString()} 后继续。</p> : null}
         {interpretation ? <Button className="mt-3" variant="outline" onClick={() => regenerateMutation.mutate()} disabled={regenerateMutation.isPending || retryWaiting}>重新整理方向</Button> : null}

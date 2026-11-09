@@ -6,7 +6,7 @@
 
 ## 当前规则
 
-- 意图解析通过已注册 `planner.intent.parse@v2` 资产执行。`normalizeIntentPayload` 只处理已结构化字段的类型、别名和范围归一化；不得依据用户目标文本把 `general_chat`、`unknown` 改成总览，也不得删除 AI 的澄清字段。修改任务说明和后处理语义时应同步资产及注册版本，保持运行追踪可辨识。
+- 意图解析通过已注册 `planner.intent.parse@v3` 资产执行。`normalizeIntentPayload` 只处理已结构化字段的类型、别名和范围归一化；不得依据用户目标文本把 `general_chat`、`unknown` 改成总览，也不得删除 AI 的澄清字段。修改任务说明和后处理语义时应同步资产及注册版本，保持运行追踪可辨识。
 - 当前小说已绑定时，“查看一下这本小说”本身是完整的总览请求。Prompt 应引导返回 `query_novel_production_status` 和直接查询决定，不要求初学者先选进度或章节等维度。
 - 最近对话可以使相同短句成为方案比较、诊断或指代不明的请求。是否追问由 AI 根据缺失的必要信息判断，归一化层保留该结果。
 - `StoryTimelineService.commitChapterTimeline` 仅使用抽取结果的 `addressedHookIds` 与 `resolvedHookIds` 更新既有钩子；ID 必须属于当前时间线上下文，且 resolved 优先于 addressed。

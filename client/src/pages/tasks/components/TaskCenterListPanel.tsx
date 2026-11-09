@@ -11,6 +11,7 @@ import { WorkspaceStateNotice } from "@/components/workspace";
 import {
   formatDate,
   formatKind,
+  formatTaskStage,
   formatStatus,
   getTaskQueueLevelLabel,
   getTaskQueueSeverity,
@@ -89,7 +90,7 @@ export default function TaskCenterListPanel({
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{progressPercent}%</span>
               </div>
               <div className="mt-3 text-sm leading-5 text-foreground/85">
-                {task.currentItemLabel ?? task.displayStatus ?? task.currentStage ?? "等待任务更新"}
+                {task.currentItemLabel ?? task.displayStatus ?? (formatTaskStage(task.currentStage) || "等待任务更新")}
               </div>
               {task.blockingReason ? (
                 <div className="mt-2 line-clamp-2 rounded-lg bg-destructive/[0.055] px-3 py-2 text-xs leading-5 text-destructive">

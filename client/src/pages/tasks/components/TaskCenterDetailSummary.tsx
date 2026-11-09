@@ -7,6 +7,7 @@ import {
   formatKind,
   formatResumeTarget,
   formatStatus,
+  formatTaskStage,
   formatTokenCount,
   getTaskQueueLevelLabel,
   getTaskQueueTone,
@@ -28,7 +29,7 @@ export default function TaskCenterDetailSummary({
   const progressPercent = typeof dashboardView?.progressPercent === "number"
     ? dashboardView.progressPercent
     : Math.round(task.progress * 100);
-  const currentStage = dashboardView?.stageLabel ?? task.currentStage ?? "暂无";
+  const currentStage = dashboardView?.stageLabel ?? (formatTaskStage(task.currentStage) || "暂无");
   const currentItem = dashboardView?.currentAction ?? task.currentItemLabel ?? "暂无";
   const tone = getTaskQueueTone(task);
   const technicalRows = [

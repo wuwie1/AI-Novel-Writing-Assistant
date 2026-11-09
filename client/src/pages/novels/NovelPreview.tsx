@@ -145,8 +145,11 @@ export default function NovelPreview() {
     if (!activeChapter || !activeContent) return toast.error("当前章节还没有正文。");
     const title = safeFileNamePart(novel?.title ?? "小说");
     const chapterTitle = activeChapter.title?.trim() ? safeFileNamePart(activeChapter.title) : "";
+    const bom = typeof document !== "undefined" && document.documentElement.dataset.appShell === "mac"
+      ? ""
+      : "\uFEFF";
     downloadBlob(
-      new Blob(["\uFEFF", `第 ${activeChapter.order} 章${chapterTitle ? ` ${chapterTitle}` : ""}\n\n${activeContent}`], { type: "text/plain;charset=utf-8" }),
+      new Blob([bom, `第 ${activeChapter.order} 章${chapterTitle ? ` ${chapterTitle}` : ""}\n\n${activeContent}`], { type: "text/plain;charset=utf-8" }),
       `${title}-第${activeChapter.order}章${chapterTitle ? `-${chapterTitle}` : ""}.txt`,
     );
     toast.success("本章正文下载已开始。");

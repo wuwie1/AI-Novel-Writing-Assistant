@@ -9,6 +9,7 @@ import { listDramaProjects } from "@/api/drama";
 import { listComicProjects } from "@/api/comic";
 import { queryKeys } from "@/api/queryKeys";
 import { getNovelWorkspaceHref } from "@/lib/novelRoutes";
+import { NOVEL_WORKSPACE_FLOW_STEPS } from "@/pages/novels/novelWorkspaceNavigation";
 import { readTaskStatus, taskStatusOptions } from "../../features/tasks";
 import { pathIsWithin, type MacNavigation, type NavigationLink } from "../navigation";
 
@@ -32,7 +33,7 @@ function ListState({ pending, error, empty, emptyText }: { pending: boolean; err
 }
 
 function NovelList({ search }: { search: string }) {
-  const query = useQuery({ queryKey: ["novels", "mac-sidebar"], queryFn: () => getNovelList({ page: 1, limit: 100, sort: "updated" }), staleTime: 30_000 });
+  const query = useQuery({ queryKey: ["novels", "mac-sidebar"], queryFn: () => getNovelList({ page: 1, limit: 100, sort: "updated" }), staleTime: 15_000, refetchOnWindowFocus: true });
   const novels = (query.data?.data?.items ?? []).filter((novel) => matchesSearch(search, novel.title, novel.genre?.name));
   return <>
     <SidebarLinks links={[["/novels", "全部作品"], ["/create", "新建小说"]]} />
@@ -44,17 +45,39 @@ function NovelList({ search }: { search: string }) {
 
 function NovelContents({ context, search }: { context: MacNavigation; search: string }) {
   const [choosingBook, setChoosingBook] = useState(false);
-  const { key } = useLocation();
+  const location = useLocation();
+  const { key, pathname, search: locationSearch } = location;
   useEffect(() => { setChoosingBook(false); }, [key]);
   const id = context.novelId!;
-  const detail = useQuery({ queryKey: queryKeys.novels.detail(id), queryFn: () => getNovelDetail(id), staleTime: 30_000 });
-  const chapters = useQuery({ queryKey: queryKeys.novels.chapters(id), queryFn: () => getNovelChapters(id), staleTime: 30_000 });
+  const detail = useQuery({ queryKey: queryKeys.novels.detail(id), queryFn: () => getNovelDetail(id), staleTime: 15_000, refetchOnWindowFocus: true });
+  const chapters = useQuery({ queryKey: queryKeys.novels.chapters(id), queryFn: () => getNovelChapters(id), staleTime: 15_000, refetchOnWindowFocus: true });
   const novel = detail.data?.data;
   const items = (chapters.data?.data ?? []).filter((chapter) => matchesSearch(search, chapter.title, chapter.order));
+  const editBase = `/novels/${encodeURIComponent(id)}/edit`;
+  const activeStage = pathname.includes("/chapters/")
+    ? "chapter"
+    : new URLSearchParams(locationSearch).get("stage") || (pathname.endsWith("/edit") ? "basic" : "");
+  const stageLinks = NOVEL_WORKSPACE_FLOW_STEPS
+    .map((step, index) => ({ to: `${editBase}?stage=${step.key}`, label: step.label, stage: step.key, order: index + 1 }))
+    .filter((item) => matchesSearch(search, item.label));
   return <>
     <button className="mac-current-book" onClick={() => setChoosingBook((value) => !value)} title="选择小说" aria-expanded={choosingBook}><BookOpen size={16}/><span>{novel?.title ?? "当前小说"}</span><ChevronsUpDown size={14}/></button>
     {choosingBook ? <NovelList search={search}/> : <>
-      <SidebarLinks links={[[novel ? getNovelWorkspaceHref(novel) : `/novels/${encodeURIComponent(id)}/edit`, "作品工作台"], [`/novels/${encodeURIComponent(id)}/preview`, "阅读预览"], [`/novels/${encodeURIComponent(id)}/ai-usage`, "AI 用量"]]} />
+      <SidebarLinks links={[
+        [novel ? getNovelWorkspaceHref(novel) : editBase, "作品工作台"],
+        [`/novels/${encodeURIComponent(id)}/preview`, "阅读预览"],
+        [`/novels/${encodeURIComponent(id)}/ai-usage`, "AI 用量"],
+        [`/lab/director/${encodeURIComponent(id)}`, "AI 驾驶舱"],
+        [`${editBase}?stage=history`, "版本历史"],
+      ]} />
+      <div className="mac-list-label">写作步骤</div>
+      {stageLinks.map((item) => {
+        const selected = activeStage === item.stage;
+        // An open chapter is the current page; its writing step is only the enclosing step.
+        const withinChapter = selected && Boolean(context.chapterId);
+        return <Link key={item.to} to={item.to} className={`mac-list-row${selected ? withinChapter ? " is-within" : " is-selected" : ""}`} aria-current={selected ? withinChapter ? "step" : "page" : undefined}><span className="mac-chapter-order">{item.order}</span><span>{item.label}</span></Link>;
+      })}
+      {search.trim() && !stageLinks.length ? <p className="mac-list-message">未找到匹配的写作步骤。</p> : null}
       <div className="mac-list-label">章节目录</div>
       <ListState pending={chapters.isPending} error={chapters.isError} empty={!items.length} emptyText={search.trim() ? "未找到匹配的章节。" : "这本小说还没有章节。"} />
       {items.map((chapter) => <Link key={chapter.id} to={`/novels/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapter.id)}`} className={`mac-list-row${chapter.id === context.chapterId ? " is-selected" : ""}`} aria-current={chapter.id === context.chapterId ? "page" : undefined}><span className="mac-chapter-order">{chapter.order}</span><span>{chapter.title || "未命名章节"}</span></Link>)}

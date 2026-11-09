@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 function createDownload(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
@@ -246,7 +247,7 @@ export default function ShortStoryStudioPage() {
                   : story.production.recoveryAction === "retry_revision" ? "修改暂时中断" : "生成暂时中断"}
               </div>
               <p className="mt-1 break-words text-muted-foreground">
-                {story.production.checkpointSummary ?? story.production.diagnostic?.message ?? story.production.error ?? "可以从已保存的内容继续。"}
+                {story.production.checkpointSummary ?? story.production.diagnostic?.message ?? (toUserFacingErrorText(story.production.error) || "可以从已保存的内容继续。")}
               </p>
               {story.production.recoveryAction === "preview_replan" ? (
                 <Button className="mt-3" size="sm" onClick={() => { setRevisionImpact(null); replanPreviewMutation.mutate(); }}

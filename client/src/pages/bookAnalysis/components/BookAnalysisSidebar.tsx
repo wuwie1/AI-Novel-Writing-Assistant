@@ -49,10 +49,12 @@ export default function BookAnalysisSidebar(props: BookAnalysisSidebarProps) {
           <CardTitle className="text-lg tracking-tight">分析列表</CardTitle>
           <Badge variant="secondary" className="border-0 bg-muted/70 font-normal">{analyses.length}</Badge>
         </div>
-        <Button type="button" size="sm" className="h-10 w-full rounded-xl shadow-none" onClick={onOpenCreateDialog}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          新建拆书
-        </Button>
+        {selectedAnalysisId ? (
+          <Button type="button" size="sm" className="h-10 w-full rounded-xl shadow-none" onClick={onOpenCreateDialog}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            新建拆书
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-3 px-3 pb-4 pt-4">
         <Input className="h-10 rounded-xl border-border/50 bg-muted/20 shadow-none" value={keyword} onChange={(event) => onKeywordChange(event.target.value)} placeholder="搜索标题或关键词" />
@@ -140,7 +142,7 @@ export default function BookAnalysisSidebar(props: BookAnalysisSidebarProps) {
             <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
               {keyword.trim() || status
                 ? "没有符合当前筛选的拆书分析，可以调整筛选条件。"
-                : "暂无拆书分析，点击上方「新建拆书」开始。"}
+                : "暂无拆书分析，点右上角「新建拆书」开始。"}
             </div>
           ) : null}
         </div>

@@ -200,3 +200,38 @@ test('the renderer host must be healthy before the native window opens', async (
   await ctx.lifecycle.startLocal();
   assert.deepEqual(events,['http-ready','open-window','renderer-ready']);
 });
+
+test('stop and start unload untracked helper agents after saving state', async (t) => {
+  const seen = [];
+  const { lifecycle } = await setup(t, { cleanupOrphanAgents: async (current) => { seen.push({ running: current.runningMode, roles: Object.keys(current.processes ?? {}) }); return []; } });
+  await lifecycle.startLocal();
+  await lifecycle.stop();
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1].running, null);
+  assert.ok(!seen[1].roles.includes('app'));
+});
+
+test('a lock left by a dead process on this machine is reclaimed; a live owner still blocks', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mac-lock-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const lockPath = path.join(root, 'lock');
+  await acquireLock(lockPath, { repoRealPath: root, operation: 'stop_app', pid: 999_999 });
+  await assert.rejects(acquireLock(lockPath, { repoRealPath: root, operation: 'app', isPidAlive: () => true }), { exitCode: 4, lockBusy: true });
+  const reclaimed = await acquireLock(lockPath, { repoRealPath: root, operation: 'app', isPidAlive: () => false });
+  assert.equal(reclaimed.owner.operation, 'app');
+  await reclaimed.release();
+  await acquireLock(lockPath, { repoRealPath: '/other/repo', operation: 'stop_app', pid: 999_999 });
+  await assert.rejects(acquireLock(lockPath, { repoRealPath: root, operation: 'app', isPidAlive: () => false }), { exitCode: 4 });
+});
+
+test('stale-lock detection uses the stable machine id when the network hostname changes', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mac-lock-id-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const lockPath = path.join(root, 'lock');
+  await acquireLock(lockPath, { repoRealPath: root, operation: 'stop_app', pid: 999_999, currentMachineId: 'machine-a' });
+  const ownerPath = path.join(lockPath, 'owner.json');
+  const { readFile } = await import('node:fs/promises');
+  const owner = JSON.parse(await readFile(ownerPath, 'utf8'));
+  await writeFile(ownerPath, JSON.stringify({ ...owner, hostname: 'bogon' }));
+  await assert.rejects(acquireLock(lockPath, { repoRealPath: root, operation: 'app', isPidAlive: () => false, currentMachineId: 'machine-b' }), { exitCode: 4 });
+  const reclaimed = await acquireLock(lockPath, { repoRealPath: root, operation: 'app', isPidAlive: () => false, currentMachineId: 'machine-a' });
+  await reclaimed.release();
+});

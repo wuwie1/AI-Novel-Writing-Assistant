@@ -239,7 +239,7 @@ export default function BookAnalysisPage() {
           icon={nextAction.action === "view_results" ? ListChecks : undefined}
           title={nextAction.title}
           description={nextAction.description}
-          action={nextAction.action && nextAction.action !== "select" && nextAction.actionLabel ? (
+          action={nextAction.action && nextAction.action !== "select" && nextAction.action !== "create" && nextAction.actionLabel ? (
             <Button
               type="button"
               size="sm"
@@ -365,9 +365,7 @@ export default function BookAnalysisPage() {
               description={workspace.analyses.length > 0
                 ? "从左侧选择分析后，这里会展示来源、生成阶段、可阅读结果和恢复动作。"
                 : "新建拆书后，AI 会把来源文档整理为可阅读、可发布和可引用的结果。"}
-              action={workspace.analyses.length === 0 ? (
-                <Button type="button" size="sm" onClick={() => setCreateDialogOpen(true)}>新建拆书</Button>
-              ) : null}
+              action={null}
             />
           )}
         </div>

@@ -125,9 +125,8 @@ export default function KnowledgeLibraryOverview(props: KnowledgeLibraryOverview
     switch (recommendation.action) {
       case "upload":
         return (
-          <Button type="button" size="sm" onClick={props.onUpload}>
-            <Upload className="h-4 w-4" />
-            上传资料
+          <Button type="button" size="sm" variant="outline" onClick={props.onUpload}>
+            去顶部上传
           </Button>
         );
       case "retry":

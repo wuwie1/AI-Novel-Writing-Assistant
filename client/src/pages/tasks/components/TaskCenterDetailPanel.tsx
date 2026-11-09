@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { WorkspaceStateNotice } from "@/components/workspace";
 import TaskCenterDetailSummary from "./TaskCenterDetailSummary";
 import TaskCenterMilestoneHistory from "./TaskCenterMilestoneHistory";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 interface TaskCenterDetailPanelProps {
   task?: UnifiedTaskDetail | null;
@@ -83,7 +84,7 @@ export default function TaskCenterDetailPanel(props: TaskCenterDetailPanelProps)
             ) : null}
 
             {task.lastError && !props.failureIsQualityReminder && !task.failureCode && !task.failureSummary ? (
-              <WorkspaceStateNotice tone="danger" title="最近一次执行失败" description={task.lastError} />
+              <WorkspaceStateNotice tone="danger" title="最近一次执行失败" description={toUserFacingErrorText(task.lastError)} />
             ) : null}
 
             {task.kind === "novel_workflow" && task.checkpointSummary ? (

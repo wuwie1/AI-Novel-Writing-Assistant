@@ -246,6 +246,7 @@ export interface PlannerInput {
   }>;
   contextMode: AgentContextMode;
   novelId?: string;
+  novelForm?: "long_novel" | "short_story";
   worldId?: string;
   provider?: LLMProvider;
   model?: string;

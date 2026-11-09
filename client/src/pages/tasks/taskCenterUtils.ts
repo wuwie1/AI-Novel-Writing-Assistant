@@ -158,6 +158,43 @@ export function formatKind(kind: TaskKind): string {
   return "图片生成";
 }
 
+export function formatTaskStage(stage: string | null | undefined): string {
+  const value = stage?.trim();
+  if (!value) {
+    return "";
+  }
+  switch (value) {
+    case "project_setup":
+      return "项目设定";
+    case "story_macro":
+      return "故事宏观规划";
+    case "world_setup":
+      return "世界观准备";
+    case "character_setup":
+      return "角色准备";
+    case "volume_strategy":
+      return "卷战略 / 卷骨架";
+    case "structured_outline":
+      return "节奏 / 拆章";
+    case "chapter_execution":
+      return "章节执行";
+    case "quality_repair":
+      return "质量修复";
+    case "waiting_approval":
+      return "等待确认";
+    case "running":
+      return "进行中";
+    case "queued":
+      return "排队中";
+    case "failed":
+      return "未完成";
+    case "succeeded":
+      return "已完成";
+    default:
+      return /[_-]/.test(value) ? value.replace(/[_-]+/g, " ") : value;
+  }
+}
+
 export function formatCheckpoint(checkpoint: NovelWorkflowMilestoneType | null | undefined, scopeLabel?: string | null): string {
   const resolvedScopeLabel = scopeLabel?.trim() || "前 10 章";
   if (checkpoint === "rewrite_snapshot_created") {

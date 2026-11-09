@@ -31,3 +31,16 @@ html[data-app-shell="mac"] .mac-pagination > :first-child { margin-right:auto; }
 
 html[data-app-shell="mac"] .mac-search:focus-within { border-color:#8ebce9; box-shadow:0 0 0 2px rgb(10 132 255 / 10%); }
 html[data-app-shell="mac"] #root .mac-search input:focus { box-shadow:none; }
+
+html[data-app-shell="mac"] .mac-shelf-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+html[data-app-shell="mac"] .mac-view-toggle { display:inline-flex; gap:2px; padding:2px; border-radius:7px; background:#e9e9e5; }
+html[data-app-shell="mac"] .mac-view-toggle button { min-height:28px; padding:0 10px; border:0; border-radius:5px; background:transparent; font-size:12px; cursor:pointer; }
+html[data-app-shell="mac"] .mac-view-toggle button.is-active { background:#fff; box-shadow:0 1px 2px #0001; }
+html[data-app-shell="mac"] .mac-workbench-list { display:flex; flex-direction:column; gap:8px; }
+html[data-app-shell="mac"] .mac-workbench-row { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:8px; background:#f7f7f4; }
+html[data-app-shell="mac"] .mac-workbench-main { flex:1; min-width:0; border:0; background:none; text-align:left; cursor:pointer; }
+html[data-app-shell="mac"] .mac-workbench-main strong { display:block; font-size:14px; }
+html[data-app-shell="mac"] .mac-workbench-main span { color:var(--mac-muted); font-size:12px; }
+html[data-app-shell="mac"] .mac-workbench-actions { display:flex; gap:8px; }
+html[data-app-shell="mac"] .mac-workbench-actions button { min-height:28px; padding:0 10px; border:0; border-radius:6px; background:#e7e7e4; font-size:12px; cursor:pointer; }
+html[data-app-shell="mac"] .mac-workbench-actions button.needs-attention { color:#996b33; background:#f4ebe0; }

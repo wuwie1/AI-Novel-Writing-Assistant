@@ -11,7 +11,7 @@ import type { PromptAsset } from "../../core/promptTypes";
 
 export const plannerIntentPrompt: PromptAsset<PlannerInput, StructuredIntent, Record<string, unknown>> = {
   id: "planner.intent.parse",
-  version: "v2",
+  version: "v3",
   taskType: "planner",
   mode: "structured",
   language: "zh",

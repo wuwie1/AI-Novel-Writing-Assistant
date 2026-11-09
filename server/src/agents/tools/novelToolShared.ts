@@ -460,6 +460,7 @@ export const getNovelProductionStatusInput = z
 export const getNovelProductionStatusOutput = z.object({
   novelId: z.string(),
   title: z.string(),
+  narrativeForm: z.literal("short_story").optional(),
   worldId: z.string().nullable(),
   worldName: z.string().nullable(),
   chapterCount: z.number().int(),

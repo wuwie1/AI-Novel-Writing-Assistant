@@ -7,6 +7,7 @@ import type {
   CreativeHubTurnSummary,
 } from "@ai-novel/shared/types/creativeHub";
 import type { WorkspaceTone } from "@/components/workspace";
+import { toUserFacingErrorText } from "@/lib/userFacingErrorText";
 
 export type CreativeHubWorkspaceAction =
   | "retry_threads"
@@ -199,11 +200,12 @@ export function resolveCreativeHubWorkspacePresentation(input: {
   const failedTurn = input.latestTurnSummary?.status === "failed"
     ? input.latestTurnSummary
     : null;
-  const failureSummary = input.diagnostics?.failureSummary?.trim()
-    || input.productionStatus?.failureSummary?.trim()
-    || input.thread?.latestError?.trim()
-    || failedTurn?.impactSummary?.trim()
-    || (input.thread?.status === "error" ? "当前创作线程处于异常状态。" : null);
+  const failureSummary = toUserFacingErrorText(
+    input.diagnostics?.failureSummary
+    || input.productionStatus?.failureSummary
+    || input.thread?.latestError
+    || failedTurn?.impactSummary,
+  ) || (input.thread?.status === "error" ? "当前创作线程处于异常状态。" : null);
   if (failureSummary) {
     const recoveryHint = input.diagnostics?.recoveryHint?.trim()
       || input.productionStatus?.recoveryHint?.trim()

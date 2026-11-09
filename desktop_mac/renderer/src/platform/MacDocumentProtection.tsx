@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ClientPlatformProvider, type ClientPlatform, type DocumentGuard } from "@/platform";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { macEnvironment, postNative, type MacMessage } from "./native";
 
 /** Explicit document contracts; never inspect DOM text to infer saved state. */
 export function MacDocumentProtection({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const guards = useRef(new Map<string, () => DocumentGuard>());
   const answer = useRef<((allowed: boolean) => void) | null>(null);
   const [prompt, setPrompt] = useState<DocumentGuard[] | null>(null);
@@ -70,6 +72,9 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       if (message?.protocolVersion !== 1) return;
       if (message.type === "requestClose") {
         void confirmLeave().then((allowed) => postNative({ type: "closeDecision", requestId: message.requestId, decision: allowed ? "allow" : "cancel" }));
+      } else if (message.type === "windowActivated") {
+        // Pull changes made on another device, but never refresh under unsaved local edits.
+        if (active().length === 0) void queryClient.refetchQueries({ type: "active", stale: true });
       } else if (message.type === "requestSave") {
         void (async () => {
           const items = active();
@@ -84,7 +89,7 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       answer.current?.(false);
       answer.current = null;
     };
-  }, [active, confirmLeave]);
+  }, [active, confirmLeave, queryClient]);
 
   async function saveAndLeave() {
     setSaving(true);

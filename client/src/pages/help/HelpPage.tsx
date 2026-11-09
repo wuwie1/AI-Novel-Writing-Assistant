@@ -89,30 +89,29 @@ export default function HelpPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
-      <section className="relative overflow-hidden rounded-3xl bg-[#122033] px-6 py-7 text-white shadow-[0_24px_70px_rgba(15,23,42,0.20)] sm:px-8 sm:py-9">
-        <div className="absolute -right-24 -top-32 h-80 w-80 rounded-full bg-sky-400/15 blur-3xl" />
+      <section className="relative overflow-hidden rounded-3xl bg-[#f4f4f2] px-6 py-7 sm:px-8 sm:py-9">
         <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-end">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="border-white/15 bg-white/10 text-sky-100 hover:bg-white/10">创作向导</Badge>
-              <Badge className="border-white/15 bg-white/10 text-slate-200 hover:bg-white/10">
+              <Badge variant="outline">创作向导</Badge>
+              <Badge variant="secondary">
                 {journey.graduated ? "首章已完成" : `第 ${Math.min(journey.completedCount + 1, journey.totalCount)} 步 / 共 ${journey.totalCount} 步`}
               </Badge>
             </div>
-            <h1 className="mt-5 max-w-3xl text-3xl font-semibold leading-tight tracking-normal sm:text-4xl">{journey.headline}</h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300">{journey.description}</p>
-            <div className="mt-6 border-l border-sky-300/70 pl-4">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-sky-200">为什么推荐这一步</div>
-              <p className="mt-2 text-sm leading-6 text-slate-300">{journey.reason}</p>
+            <h1 className="mt-5 max-w-3xl text-3xl font-semibold leading-tight tracking-normal text-foreground sm:text-4xl">{journey.headline}</h1>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground">{journey.description}</p>
+            <div className="mt-6 border-l border-[#2999bf]/70 pl-4">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-[#2999bf]">为什么推荐这一步</div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{journey.reason}</p>
             </div>
           </div>
           <div className="space-y-3">
             {primaryButton}
             {journey.novel ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <div className="text-xs text-slate-400">当前作品</div>
-                <div className="mt-1 truncate font-semibold">{journey.novel.title}</div>
-                <div className="mt-1 text-xs text-slate-300">{journey.novel.creationExperience === "simple" ? "简易创作" : "专业创作"}</div>
+              <div className="rounded-xl bg-white/80 p-4">
+                <div className="text-xs text-muted-foreground">当前作品</div>
+                <div className="mt-1 truncate font-semibold text-foreground">{journey.novel.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{journey.novel.creationExperience === "simple" ? "简易创作" : "专业创作"}</div>
               </div>
             ) : null}
           </div>

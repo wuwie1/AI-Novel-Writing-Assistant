@@ -98,7 +98,7 @@ async function resolveDirectorRuntimeScope(
   const activeTask = await workflowService.findActiveDirectorTask(novelId);
   const task = activeTask ?? await workflowService.resolveCurrentDirectorTask(novelId);
   if (!task) {
-    throw new AgentToolError("NOT_FOUND", "当前小说还没有可读取的自动导演任务。");
+    throw new AgentToolError("NOT_FOUND", "这本书还没有启动自动导演。可以在小说页启动自动导演，由 AI 带你完成规划和写作。");
   }
   return {
     taskId: task.id,
@@ -388,6 +388,27 @@ export const directorRuntimeToolDefinitions: Partial<
     outputSchema: explainDirectorNextActionOutputSchema,
     execute: async (context, rawInput) => {
       const input = explainDirectorNextActionInputSchema.parse(rawInput);
+      const notStartedNovelId = trimText(input.taskId) ? null : resolveNovelId(context, input);
+      if (notStartedNovelId) {
+        const { workflowService } = await getServices();
+        const existingTask = await workflowService.findActiveDirectorTask(notStartedNovelId)
+          ?? await workflowService.resolveCurrentDirectorTask(notStartedNovelId);
+        if (!existingTask) {
+          const guidance = "这本书还没有启动自动导演。可以在小说页启动自动导演，由 AI 带你完成规划和写作。";
+          return explainDirectorNextActionOutputSchema.parse({
+            novelId: notStartedNovelId,
+            taskId: null,
+            runtimeStatus: "not_started",
+            currentStep: null,
+            recommendedAction: null,
+            nextActionLabel: "启动自动导演",
+            requiresUserAction: true,
+            blockedReason: null,
+            reason: guidance,
+            summary: guidance,
+          });
+        }
+      }
       const { scope, analysis } = await analyzeWorkspaceForTool(context, input);
       const projection = await loadRuntimeProjection(scope);
       const nextAction = analysis.recommendation ?? analysis.interpretation?.recommendedAction ?? null;

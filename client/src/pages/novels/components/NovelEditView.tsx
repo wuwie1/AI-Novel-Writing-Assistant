@@ -338,8 +338,8 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
                 </div>
                 <KnowledgeBindingPanel targetType="novel" targetId={id} title="参考知识" />
 
-                {/* 开发工具区 —— 仅在 DEV 环境可见 */}
-                {import.meta.env.DEV ? (
+                {/* 开发工具区 —— 仅 Web 开发环境可见；Mac 桌面面向新手，不展示危险重置 */}
+                {import.meta.env.DEV && typeof document !== "undefined" && document.documentElement.dataset.appShell !== "mac" ? (
                   <Card className="border-dashed border-yellow-500/60 bg-yellow-50/30 dark:bg-yellow-950/10">
                     <CardHeader>
                       <CardTitle className="text-sm text-yellow-700 dark:text-yellow-400">🛠 开发工具</CardTitle>

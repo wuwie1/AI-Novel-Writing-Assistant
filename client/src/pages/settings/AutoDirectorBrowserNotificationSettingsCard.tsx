@@ -30,6 +30,8 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
   onActionResult: (message: string) => void;
 }) {
   const { onActionResult } = props;
+  const isMacShell = typeof document !== "undefined"
+    && document.documentElement.dataset.appShell === "mac";
   const [enabled, setEnabled] = useState(() => isAutoDirectorPauseNotificationEnabled());
   const [permission, setPermission] = useState<BrowserNotificationPermissionState>(() => getBrowserNotificationPermission());
 
@@ -53,7 +55,9 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
     if (nextPermission === "unsupported") {
       setAutoDirectorPauseNotificationEnabled(false);
       refreshState();
-      onActionResult("当前浏览器不支持桌面提醒。");
+      onActionResult(isMacShell
+        ? "当前 Mac 桌面还不支持系统通知提醒，请打开「运行记录」或跟进中心查看暂停事项。"
+        : "当前浏览器不支持桌面提醒。");
       return;
     }
     if (nextPermission === "default") {
@@ -62,7 +66,9 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
     if (nextPermission !== "granted") {
       setAutoDirectorPauseNotificationEnabled(false);
       refreshState();
-      onActionResult("浏览器未允许通知，自动导演暂停时不会发送桌面提醒。");
+      onActionResult(isMacShell
+        ? "系统未允许通知。可在「系统设置 → 通知」中允许本应用，或直接打开跟进中心查看暂停事项。"
+        : "浏览器未允许通知，自动导演暂停时不会发送桌面提醒。");
       return;
     }
     setAutoDirectorPauseNotificationEnabled(true);
@@ -91,7 +97,9 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
           <div className="min-w-0 space-y-1.5">
             <CardTitle>自动导演暂停提醒</CardTitle>
             <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
-              当自动导演等待确认、需要恢复或被校验拦住时，通过浏览器通知提醒你回到跟进中心。
+              {isMacShell
+                ? "当自动导演等待确认、需要恢复或被校验拦住时，尽量通过系统通知提醒你回到跟进中心。"
+                : "当自动导演等待确认、需要恢复或被校验拦住时，通过浏览器通知提醒你回到跟进中心。"}
             </CardDescription>
           </div>
         </div>
@@ -101,13 +109,15 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
           <div className="min-w-0 space-y-1">
             <div className="text-sm font-medium">桌面提醒</div>
             <div className={`${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText} text-xs text-muted-foreground`}>
-              只影响这台电脑上的当前浏览器。
+              {isMacShell
+                ? "只影响这台电脑上的当前桌面应用。"
+                : "只影响这台电脑上的当前浏览器。"}
             </div>
           </div>
           <Switch
             checked={enabled && permission === "granted"}
             onCheckedChange={handleToggle}
-            disabled={permission === "unsupported"}
+            disabled={permission === "unsupported" || (isMacShell && permission === "denied")}
             aria-label="开启或关闭自动导演暂停提醒"
           />
         </div>
@@ -116,7 +126,11 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
           <div className="min-w-0 space-y-1">
             <div className="text-sm font-medium">通知权限：{permissionLabel}</div>
             <div className={`${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText} text-xs text-muted-foreground`}>
-              若浏览器已阻止通知，请在地址栏权限设置中允许本网站发送通知。
+              {isMacShell
+                ? permission === "denied" || permission === "unsupported"
+                  ? "当前桌面环境暂无法发送系统通知。暂停事项仍可在「运行记录」和跟进中心查看。"
+                  : "若系统已阻止通知，请在「系统设置 → 通知」中允许本应用。"
+                : "若浏览器已阻止通知，请在地址栏权限设置中允许本网站发送通知。"}
             </div>
           </div>
           {canRequestPermission ? (
@@ -126,7 +140,7 @@ export function AutoDirectorBrowserNotificationSettingsCard(props: {
               className={AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}
               onClick={() => void handleEnable()}
             >
-              授权浏览器通知
+              {isMacShell ? "授权系统通知" : "授权浏览器通知"}
             </Button>
           ) : null}
         </div>

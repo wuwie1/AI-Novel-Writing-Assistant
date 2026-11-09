@@ -469,7 +469,11 @@ export async function getModelRoutes() {
 }
 
 export async function testModelRouteConnectivity() {
-  const { data } = await apiClient.post<ApiResponse<ModelRouteConnectivityResponse>>("/llm/model-routes/connectivity");
+  const { data } = await apiClient.post<ApiResponse<ModelRouteConnectivityResponse>>(
+    "/llm/model-routes/connectivity",
+    undefined,
+    { errorPresentation: "inline" },
+  );
   return data;
 }
 

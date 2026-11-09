@@ -262,6 +262,9 @@ test("the idea-stage entry opens a dismissible dialog and keeps its result acros
     assert.equal(page.button("采用推荐方案").disabled, false);
     assert.equal(page.pending.length, 1, "opening or closing the dialog must not regenerate the proposal");
     await page.click("采用推荐方案");
+    for (let waited = 0; waited < 500 && document.activeElement?.textContent !== "查看已采用方案"; waited += 10) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.equal(document.activeElement?.textContent, "查看已采用方案");
     await page.click("查看已采用方案");
     assert.match(page.surface.querySelector('[role="dialog"]').textContent, /已采用，可继续/);

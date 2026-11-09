@@ -165,7 +165,7 @@ export const getDirectorRunStatusOutputSchema = z.object({
 
 export const explainDirectorNextActionOutputSchema = z.object({
   novelId: z.string(),
-  taskId: z.string(),
+  taskId: z.string().nullable(),
   runtimeStatus: z.string(),
   currentStep: z.string().nullable(),
   recommendedAction: directorNextActionSchema,
