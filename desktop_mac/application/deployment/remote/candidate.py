@@ -121,6 +121,49 @@ def build_candidate(info, batch, validation, plan, installed, timings):
     emit('candidate_validated', sha=info['sha'], record=str(record_path), evidence=record['evidence'])
     manifest = dict(sha=info['sha'], baseline=info['old'], mode=plan['mode'], artifacts=slots, hashes=hashes, validation=str(record_path),
                     fingerprint=fingerprint)
+    return candidate, manifest
+
+
+def prepare_candidate(info, batch, validation, plan, installed, toolchain, timings):
+    # A busy API can abort a release after the build. Only reuse a verified candidate
+    # whose source, inputs and toolchain still match, before any switch happened.
+    for path in sorted(batch.parent.glob('*/transaction.json'), reverse=True):
+        journal = json.loads(path.read_text())
+        if journal.get('phase') != 'aborted' or journal.get('sha') != info['sha'] or journal.get('old') != info['old']:
+            continue
+        saved_manifest = path.parent / 'candidate-manifest.json'
+        if not saved_manifest.is_file():
+            continue
+        manifest = json.loads(saved_manifest.read_text())
+        if (manifest.get('baselineHashes') != installed or manifest.get('toolchain') != toolchain
+                or manifest.get('sha') != info['sha'] or manifest.get('artifacts') != plan['slots']
+                or manifest.get('mode') != plan['mode'] or journal.get('movedOld') or journal.get('installed')):
+            continue
+        proof = json.loads((path.parent / 'validation.json').read_text())
+        require_validation_record(proof, info['sha'], info['ref'])
+        if validation is not None and proof != validation:
+            continue
+        with timings.stage('reuse-candidate'), tempfile.TemporaryDirectory(dir=batch) as scratch:
+            copied = pathlib.Path(scratch) / 'candidate'
+            copied.mkdir(mode=0o700)
+            for slot in plan['slots']:
+                source = path.parent / 'candidate' / slot
+                if not source.is_dir() or source.is_symlink():
+                    break
+                copy_artifact(source, copied / slot)
+                if artifact_digest(copied / slot) != manifest['hashes'][slot]:
+                    break
+            else:
+                candidate = batch / 'candidate'
+                os.rename(copied, candidate)
+                manifest['validation'] = str(batch / 'validation.json')
+                write_json(batch / 'validation.json', proof)
+                write_json(batch / 'candidate-manifest.json', manifest)
+                emit('candidate_reused', sha=info['sha'], source=str(path.parent), evidence=proof['evidence'])
+                return candidate, manifest
+            emit('candidate_cache_miss', sha=info['sha'], reason='候选目录或校验值不符')
+    candidate, manifest = build_candidate(info, batch, validation, plan, installed, timings)
+    manifest.update(toolchain=toolchain, baselineHashes=installed)
     write_json(batch / 'candidate-manifest.json', manifest)
     return candidate, manifest
 

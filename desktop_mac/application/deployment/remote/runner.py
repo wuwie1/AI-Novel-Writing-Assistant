@@ -28,7 +28,10 @@ def run_remote(payload):
                 record_path = root / '.runtime/deployment.json'
                 previous = json.loads(record_path.read_text()) if record_path.is_file() else {}
             with timings.stage('verify-live'):
-                installed = live_artifacts(root)
+                # Only this invocation may reuse a file read. Re-enumerate paths and check
+                # inode, size, mtime and ctime again under the service lock.
+                file_hashes = {}
+                installed = live_artifacts(root, file_hashes)
                 toolchain = runtime_toolchain(root)
                 plan = release_plan(info, installed, toolchain, previous)
             emit('deployment_plan', **plan)
@@ -37,8 +40,7 @@ def run_remote(payload):
             if plan['mode'] != 'restart':
                 check_build_space(info)
                 with timings.stage('candidate-total'):
-                    candidate, manifest = build_candidate(info, batch, payload.get('validation'), plan, installed, timings)
-                    manifest['toolchain'] = toolchain
+                    candidate, manifest = prepare_candidate(info, batch, payload.get('validation'), plan, installed, toolchain, timings)
                 with timings.stage('retain-previous'):
                     retained = retain_release(info, batch, installed)
                 with timings.stage('preflight-backup'):
@@ -48,7 +50,7 @@ def run_remote(payload):
                     fresh = inspect_deployment(payload)
                     if any(fresh[k] != info[k] for k in ('old', 'branchTip', 'sha', 'states')):
                         raise Refused('准备期间部署基线或服务状态变化，请重新执行')
-                    if plan['mode'] != 'restart' and live_artifacts(root) != installed:
+                    if plan['mode'] != 'restart' and live_artifacts(root, file_hashes) != installed:
                         raise Refused('准备期间线上产物发生变化，请核对后重新执行')
                 return switch_transaction(payload, info, batch, candidate, manifest, previous, timings)
     finally:

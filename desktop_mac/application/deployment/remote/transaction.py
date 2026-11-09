@@ -62,11 +62,7 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
         with timings.stage('drain'):
             check_quiescence(payload, info)
             set_nginx(root, maintained, reload=info['states']['ai-novel-web'] == 'active')
-            for attempt in range(2):
-                if attempt:
-                    time.sleep(5)
-                check_quiescence(payload, info)
-                check_connections()
+            wait_for_drain(payload, info)
         with timings.stage('stop'):
             phase('stopping')
             stopped = True

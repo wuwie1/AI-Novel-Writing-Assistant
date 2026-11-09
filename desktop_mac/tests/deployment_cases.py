@@ -65,6 +65,54 @@ class DeploymentTests(unittest.TestCase):
                 with self.assertRaisesRegex(m.Refused, '18080.*HTTP 503'):
                     m.wait_for_health(18080, 30)
 
+    def test_drain_waits_for_two_quiet_samples_and_times_out_while_busy(self):
+        m = module()
+        m.check_quiescence = Mock()
+        busy = m.ActiveConnections('stream active')
+        m.check_connections = Mock(side_effect=[None, busy, None, None])
+        with patch.object(m.time, 'sleep') as delay:
+            m.wait_for_drain({}, {})
+            self.assertEqual(delay.call_count, 3)
+        m.check_connections = Mock(side_effect=busy)
+        with patch.object(m.time, 'monotonic', side_effect=[0, 30]), self.assertRaises(m.ActiveConnections):
+            m.wait_for_drain({}, {})
+
+    def test_aborted_candidate_reuse_checks_commit_toolchain_inputs_and_output(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory).resolve()
+            prior = root / 'prior'
+            slot = 'client/dist'
+            asset = prior / 'candidate' / slot / 'index.html'
+            asset.parent.mkdir(parents=True)
+            asset.write_text('passed web build')
+            digest = m.artifact_digest(asset.parent)
+            info = dict(old='A', sha='B', ref='origin/ai')
+            plan = dict(mode='incremental', slots=[slot])
+            baseline = {slot: 'old digest'}
+            m.write_json(prior / 'transaction.json', dict(phase='aborted', sha='B', old='A', movedOld=[], installed=[]))
+            manifest = dict(sha='B', mode='incremental', artifacts=[slot], hashes={slot:digest},
+                            baselineHashes=baseline, toolchain='v1')
+            proof = dict(sha='B', ref='origin/ai', evidence='real previous candidate log', passed=list(m.VALIDATION_CHECKS))
+            m.write_json(prior / 'candidate-manifest.json', manifest)
+            m.write_json(prior / 'validation.json', proof)
+            m.build_candidate = Mock(return_value=(None, {}))
+            def attempt(name, **change):
+                batch = root / name
+                batch.mkdir()
+                return m.prepare_candidate(dict(info, **change.get('info', {})), batch, None, plan,
+                                           change.get('inputs', baseline), change.get('tools', 'v1'), m.DeploymentTimings())
+            staged, record = attempt('matching')
+            self.assertEqual(m.artifact_digest(staged / slot), digest)
+            self.assertEqual(json.loads(pathlib.Path(record['validation']).read_text()), proof)
+            m.build_candidate.assert_not_called()
+            for name, override in [('different-tip', {'info': {'sha':'C'}}), ('different-tools', {'tools':'v2'}),
+                                   ('different-inputs', {'inputs': {slot:'changed'}})]:
+                attempt(name, **override)
+            asset.write_text('damaged')
+            attempt('damaged-output')
+            self.assertEqual(m.build_candidate.call_count, 4)
+
     def test_retry_requires_matching_rollback_manifest_branch_and_ancestry(self):
         m = module()
         with tempfile.TemporaryDirectory() as directory:
@@ -332,6 +380,24 @@ class DeploymentTests(unittest.TestCase):
                 validation = json.loads((batch / 'validation.json').read_text())
                 self.assertEqual(validation['reused'], ['server-build' if package == 'client' else 'client-build'])
                 self.assertFalse(list(batch.glob('build-*')))
+
+    def test_recheck_rereads_same_size_file_when_ctime_changes(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            asset = root / 'asset'
+            asset.write_bytes(b'first')
+            before = asset.stat()
+            cache = {}
+            with patch.object(m, 'digest', wraps=m.digest) as read:
+                baseline = m.artifact_digest(root, cache)
+                self.assertEqual(m.artifact_digest(root, cache), baseline)
+                self.assertEqual(read.call_count, 1)
+                m.time.sleep(0.01)
+                asset.write_bytes(b'other')
+                m.os.utime(asset, ns=(before.st_atime_ns, before.st_mtime_ns))
+                self.assertNotEqual(m.artifact_digest(root, cache), baseline)
+                self.assertEqual(read.call_count, 2)
 
     def test_retained_artifacts_can_be_restored_and_deduplicated(self):
         m = module()

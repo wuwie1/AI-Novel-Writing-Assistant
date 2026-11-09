@@ -124,7 +124,32 @@ def check_quiescence(payload, info):
         raise Refused('仍有活跃/待执行任务或任务覆盖未知；服务保持原状态')
 
 
+class ActiveConnections(Refused):
+    pass
+
+
 def check_connections():
     result = command(['ss', '-Htn', 'state', 'established', '( sport = :13000 or dport = :13000 )'])
     if result.stdout.strip():
-        raise Refused('API 仍有连接（包括旧流式请求/直连调用），暂不停止')
+        raise ActiveConnections('API 仍有连接（包括旧流式请求/直连调用），暂不停止')
+
+
+def wait_for_drain(payload, info):
+    deadline = time.monotonic() + 30
+    clear_once = waiting = False
+    while True:
+        check_quiescence(payload, info)
+        try:
+            check_connections()
+        except ActiveConnections:
+            if time.monotonic() >= deadline:
+                raise
+            clear_once = False
+            if not waiting:
+                emit('waiting_for_connections', seconds=30)
+                waiting = True
+        else:
+            if clear_once:
+                return
+            clear_once = True
+        time.sleep(5)

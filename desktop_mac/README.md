@@ -88,7 +88,7 @@ make server_update
 | `source` | 变更与 Web、后端产物无关。更新源码和发布记录，保留原产物。仅测试输入变更时运行回归。 |
 | `full` | 共享包、依赖、全局构建输入变化或缺少既有基线。完整构建并验证新版本。 |
 
-每次执行输出阶段耗时。`remote_total.log` 字段给出本次 `timings.json` 路径，`local_timing` 的 `total` 包含本机预演和 SSH 时间。构建明细在同批次 `build.log`，`validation.json` 记录执行或复用的验证。
+每次执行输出阶段耗时。`remote_total.log` 字段给出本次 `timings.json` 路径，`local_timing` 的 `total` 包含本机预演和 SSH 时间。构建明细在验证记录 `validation.json` 的 `evidence` 中。若切换前仍有连接，命令最多等待约 30 秒排空。之后重试同一候选时，只要基线、工具链和待发布的产物仍通过校验，可复用上次成功的构建。
 
 如果 CI 或开发机已为该提交完成构建和相关测试，可用 `DEPLOY_VALIDATION_FILE=/absolute/path/validation.json` 复用测试结果。服务器仍会构建实际部署的产物。现有记录须符合以下格式。
 

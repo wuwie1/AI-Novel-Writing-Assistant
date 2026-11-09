@@ -6,7 +6,7 @@ OUTPUTS = ARTIFACTS[4:]
 ENTRYPOINTS = ('shared/dist/index.js', 'server/dist/app.js', 'client/dist/index.html')
 
 
-def artifact_digest(directory):
+def artifact_digest(directory, file_hashes=None):
     if directory.is_symlink() or not directory.is_dir():
         raise Refused('产物目录缺失或顶层是链接：' + str(directory))
     checksum = hashlib.sha256()
@@ -27,7 +27,16 @@ def artifact_digest(directory):
                 visit(item.path)
                 checksum.update(b'E')
             elif stat.S_ISREG(mode):
-                checksum.update(b'F' + bytes.fromhex(digest(item.path)))
+                identity = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+                content = file_hashes.get(identity) if file_hashes is not None else None
+                if content is None:
+                    content = bytes.fromhex(digest(item.path))
+                    if file_hashes is not None:
+                        after = os.stat(item.path, follow_symlinks=False)
+                        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) != identity:
+                            raise Refused('校验时产物文件发生变化：' + item.path)
+                        file_hashes[identity] = content
+                checksum.update(b'F' + content)
             else:
                 raise Refused('产物含非常规文件：' + item.path)
 
@@ -36,11 +45,11 @@ def artifact_digest(directory):
     return checksum.hexdigest()
 
 
-def live_artifacts(root):
+def live_artifacts(root, file_hashes=None):
     for name in ENTRYPOINTS:
         if not (root / name).is_file() or not (root / name).stat().st_size:
             raise Refused('线上产物入口缺失或为空：' + name)
-    return {name: artifact_digest(root / name) for name in ARTIFACTS}
+    return {name: artifact_digest(root / name, file_hashes) for name in ARTIFACTS}
 
 
 def runtime_toolchain(root):
