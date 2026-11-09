@@ -6,6 +6,7 @@ import os from 'node:os';
 import { selectServerNode } from '../infrastructure/processes/launchers/server-node.mjs';
 import { appendLogChunk } from '../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, launchAgent, stopAgent } from '../infrastructure/processes/launchd.mjs';
+import { createStageTimer, timeLifecycleAdapters } from '../application/lifecycle/timings.mjs';
 
 test('runtime selection validates the native SQLite ABI without opening a persistent database', () => {
   const seen = [];
@@ -33,6 +34,25 @@ test('helper output remains private and bounded while the process is running', a
     assert.equal(info.mode & 0o077, 0);
   }
   assert.equal(await readFile(file, 'utf8'), 'yz');
+});
+
+test('stage durations persist for cache hits, cancelled closes and failed rollback dependencies', async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'mac-stage-timings-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const measure = createStageTimer('restart_app', dir);
+  const adapters = timeLifecycleAdapters({
+    requestNativeClose: async () => ({ ok: false }),
+    ensureConnection: async () => { throw Error('unlogged private details'); },
+    async restorePrevious() { return this.ensureConnection({ mode: 'local' }); },
+  }, measure);
+  await measure('前端界面', () => 'hit', () => '命中缓存');
+  assert.equal((await adapters.requestNativeClose()).ok, false);
+  await assert.rejects(adapters.restorePrevious(), { stage: '连接本机服务' });
+  const log = await readFile(path.join(dir, 'lifecycle.log'), 'utf8');
+  for (const stage of ['前端界面 命中缓存', '等待窗口确认退出 未获退出确认', '连接本机服务 失败', '恢复上次成功的窗口 失败']) {
+    assert.match(log, new RegExp(stage + ' \\d+ms'));
+  }
+  assert.ok(!log.includes('private details'));
 });
 
 test('launchd escapes repository and log paths with XML characters', () => {

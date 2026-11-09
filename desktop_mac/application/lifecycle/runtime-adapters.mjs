@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto';
 import { execFile, spawn, spawnSync } from 'node:child_process';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { prepareDesktopBuild } from '../../infrastructure/builds/index.mjs';
+import { runUntimed } from './timings.mjs';
+export { sourceFingerprint } from '../../infrastructure/builds/index.mjs';
 import { ensureRendererDependencies } from '../../infrastructure/dependencies/renderer.mjs';
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, isMissingAgent, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
@@ -22,29 +23,6 @@ const internalError = (message, exitCode = 5) => Object.assign(new Error(message
 
 function requireMacOS() {
   if (process.platform !== 'darwin') throw internalError('Mac lifecycle commands require macOS', 2);
-}
-
-export async function sourceFingerprint(repoRoot, { toolVersions = true } = {}) {
-  const hash = createHash('sha256');
-  async function walk(directory) {
-    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-      const full = path.join(directory, entry.name);
-      if (["node_modules", "dist", ".git", ".runtime"].includes(entry.name)) continue;
-      if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile()) { hash.update(path.relative(repoRoot, full)); hash.update(await readFile(full)); }
-    }
-  }
-  for (const relative of ['desktop_mac/native', 'desktop_mac/renderer', 'client/src', 'shared']) await walk(path.join(repoRoot, relative));
-  for (const relative of ['desktop_mac/package.json', 'desktop/package.json', 'shared/package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.base.json']) {
-    try { hash.update(relative); hash.update(await readFile(path.join(repoRoot, relative))); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  }
-  hash.update(process.version); hash.update(os.arch());
-  if (toolVersions) for (const [bin, args] of [['pnpm', ['--version']], ['xcrun', ['swiftc', '--version']]]) {
-    const result = spawnSync(bin, args, { cwd: repoRoot, encoding: 'utf8' });
-    if (result.status !== 0) throw internalError(`${bin} prerequisite check failed`);
-    hash.update(result.stdout.trim());
-  }
-  return hash.digest('hex');
 }
 
 async function assertPortFree(port) {
@@ -90,7 +68,7 @@ async function workingDirectory(pid) {
   return result.stdout.split(/\r?\n/).find((line) => line.startsWith('n'))?.slice(1) ?? null;
 }
 
-export function createRuntimeAdapters(config) {
+export function createRuntimeAdapters(config, measure = runUntimed) {
   const repoRoot = config.repoRealPath;
   const runtime = path.join(repoRoot, '.runtime/desktop_mac');
   const logs = path.join(repoRoot, '.logs/desktop_mac');
@@ -98,6 +76,8 @@ export function createRuntimeAdapters(config) {
   const pnpm = absolutePnpm();
   const pathValue = [path.dirname(process.execPath), path.dirname(pnpm), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
   const createdRecords = new Set();
+
+  const unload = (label, role) => measure(`等待服务注销 ${role}`, () => stopAgent(label));
 
   async function startAgent({ role, mode, executable, args, environment = {} }) {
     const label = launchdLabel({ repoRealPath: repoRoot, mode, role });
@@ -117,7 +97,7 @@ export function createRuntimeAdapters(config) {
     let processInfo;
     try { processInfo = await waitForAgentIdentity(label, [process.execPath, ...supervisorArgs]); }
     catch {
-      await stopAgent(label).catch(() => {});
+      await unload(label, role).catch(() => {});
       throw internalError(`Failed to verify ${role} process identity; inspect ${errPath} and retry`);
     }
     const pid = processInfo.pid;
@@ -173,7 +153,7 @@ export function createRuntimeAdapters(config) {
       let inactive;
       try { inactive = await printAgent(label); } catch (error) { if (isMissingAgent(error, label)) return; throw error; }
       if (parsePid(inactive.stdout)) throw internalError(`Refusing to stop ${role}: launchd identity changed`, 4);
-      await stopAgent(label);
+      await unload(label, role);
       return;
     }
     if (!await processMatches(record, { ...expected, role })) {
@@ -182,13 +162,13 @@ export function createRuntimeAdapters(config) {
       const agent = await inspectOwnAgent(label, role);
       if (!agent.loaded) return;
       if (!agent.owned) throw internalError(`Refusing to stop ${role}: process ownership could not be verified`, 4);
-      await stopAgent(label);
+      await unload(label, role);
       return;
     }
     let agent;
     try { agent = await printAgent(label); } catch { throw internalError(`Refusing to stop ${role}: launchd ownership could not be verified`, 4); }
     if (parsePid(agent.stdout) !== record.pid) throw internalError(`Refusing to stop ${role}: launchd PID does not match the recorded process`, 4);
-    await stopAgent(record.label);
+    await unload(record.label, role);
   }
 
   async function waitHttp(url, timeoutMs, { accept = (response) => response.ok } = {}) {
@@ -232,26 +212,15 @@ export function createRuntimeAdapters(config) {
     async prepare({ mode, development }) {
       requireMacOS();
       if (mode === 'local' && listenPid(config.localApiPort).length === 0) {
-        await validateLocalDatabase(repoRoot);
-        const node = selectServerNode(repoRoot);
-        process.stdout.write(`[local-api] Node: ${node}\n`);
-        const sharedBuild = spawnSync(pnpm, ['--filter', '@ai-novel/shared', 'build'], { cwd: repoRoot, env: process.env, stdio: 'inherit' });
-        if (sharedBuild.status !== 0) throw internalError(`Shared package build failed; inspect ${logs} and retry`);
+        await measure('准备本机后端依赖', async () => {
+          await validateLocalDatabase(repoRoot);
+          const node = selectServerNode(repoRoot);
+          process.stdout.write(`[local-api] Node: ${node}\n`);
+          const sharedBuild = spawnSync(pnpm, ['--filter', '@ai-novel/shared', 'build'], { cwd: repoRoot, env: process.env, stdio: 'inherit' });
+          if (sharedBuild.status !== 0) throw internalError(`Shared package build failed; inspect ${logs} and retry`);
+        });
       }
-      const fingerprint = await sourceFingerprint(repoRoot);
-      const outDir = path.join(runtime, 'builds', fingerprint);
-      const rendererRoot = path.join(outDir, 'renderer'); const nativeRoot = path.join(outDir, 'native');
-      await mkdir(path.dirname(rendererRoot), { recursive: true, mode: 0o700 });
-      if (!development) {
-        const env = { ...process.env, MAC_RENDERER_OUT_DIR: rendererRoot };
-        const rendererBuild = spawnSync(pnpm, ['--filter', '@ai-novel/desktop-mac', 'run', 'build:renderer'], { cwd: repoRoot, env, stdio: 'inherit' });
-        if (rendererBuild.status !== 0) throw internalError(`Renderer build failed; previous app remains available; inspect ${logs} and retry`);
-      }
-      const nativeBuild = spawnSync(process.execPath, [path.join(repoRoot, 'desktop_mac/native/build.mjs'), '--out-dir', nativeRoot], { cwd: repoRoot, stdio: 'inherit' });
-      if (nativeBuild.status !== 0) throw internalError(`Native build failed; previous app remains available; inspect ${logs} and retry`);
-      const appPath = path.join(nativeRoot, 'AI Novel Mac.app');
-      const executable = path.join(appPath, 'Contents/MacOS/AI-Novel-Mac');
-      return { fingerprint, rendererRoot, executable, appPath, development, mode };
+      return prepareDesktopBuild({ repoRoot, buildsDir: path.join(runtime, 'builds'), mode, development, pnpm, measure });
     },
     async ensureConnection({ mode, current }) {
       let localDbPath = null;
@@ -380,7 +349,7 @@ export function createRuntimeAdapters(config) {
           if (tracked.has(label)) continue;
           const agent = await inspectOwnAgent(label, role);
           if (!agent.loaded || !agent.owned) continue;
-          await stopAgent(label);
+          await unload(label, role);
           stopped.push(`${mode}/${role}`);
         }
       }

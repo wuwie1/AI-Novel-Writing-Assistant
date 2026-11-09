@@ -4,6 +4,12 @@ import { getRepoPaths } from '../../infrastructure/processes/config.mjs';
 const emptyState = (repoRealPath) => ({ schemaVersion: 1, repoRealPath, requestedMode: null, runningMode: null, backendIdentity: null, buildFingerprint: null, previousSuccessfulBuild: null, processes: {} });
 const validMode = (mode) => mode === 'local' || mode === 'remote';
 
+// Once the PID has exited, retries still need the helpers' identities and the last working build.
+function exitedWindowState(current, requestedMode) {
+  const { app, ...processes } = current.processes;
+  return { ...current, requestedMode, runningMode: null, processes };
+}
+
 /** Lifecycle decisions are isolated from OS effects so tests can use safe adapters. */
 export function createLifecycle({ config, adapters, clock = () => new Date().toISOString() }) {
   const paths = getRepoPaths(config.repoRealPath);
@@ -47,21 +53,20 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       if (current.runningMode === mode && !status) {
         if (await adapters.nativeProcessAlive?.(current)) throw Object.assign(new Error('The native process is still running but its control socket is unavailable; no second window was launched'), { exitCode: 4 });
         previousWindowClosed = true;
-        await adapters.cleanupWindowHelpers?.(current);
       }
       if (current.runningMode && current.runningMode !== mode) {
         try { build ??= await adapters.prepare({ mode, development, config, paths }); }
         catch (error) { await save({ ...snapshot, requestedMode: mode }); throw Object.assign(error, { exitCode: error.exitCode ?? 5 }); }
         const closed = await adapters.requestNativeClose?.(current);
-        if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; the current mode remains available'), { exitCode: 3, cancelled: true });
+        if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; the current mode remains available'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
         await adapters.waitAppExited?.(current, 60_000);
         previousWindowClosed = true;
-        await adapters.cleanupWindowHelpers?.(current);
       }
-      const requested = { ...current, requestedMode: mode };
+      const requested = previousWindowClosed ? exitedWindowState(current, mode) : { ...current, requestedMode: mode };
       await save(requested);
-      await adapters.cleanupOrphanAgents?.(requested);
       try {
+        if (previousWindowClosed || !current.runningMode) await adapters.cleanupWindowHelpers?.(current);
+        await adapters.cleanupOrphanAgents?.(requested);
         build ??= await adapters.prepare({ mode, development, config, paths });
         const connection = await adapters.ensureConnection({ mode, config, current: snapshot });
         const helpers = await adapters.startHelpers({ mode, development, config, paths, build, connection });
@@ -103,7 +108,10 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         }
         if (restored) { await save({ ...restored, requestedMode: mode }); await adapters.commitStart?.(restored); }
         else {
-          if (snapshot.runningMode && previousWindowClosed) await adapters.cleanupWindowHelpers?.(recoveryBase).catch?.(() => {});
+          if (snapshot.runningMode && previousWindowClosed) {
+            try { await adapters.cleanupWindowHelpers?.(recoveryBase); }
+            catch { Object.assign(retainedHelpers, exitedWindowState(recoveryBase, mode).processes); }
+          }
           const remaining = snapshot.runningMode && previousWindowClosed
             ? Object.fromEntries(Object.entries(recoveryBase.processes).filter(([role, record]) => role === 'local-api' && record?.ownership === 'owned' || role === 'tunnel' && record?.ownership === 'owned' || record?.ownership === 'borrowed' || Object.hasOwn(retainedHelpers, role)))
             : recoveryBase.processes;
@@ -124,11 +132,12 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         if (status) {
           if (status.repo !== config.repoRealPath || status.mode !== current.runningMode || status.backendIdentity !== current.backendIdentity) throw Object.assign(new Error('Native window identity does not match the saved state'), { exitCode: 4 });
           const close = await adapters.requestNativeClose?.(current);
-          if (!close?.ok) throw Object.assign(new Error('Application close was cancelled; services remain running'), { exitCode: 3, cancelled: true });
+          if (!close?.ok) throw Object.assign(new Error('Application close was cancelled; services remain running'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
           await adapters.waitAppExited?.(current, 60_000);
         } else if (current.processes.app && await adapters.nativeProcessAlive?.(current)) {
           throw Object.assign(new Error('Native process is still running but its control socket is unavailable; services were left running'), { exitCode: 4 });
         }
+        await save(exitedWindowState(current, current.requestedMode));
       }
       const retained = [];
       for (const [role, record] of Object.entries(current.processes)) {
@@ -159,8 +168,9 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       try { build = await adapters.prepare({ mode: selectedMode, development: false, config, paths }); }
       catch (error) { await save({ ...current, requestedMode: selectedMode }); throw Object.assign(error, { exitCode: error.exitCode ?? 5 }); }
       const closed = current.runningMode ? await adapters.requestNativeClose?.(current) : { ok: true };
-      if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; current services remain running'), { exitCode: 3, cancelled: true });
+      if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; current services remain running'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
       await adapters.waitAppExited?.(current, 60_000);
+      if (current.runningMode || current.processes.app) await save(exitedWindowState(current, selectedMode));
       try {
         await adapters.cleanupWindowHelpers?.(current);
         const preserved = Object.fromEntries(Object.entries(current.processes ?? {}).filter(([role, record]) => role === 'local-api' || role === 'tunnel' || record?.ownership === 'borrowed'));

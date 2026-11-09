@@ -22,7 +22,7 @@ app:
 stop_app:
 	@node desktop_mac/scripts/mac.mjs stop_app
 
-## restart_app — 先构建，再按最近请求的模式重启桌面
+## restart_app — 准备或复用构建产物，再按最近请求的模式重启桌面
 restart_app:
 	@node desktop_mac/scripts/mac.mjs restart_app
 

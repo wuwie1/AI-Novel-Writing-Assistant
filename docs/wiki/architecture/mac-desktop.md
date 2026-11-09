@@ -19,7 +19,7 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 本地与服务器模式，以及不同后端身份，使用不同 WKWebView 数据存储与草稿前缀。主题也使用 Mac 专属键。正文草稿继续使用现有保存基线/版本冲突合同；服务器版本变动不能直接覆盖未保存输入。
 
-原生桥协议版本1：rendererReady、requestSave、requestClose、closeDecision。退出/重载必须等 renderer 允许；保存失败、忙碌、取消或超时不退出。Mac 使用 `createBrowserRouter` 保持浏览器路径，并使用其导航 blocker；普通 `BrowserRouter` 不提供该 blocker 的 data-router 上下文，不能直接替换。
+原生桥协议版本 1 使用 `rendererReady`、`requestSave`、`requestClose` 和 `closeDecision`。`closeNeedsAttention` 让原生窗口展示当前退出请求需要的交互，`closeExpired` 让页面撤回同一请求。退出或重载必须等 renderer 允许。保存失败、忙碌、取消或超时时保留窗口。Mac 使用 `createBrowserRouter` 提供导航 blocker 所需的 data-router 上下文。
 
 跨端同步依赖原生激活信号：WKWebView 在切换到其他应用再切回时不会触发 `visibilitychange`，而 Mac 的 QueryClient 全局关闭了 `refetchOnWindowFocus`。因此 `windowDidBecomeKey` 向页面发送 `windowActivated` 事件，`MacDocumentProtection` 收到后只重取当前挂载且已过期的查询；存在已登记的未保存或忙碌文档时跳过，避免另一端的改动覆盖本机输入。不要为了同步改成全局轮询或无条件 `invalidateQueries`。
 
@@ -92,6 +92,12 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 发现缺项或记录失效时，仅对 Mac 桌面和它引用的工作区执行冻结安装。运行依赖与构建依赖都要纳入，否则生产环境变量可能使 Vite 缺失。安装后复查链接再记录成功，中断或失败会在下次启动重试。服务器模式重启在请求旧窗口退出前完成同一检查。
 
+前端和 Swift 各有独立的构建指纹。前端覆盖 Mac 页面、复用的 client/shared、Tailwind 配置、锁文件、安装快照和 Vite 构建环境。原生窗口覆盖 Swift 源码、资源、构建脚本、应用版本、编译器及 SDK。开发模式使用 Vite 提供实时页面，只查原生窗口缓存。
+
+每次构建先写私有临时目录，核对必需文件、产物内容摘要、可执行权限以及构建前后的输入。原生构建还需验证签名。成功后以原子替换发布缓存索引，窗口及回滚状态始终保存实际的版本目录。遇到缺失资源、摘要失配、旧格式或中断的构建时生成独立目录，避免覆盖仍在使用的页面或签名包。
+
+排查启动慢时，在 `.logs/desktop_mac/lifecycle.log` 按命令名和 PID 查看本次构建、窗口确认、服务注销、连接和页面就绪耗时。总耗时包含各子阶段，回滚也经过相同的计时入口。日志仅记录阶段、结果及耗时，作品内容和连接凭据留在各自的数据边界内。
+
 本机服务直接运行原 ts-node-dev 入口，不能调用会隐式 `prisma db push` 的 `server dev`。Node 选择只加载 Prisma 导出并打开内存 SQLite 验证 ABI，不导入后端 bootstrap。启动时将已校验的数据库绝对路径传入服务，避免继承环境变量改变数据源。
 
 新窗口启动后如果健康检查失败，必须先走同一个正常关闭协议；取消或超时则保留整套进程及身份记录，不能拆掉窗口依赖或再打开回滚窗口。重启及回滚全过程持有同一生命周期锁。
@@ -100,6 +106,7 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 - 后台 WKWebView 可能暂停绘制帧。收到原生退出请求时直接读取注册文档的修改和忙碌状态；需要用户处理时，带当前请求 ID 通知原生窗口前置。保存完成后在 React 提交后复核文档状态。超时只取消对应请求，迟到的答复不能关闭下一次请求的窗口。
 - `launchctl bootout` 的成功回执只表示系统接受退出。进程归属校验通过后发出退出请求，轮询同一图形会话的服务名，直至 `launchctl print` 明确报告服务不存在。启动和回滚在注册同名代理前也要确认该条件，权限错误和等待超时需上报。
+- 确认旧窗口进程退出后，先清除磁盘状态中的窗口记录，再注销辅助服务。保留服务归属和上次成功的构建路径。即便注销被打断，下一次命令也能重新核对服务或恢复旧构建。
 - SSH 的命令行目的地址可能是用户配置的别名。借用已有隧道时读取进程真实 argv（只取 argc 项，不输出环境变量），验证其 `/usr/bin/ssh` 可执行文件、精确 `-L` 转发，并用 `ssh -G` 对比主机、用户、端口与连接身份配置。不能用 `command.includes(host)` 证明或否定目标身份。未知选项/不支持的代理命令按归属不明处理，不能停止该进程。
 - `launchctl print` 返回 PID 时，该 PID 可能仍在执行 `xpcproxy`。必须等真实 argv 等于本次提交的 ProgramArguments，才能记录完整命令与启动时间；后续停止仍严格检查身份，不放宽为只看 PID。
 - helper 进程存活不等于页面已能加载。先等待界面 HTTP 健康和 API 转发，再创建 WKWebView；尤其 Vite 冷启动不能和原生首次导航竞速。恢复旧构建也遵守同一顺序。

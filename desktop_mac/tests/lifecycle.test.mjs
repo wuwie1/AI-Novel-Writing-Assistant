@@ -86,6 +86,34 @@ test('cancelled mode switch retains the running mode and build failure preserves
   assert.equal(state.repoRealPath, repoRealPath);
 });
 
+test('a verified window exit remains recorded when helper removal fails, so the next command can retry', async (t) => {
+  for (const operation of ['restart', 'switch', 'stop']) {
+    await t.test(operation, async (t) => {
+      let closeRequests = 0;
+      let failRemoval = false;
+      async function removeHelper() { if (failRemoval) throw Error('helper still unloading'); }
+      const { lifecycle } = await setup(t, {
+        requestNativeClose: async () => { closeRequests += 1; return { ok: true }; },
+        startHelpers: async ({ mode }) => ({ processes: { 'mac-proxy': { ownership: 'owned', mode } } }),
+        cleanupWindowHelpers: removeHelper,
+        stopOwned: removeHelper,
+      });
+      await lifecycle.startLocal();
+      failRemoval = true;
+      const actions = { restart: () => lifecycle.restart('remote'), switch: lifecycle.startRemote, stop: lifecycle.stop };
+      await assert.rejects(actions[operation](), /still unloading/);
+      const state = await lifecycle.getState();
+      assert.equal(state.runningMode, null);
+      assert.equal(state.processes.app, undefined);
+      assert.equal(state.processes['mac-proxy'].ownership, 'owned');
+      assert.equal(state.previousSuccessfulBuild.fingerprint, 'build-local');
+      failRemoval = false;
+      assert.equal((await lifecycle.restart('remote')).status, 'started');
+      assert.equal(closeRequests, 1);
+    });
+  }
+});
+
 test('stop keeps local API when activity cannot be confirmed and never signals borrowed helpers', async (t) => {
   const { lifecycle, calls, adapters } = await setup(t, { ensureConnection: async () => ({ backendIdentity: 'identity-local', processes: { 'local-api': { ownership: 'owned' }, tunnel: { ownership: 'borrowed' } } }) });
   await lifecycle.startLocal();
