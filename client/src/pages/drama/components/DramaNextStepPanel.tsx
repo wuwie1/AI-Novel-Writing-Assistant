@@ -212,8 +212,7 @@ function StepIcon({ icon }: { icon: NextStep["icon"] }) {
 export function DramaNextStepPanel(props: {
   project: DramaProjectDetail;
   busy: boolean;
-  onSetTab: (tab: NextStep["tab"]) => void;
-  onSelectEpisode: (order: number) => void;
+  onSetTab: (tab: NextStep["tab"], order?: number) => void;
   onAssembleSource: () => void;
   onGenerateStrategy: () => void;
   onGenerateOutline: () => void;
@@ -227,10 +226,7 @@ export function DramaNextStepPanel(props: {
 }) {
   const step = buildNextStep(props.project);
   const runStep = () => {
-    props.onSetTab(step.tab);
-    if (step.episodeOrder) {
-      props.onSelectEpisode(step.episodeOrder);
-    }
+    props.onSetTab(step.tab, step.episodeOrder);
     if (step.kind === "source") props.onAssembleSource();
     if (step.kind === "strategy") props.onGenerateStrategy();
     if (step.kind === "outline") props.onGenerateOutline();

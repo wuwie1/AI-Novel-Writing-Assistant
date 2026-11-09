@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection, useRouteFields } from "@/platform";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,8 +44,9 @@ function safeJsonParseProject(raw: string | null | undefined): { style?: string;
   try { return JSON.parse(raw); } catch { return {}; }
 }
 
-function ExportPanel({ projectId, episodes }: { projectId: string; episodes: ComicEpisode[] }) {
-  const [selectedEpId, setSelectedEpId] = useState(episodes[0]?.id ?? "");
+function ExportPanel({ projectId, episodes, selectedId }: { projectId: string; episodes: ComicEpisode[]; selectedId?: string | null }) {
+  const [localEpId, setSelectedEpId] = useState(episodes[0]?.id ?? "");
+  const selectedEpId = selectedId === undefined ? localEpId : selectedId;
   const exportMut = useMutation({
     mutationFn: (episodeId: string) => exportComicEpisode(episodeId, { format: "long_image" }),
     onSuccess: (result) => {
@@ -60,7 +62,7 @@ function ExportPanel({ projectId, episodes }: { projectId: string; episodes: Com
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-end">
-        <div className="space-y-1">
+        {selectedId === undefined && <div className="space-y-1">
           <label className="text-sm font-medium">选择话数</label>
           <SelectControl
             className="rounded-md border bg-background px-3 py-2 text-sm"
@@ -73,11 +75,11 @@ function ExportPanel({ projectId, episodes }: { projectId: string; episodes: Com
               </option>
             ))}
           </SelectControl>
-        </div>
+        </div>}
         <Button
           type="button"
           disabled={!selectedEpId || exportMut.isPending}
-          onClick={() => exportMut.mutate(selectedEpId)}
+          onClick={() => selectedEpId && exportMut.mutate(selectedEpId)}
         >
           <Download className="h-4 w-4" />
           {exportMut.isPending ? "导出中…" : "导出长图"}
@@ -123,12 +125,16 @@ export default function ComicProjectPage() {
     enabled: Boolean(id),
   });
 
-  const { data: episodes = [] } = useQuery({
+  const { data: episodes = [], isLoading: episodesLoading, isError: episodesError, refetch: retryEpisodes } = useQuery({
     queryKey: ["comic", "episodes", id],
     queryFn: () => listComicEpisodes(id!),
     enabled: Boolean(id),
   });
 
+  const [route, update] = useRouteFields();
+  const tab = route.get("tab") ?? "outline";
+  const directory = useDirectorySelection("itemId", episodes);
+  const selectedEpisodeId = directory.host ? episodes.find(ep => ep.id === directory.selection)?.id ?? null : undefined;
   const { data: providerOptions = [] } = useQuery({
     queryKey: ["settings", "api-keys"],
     queryFn: getAPIKeySettings,
@@ -368,7 +374,10 @@ export default function ComicProjectPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="outline">
+      {["outline","panels","export"].includes(tab) && <EntityDirectory {...directory} title="漫画分话" collection={JSON.stringify(["comic",id,tab])}
+        rows={episodes.map(ep => ({id: ep.id, label: `第 ${ep.order} 话 ${ep.title || ""}`, description: ep.outline}))}
+        pending={episodesLoading} error={episodesError} retry={() => void retryEpisodes()}/>}
+      <Tabs value={tab} onValueChange={tab => update({tab, itemId: null})}>
         <TabsList className="w-full justify-start gap-1">
           <TabsTrigger value="outline">分话大纲</TabsTrigger>
           <TabsTrigger value="characters">
@@ -385,7 +394,7 @@ export default function ComicProjectPage() {
         </TabsList>
 
         <TabsContent value="outline" className="mt-4">
-          <EpisodeListPanel projectId={id!} project={project} />
+          <EpisodeListPanel projectId={id!} project={project} episodes={episodes} isLoading={episodesLoading} selectedId={selectedEpisodeId} />
         </TabsContent>
 
         <TabsContent value="characters" className="mt-4">
@@ -397,12 +406,12 @@ export default function ComicProjectPage() {
         </TabsContent>
 
         <TabsContent value="panels" className="mt-4">
-          <PanelsGridPanel projectId={id!} provider={resolvedProvider} />
+          <PanelsGridPanel key={directory.host ? selectedEpisodeId : id} projectId={id!} provider={resolvedProvider} episodes={episodes} controlledId={selectedEpisodeId} />
         </TabsContent>
 
         <TabsContent value="export" className="mt-4">
           {episodes.length > 0 ? (
-            <ExportPanel projectId={id!} episodes={episodes} />
+            <ExportPanel projectId={id!} episodes={episodes} selectedId={selectedEpisodeId} />
           ) : (
             <div className="py-12 text-center text-sm text-muted-foreground">
               请先生成分话大纲。

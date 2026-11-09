@@ -56,7 +56,7 @@ html[data-app-shell="mac"] .mac-feature [role="treeitem"][aria-selected="true"] 
 /* Settings categories are already available in the Mac directory, including
    its narrow-window drawer. Keep a single navigation surface. */
 html[data-app-shell="mac"] [data-mac-page^="settings/"] .grid:has(> nav[aria-label="系统设置"]) { grid-template-columns:minmax(0,1fr); }
-html[data-app-shell="mac"] [data-mac-page^="settings/"] nav[aria-label="系统设置"] { display:none; }
+html[data-app-shell="mac"] [data-mac-page^="settings/"] nav[aria-label="系统设置"] > div { flex-direction:row; overflow-x:auto; }
 html[data-app-shell="mac"] [role="status"].border-border\/70 { border:0; background:var(--mac-soft); }
 html[data-app-shell="mac"] #root [data-mac-page="create"] textarea { background:transparent; border:0; }
 

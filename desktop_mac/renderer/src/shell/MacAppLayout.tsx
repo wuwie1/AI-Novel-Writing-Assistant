@@ -60,7 +60,7 @@ export function MacAppLayout() {
   const workbench = context.chapterId ? "chapter-editor"
     : context.section === "creative" ? "creative-workbench"
     : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const legacy = !entity && !location.pathname.startsWith("/worlds/") && !["/knowledge", "/book-analysis", "/market-radar", "/genres", "/story-modes", "/base-characters", "/worlds", "/worlds/generator", "/titles", "/style-engine", "/anti-ai-rules", "/prompt-workbench"].includes(location.pathname) && !["help", "tasks", "create", "shelf", "novel", "director", "creative"].includes(context.section);
+  const legacy = !entity && !location.pathname.startsWith("/worlds/") && !["/knowledge", "/book-analysis", "/market-radar", "/genres", "/story-modes", "/base-characters", "/worlds", "/worlds/generator", "/titles", "/style-engine", "/anti-ai-rules", "/prompt-workbench"].includes(location.pathname) && !["help", "tasks", "create", "shelf", "novel", "director", "creative", "settings", "comic", "drama"].includes(context.section);
   const hasList = !!entity || legacy;
   const title = entity?.title ?? context.sidebarTitle;
   const collapseKey = entity?.collection ?? workbench ?? context.section;

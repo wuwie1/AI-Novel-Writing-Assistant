@@ -115,8 +115,8 @@ function summarize(items: EpisodeQualityItem[]) {
 export function DramaQualityPanel(props: {
   project: DramaProjectDetail;
   busy: boolean;
-  onSelectEpisode: (order: number) => void;
-  onOpenEpisodes: () => void;
+  selectedId?: string | null;
+  onOpenEpisodes: (order: number) => void;
   onReview: (order: number) => void;
   onComplianceAll: () => void;
   onRepair: (order: number) => void;
@@ -135,8 +135,7 @@ export function DramaQualityPanel(props: {
   const scriptedCount = items.filter((item) => Boolean(item.episode.content?.trim())).length;
 
   const openEpisode = (order: number) => {
-    props.onSelectEpisode(order);
-    props.onOpenEpisodes();
+    props.onOpenEpisodes(order);
   };
 
   if ((props.project.episodes?.length ?? 0) === 0) {
@@ -198,7 +197,7 @@ export function DramaQualityPanel(props: {
 
       {problemItems.length > 0 ? (
         <div className="space-y-3">
-          {problemItems.map((item) => (
+          {problemItems.filter(item => props.selectedId === undefined || item.episode.id === props.selectedId).map((item) => (
             <Card key={item.episode.id} className="rounded-lg">
               <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
@@ -273,7 +272,7 @@ export function DramaQualityPanel(props: {
             <CardDescription>这些集已有台本，还没有质量检查结果。</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 md:grid-cols-2">
-            {uncheckedItems.map((item) => (
+            {uncheckedItems.filter(item => props.selectedId === undefined || item.episode.id === props.selectedId).map((item) => (
               <div key={item.episode.id} className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm">
                 <span>第 {item.episode.order} 集：{item.episode.title}</span>
                 <Button

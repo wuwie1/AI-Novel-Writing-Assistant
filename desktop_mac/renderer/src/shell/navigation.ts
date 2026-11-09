@@ -75,7 +75,7 @@ export function resolveMacNavigation(pathname: string, search = ""): MacNavigati
   if (path === "/help") return { key: "help", section: "help", title: "帮助", sidebarTitle: "创作指南", primary: "/help" };
   if (pathIsWithin(path, "/comic")) return { key: "comic", section: "comic", title: "漫画", sidebarTitle: "漫画项目", primary: "more" };
   // 短剧入口与 Web 保持一致：路由保留，但不作为 Mac 主导航入口。
-  if (pathIsWithin(path, "/drama")) return { key: "resources", section: "resources", title: "短剧", sidebarTitle: "更多功能", primary: "more", links: moreLinks };
+  if (pathIsWithin(path, "/drama")) return { key: "drama", section: "drama", title: "短剧", sidebarTitle: "短剧项目", primary: "more" };
   const group = resourceGroups.find(({ links }) => links.some(([to]) => pathIsWithin(path, to)));
   return { key: group?.title ?? "more", section: "resources", title: group?.links.find(([to]) => pathIsWithin(path, to))?.[1] ?? "创作工具", sidebarTitle: group?.title ?? "更多功能", primary: "more", links: group?.links ?? moreLinks };
 }

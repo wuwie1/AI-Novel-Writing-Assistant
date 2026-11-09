@@ -38,6 +38,11 @@ before(async () => {
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
       import DirectorRunHistoryPage from '@/pages/directorNext/DirectorRunHistoryPage';
       import CreativeHubThreadList from '@/pages/creativeHub/components/CreativeHubThreadList';
+      import ComicWorkspacePage from '@/pages/comic/ComicWorkspacePage';
+      import ComicProjectPage from '@/pages/comic/ComicProjectPage';
+      import DramaWorkspacePage from '@/pages/drama/DramaWorkspacePage';
+      import SettingsPage from '@/pages/settings/SettingsPage';
+      import ModelRoutesPage from '@/pages/settings/ModelRoutesPage';
       import GenreManagementPage from '@/pages/genres/GenreManagementPage';
       import KnowledgePage from '@/pages/knowledge/KnowledgePage';
       import NovelPreview from '@/pages/novels/NovelPreview';
@@ -61,6 +66,14 @@ before(async () => {
           else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
+          else if(config.url==='/settings/api-keys') data=[{provider:'deepseek',kind:'builtin',name:'测试厂商',models:['test'],defaultModel:'test',isActive:false,isConfigured:false}];
+          else if(config.url==='/settings/api-keys/balances') data=[];
+          else if(config.url==='/llm/structured-fallback') data=null;
+          else if(config.url==='/llm/model-routes/connectivity') data={statuses:[]};
+          else if(config.url==='/llm/model-routes' && config.method==='put') throw Error('模拟保存失败');
+          else if(config.url==='/llm/model-routes') data={taskTypes:['writer','planner'],routes:['writer','planner'].map(taskType=>({taskType,provider:'deepseek',model:'test',temperature:0.7,maxTokens:null,requestProtocol:'auto',structuredResponseFormat:'auto'}))};
+          else if(config.url==='/comic/projects/project-a') data={id:'project-a',title:'漫画详情',characters:[],sourceType:'novel_import'};
+          else if(config.url==='/comic/projects/project-a/episodes') data=[{id:'episode',title:'第一话大纲',order:1}];
           else if(config.url==='/genres') data=['one','two'].map((id,i)=>({id,name:'同名题材',description:i?'定位乙':'定位甲',children:[],novelCount:0,childCount:0}));
           else if(config.url==='/knowledge/documents') data=docs;
           else if(config.url==='/rag/jobs') data=[];
@@ -92,9 +105,10 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'settings/models',element:<><Editor/><SettingsPage/></>},{path:'settings/model-routes',element:<ModelRoutesPage/>},
+          {path:'comic',element:<ComicWorkspacePage/>},{path:'comic/projects/:id',element:<ComicProjectPage/>},{path:'drama',element:<DramaWorkspacePage/>},{path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
-        const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
+        const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false,gcTime:0}}});
         const root=createRoot(document.getElementById('root'));
         let version=0;
         const render=()=>root.render(<QueryClientProvider client={client}><RouterProvider router={router} key="router"/><span hidden>{version++}</span></QueryClientProvider>);
@@ -243,8 +257,8 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
     for (const [route, title, content] of [
       ['/novels', '我的小说', '测试作品'],
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演运行记录', '测试创作记录'],
-      ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
-      ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
+      ['/tasks', '运行记录', '记录甲'], ['/settings/models', '模型厂商', '测试厂商'],
+      ['/drama', '短剧项目', '短剧项目甲'], ['/comic', '漫画项目', '漫画项目甲'],
       ['/knowledge', '创作资料', '资料b'], ['/genres', '题材目录', '同名题材'],
     ]) {
       await h.go(route);
@@ -306,10 +320,8 @@ test('context search filters loaded rows, keeps selection and resets when changi
   try {
     await h.go('/settings/models');
     assert.equal(h.sidebar.querySelector('input').value, '');
-    await h.search('模型');
-    assert.ok(h.sidebar.querySelectorAll('a').length > 0);
-    assert.ok([...h.sidebar.querySelectorAll('a')].every(link => link.textContent.includes('模型')));
-    assert.ok(h.sidebar.querySelector('[aria-current="page"]'));
+    await h.search('测试');
+    assert.ok(h.sidebar.querySelector('button[aria-current]')?.textContent.includes('测试厂商'));
     await h.go('/novels/book-a/chapters/chapter-a');
     await h.search('1');
     assert.match(h.sidebar.textContent, /测试章节/);
@@ -424,5 +436,39 @@ test('same-name tree nodes stay distinct across consecutive selections, tool swi
     assert.match(detail(), /定位乙/);
     await h.go(-1);
     assert.match(detail(), /定位甲/);
+  } finally { await h.cleanup(); }
+});
+
+test('comic project deep link reads only the comic project and its own episodes', async () => {
+  const h = await mount('/comic/projects/project-a?tab=outline&itemId=episode');
+  try {
+    assert.match(h.sidebar.textContent, /第一话大纲/);
+    assert.match(document.querySelector('main').textContent, /漫画详情/);
+    assert.equal(h.requests.filter(r => r.url.endsWith('/episodes')).length, 1);
+    assert.ok(!h.requests.some(r => r.url.startsWith('/drama') || r.url === '/comic/projects'));
+  } finally { await h.cleanup(); }
+});
+
+test('selecting a model route offers cancellation and retains the draft after a failed save', async () => {
+  const h = await mount('/settings/model-routes?taskType=writer');
+  try {
+    const input = [...document.querySelectorAll('input[placeholder="也可以手动输入模型名"]')].at(-1);
+    assert.ok(input);
+    await h.flush(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, 'draft-model');
+      input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+    const next = () => h.sidebar.querySelectorAll('.mac-list-row')[1].click();
+    await h.flush(next);
+    assert.match(h.dialog.textContent, /模型路由设置/);
+    await h.click('取消');
+    assert.equal(input.value, 'draft-model');
+    await h.flush(next);
+    await h.click('保存并离开');
+    assert.ok(h.dialog.querySelector('[role="alert"]'));
+    assert.equal(input.value, 'draft-model');
+    assert.match(h.router.state.location.search, /taskType=writer/);
+    await h.click('放弃未保存修改');
+    assert.match(h.router.state.location.search, /taskType=planner/);
   } finally { await h.cleanup(); }
 });

@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection, useDocumentGuard } from "@/platform";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -164,6 +165,8 @@ function SceneDetail({
     onError: (e) => toast.error(String(e)),
   });
 
+  useDocumentGuard({label: "漫画场景", dirty: name !== scene.name || sceneType !== scene.sceneType || JSON.stringify(bible) !== JSON.stringify(parseBible(scene.bible)),
+    busy: saveMut.isPending, save: () => saveMut.mutateAsync(), discard: () => {setName(scene.name); setSceneType(scene.sceneType); setBible(parseBible(scene.bible));}});
   const generatingBusy = flow.dialogProps.loading || flow.dialogProps.submitting || isGenerating;
 
   return (
@@ -317,28 +320,31 @@ export function ScenesPanel({
   const [showAdd, setShowAdd] = useState(false);
 
   const scenesKey = ["comic", "scenes", project.id];
-  const { data: scenes = [], isLoading } = useQuery({
+  const { data: scenes = [], isLoading, isError, refetch } = useQuery({
     queryKey: scenesKey,
     queryFn: () => listComicScenes(project.id),
   });
 
+  const directory = useDirectorySelection("itemId", scenes);
   const refresh = () => queryClient.invalidateQueries({ queryKey: scenesKey });
 
   const createMut = useMutation({
     mutationFn: () => createComicScene({ projectId: project.id, name: newName.trim() }),
     onSuccess: (scene) => {
       refresh();
-      setSelectedId(scene.id);
+      if (directory.host) directory.onSelect(scene.id); else setSelectedId(scene.id);
       setNewName("");
       setShowAdd(false);
     },
     onError: (e) => toast.error(String(e)),
   });
 
-  const selected = scenes.find((s) => s.id === selectedId) ?? scenes[0];
+  const selected = directory.host ? scenes.find(item => directory.includes(item.id)) : scenes.find((s) => s.id === selectedId) ?? scenes[0];
 
   return (
     <div className="space-y-4">
+      <EntityDirectory {...directory} title="漫画场景" collection={`comic:${project.id}:scenes`} rows={scenes.map(scene => ({id: scene.id, label: scene.name}))}
+        pending={isLoading} error={isError} retry={() => void refetch()}/>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           场景在生成分格脚本时自动识别，可在此编辑场景圣经并生成设定图，用于锁定跨格/跨话的空间一致性。
@@ -376,8 +382,8 @@ export function ScenesPanel({
           <p className="text-xs">生成分格脚本后会自动识别场景，也可手动添加。</p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <SceneList scenes={scenes} selectedId={selected?.id ?? ""} onSelect={setSelectedId} />
+        <div className={directory.host ? "min-w-0" : "grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]"}>
+          {!directory.host && <SceneList scenes={scenes} selectedId={selected?.id ?? ""} onSelect={setSelectedId} />}
           {selected && (
             <SceneDetail
               key={selected.id}

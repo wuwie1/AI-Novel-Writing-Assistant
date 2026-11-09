@@ -1,3 +1,4 @@
+import { useEntityListHost } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Film, ImageIcon, RefreshCw, Sparkles, Video } from "lucide-react";
@@ -40,8 +41,9 @@ export function DramaVisualPanel(props: {
   onRefreshProviderTask: (prompt: DramaVideoPrompt) => void;
   busy: boolean;
 }) {
+  const host = useEntityListHost();
   const episodes = props.project.episodes ?? [];
-  const selectedEpisode: DramaEpisode | undefined = episodes.find((episode) => episode.order === props.selectedOrder) ?? episodes[0];
+  const selectedEpisode: DramaEpisode | undefined = episodes.find((episode) => episode.order === props.selectedOrder);
   const storyboards = selectedEpisode?.storyboards ?? [];
   const storyboard = storyboards[0] as DramaStoryboard | undefined;
   const videoPrompts = props.project.videoPrompts ?? [];
@@ -170,7 +172,7 @@ export function DramaVisualPanel(props: {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          <SelectControl
+          {!host && <SelectControl
             className="h-10 rounded-md border bg-background px-3 text-sm"
             value={selectedEpisode.order}
             onChange={(event) => props.onSelectOrder(Number(event.target.value))}
@@ -178,7 +180,7 @@ export function DramaVisualPanel(props: {
             {episodes.map((episode) => (
               <option key={episode.id} value={episode.order}>第 {episode.order} 集 {episode.title}</option>
             ))}
-          </SelectControl>
+          </SelectControl>}
           <SelectControl
             className="h-10 rounded-md border bg-background px-3 text-sm"
             value={props.selectedProvider}

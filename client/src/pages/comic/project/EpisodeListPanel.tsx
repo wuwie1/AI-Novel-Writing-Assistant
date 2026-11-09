@@ -1,11 +1,11 @@
+import { useDocumentGuard } from "@/platform";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpen, Check, FileText, Layers, Loader2, Pencil, Sparkles, X } from "lucide-react";
 import {
   generateComicOutline,
   generateComicPanelScript,
   importComicSourceBundle,
-  listComicEpisodes,
   updateComicEpisode,
   type ComicCharacter,
   type ComicEpisode,
@@ -103,6 +103,8 @@ function EpisodeCard({
     onError: (e) => toast.error(String(e)),
   });
 
+  useDocumentGuard({label: "漫画分话大纲", dirty: editing && (draftTitle !== (ep.title ?? "") || draftOutline !== (ep.outline ?? "") || draftCliffhanger !== (ep.cliffhanger ?? "") || draftPaywalled !== ep.isPaywalled),
+    busy: saveMut.isPending, save: () => saveMut.mutateAsync(), discard: () => setEditing(false)});
   const startEdit = () => {
     setDraftTitle(ep.title ?? "");
     setDraftOutline(ep.outline ?? "");
@@ -277,8 +279,9 @@ function CharacterReadinessWarning({ characters }: { characters: ComicCharacter[
 
 export function EpisodeListPanel({
   projectId,
-  project,
+  project, episodes, isLoading, selectedId,
 }: {
+  episodes: ComicEpisode[]; isLoading: boolean; selectedId?: string | null;
   projectId: string;
   project: ComicProject & { characters: ComicCharacter[] };
 }) {
@@ -287,11 +290,6 @@ export function EpisodeListPanel({
   const [densityMode, setDensityMode] = useState<DensityMode>("balanced");
   const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [scriptPromptInstruction, setScriptPromptInstruction] = useState("");
-
-  const { data: episodes = [], isLoading } = useQuery({
-    queryKey: ["comic", "episodes", projectId],
-    queryFn: () => listComicEpisodes(projectId),
-  });
 
   const format = parsePresetFormat(project.stylePreset);
   const targetPanelCount = resolveTargetPanelCount(densityMode, format);
@@ -429,7 +427,7 @@ export function EpisodeListPanel({
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {episodes.map((ep) => (
+        {episodes.filter(ep => selectedId === undefined || ep.id === selectedId).map((ep) => (
           <EpisodeCard
             key={ep.id}
             ep={ep}
