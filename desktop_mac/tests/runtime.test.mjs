@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { selectServerNode } from '../infrastructure/processes/launchers/server-node.mjs';
 import { appendLogChunk } from '../infrastructure/processes/logging.mjs';
-import { createLaunchdPlist } from '../infrastructure/processes/launchd.mjs';
+import { createLaunchdPlist, launchAgent, stopAgent } from '../infrastructure/processes/launchd.mjs';
 
 test('runtime selection validates the native SQLite ABI without opening a persistent database', () => {
   const seen = [];
@@ -40,6 +40,34 @@ test('launchd escapes repository and log paths with XML characters', () => {
   assert.ok(xml.includes('/books/A&amp;B'));
   assert.ok(xml.includes('/books/&lt;error&gt;'));
   assert.ok(!xml.includes('/books/A&B'));
+});
+
+test('replacement waits for confirmed removal, including an agent unloading outside the CLI', async () => {
+  const label = 'app.test.mac-proxy';
+  const missing = Object.assign(new Error('missing'), { code: 113, stderr: `Could not find service "${label}" in domain for user gui` });
+  let registered = true;
+  const calls = [];
+  const options = {
+    exec: async (_, [command]) => {
+      calls.push(command);
+      if (command === 'print' && !registered) throw missing;
+      if (command === 'bootstrap') assert.equal(registered, false);
+      return { stdout: 'state = SIGTERMed' };
+    },
+    wait: async () => { registered = false; },
+  };
+  await stopAgent(label, options);
+  assert.deepEqual(calls, ['bootout', 'print', 'print']);
+  calls.length = 0;
+  registered = true;
+  await launchAgent(label, 'proxy.plist', options);
+  assert.deepEqual(calls, ['print', 'print', 'bootstrap']);
+  await assert.rejects(launchAgent(label, 'proxy.plist', {
+    exec: async () => { throw Object.assign(Error('permission denied'), { code: 1 }); },
+  }), /permission denied/);
+  await assert.rejects(launchAgent(label, 'proxy.plist', {
+    exec: async (_, [command]) => { assert.equal(command, 'print'); }, wait: async () => {}, timeoutMs: 0,
+  }), { stage: 'launchd-unload' });
 });
 
 test('launchd ownership waits past xpcproxy and verifies exact argv before recording a process', async () => {

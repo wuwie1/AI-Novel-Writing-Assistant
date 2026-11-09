@@ -43,6 +43,7 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         sendEvent("requestClose", requestId: id)
         DispatchQueue.main.asyncAfter(deadline: .now() + 55) { [weak self] in
             guard let self, self.awaitingClose == id else { return }
+            self.sendEvent("closeExpired", requestId: id)
             self.finishClose(allowed: false)
         }
     }
@@ -83,6 +84,11 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
               }) else { return }
         switch type {
         case "rendererReady": isReady = true
+        case "closeNeedsAttention":
+            guard let id = body["requestId"] as? String, id == awaitingClose, let window = hostWindow else { return }
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         case "closeDecision":
             guard let id = body["requestId"] as? String, id == awaitingClose,
                   let decision = body["decision"] as? String, ["allow", "cancel"].contains(decision) else { return }

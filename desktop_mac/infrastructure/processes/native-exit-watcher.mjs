@@ -5,7 +5,7 @@ import { acquireLock, readState, writeState } from './lock.mjs';
 import { processMatches, stableHash } from './identity.mjs';
 import { backendIdentity } from './identity.mjs';
 import { inspectSqliteQuiescence } from './quiescence.mjs';
-import { launchdLabel } from './launchd.mjs';
+import { launchdLabel, stopAgent } from './launchd.mjs';
 
 const run = promisify(execFile);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,7 +62,7 @@ async function cleanup() {
       if (role === 'local-api' && record.ownership === 'owned' && !canStopLocalApi) { nextProcesses[role] = record; continue; }
       if (record.ownership === 'borrowed') { nextProcesses[role] = record; continue; }
       if (!await launcherOwned(record, record.mode ?? mode)) { nextProcesses[role] = record; continue; }
-      try { await run('/bin/launchctl', ['bootout', `gui/${process.getuid()}/${record.label}`]); }
+      try { await stopAgent(record.label); }
       catch { nextProcesses[role] = record; }
     }
     const localApiRetained = Boolean(nextProcesses['local-api']);

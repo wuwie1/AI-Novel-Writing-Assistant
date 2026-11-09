@@ -158,6 +158,34 @@ test('dirty content can cancel, then save and navigate once without a second con
   } finally { await h.cleanup(); }
 });
 
+test('an occluded window answers close without animation frames and brings only a dirty prompt forward', async () => {
+  const h = await mount();
+  const previous = globalThis.requestAnimationFrame;
+  // WebKit may suspend all frames while occluded.
+  Object.defineProperty(globalThis, 'requestAnimationFrame', { configurable: true, value: () => 0 });
+  try {
+    await h.close();
+    assert.deepEqual(h.messages.map((message) => message.type), ['closeDecision']);
+    assert.equal(h.messages.at(-1).decision, 'allow');
+    await h.edit({ dirty: true });
+    await h.close();
+    assert.equal(h.messages.at(-1).type, 'closeNeedsAttention');
+    assert.equal(h.messages.at(-1).requestId, 'close-test');
+    await h.flush(() => window.dispatchEvent(new window.CustomEvent('ai-novel-mac', {
+      detail: { protocolVersion: 1, type: 'closeExpired', requestId: 'close-test' },
+    })));
+    assert.equal(h.dialog, null);
+    assert.equal(h.messages.at(-1).decision, 'cancel');
+    await h.close();
+    await h.click('保存并离开');
+    assert.equal(h.saveCount, 1);
+    assert.equal(h.messages.at(-1).decision, 'allow');
+  } finally {
+    Object.defineProperty(globalThis, 'requestAnimationFrame', { configurable: true, value: previous });
+    await h.cleanup();
+  }
+});
+
 test('failed saves and busy work preserve the page; explicit discard permits leaving', async () => {
   const h = await mount();
   try {

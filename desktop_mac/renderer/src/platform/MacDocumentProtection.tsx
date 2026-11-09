@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { macEnvironment, postNative, type MacMessage } from "./native";
 
+type LeaveRequest = { requestId?: string; resolve: (allowed: boolean) => void };
+
 /** Explicit document contracts; never inspect DOM text to infer saved state. */
 export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const guards = useRef(new Map<string, () => DocumentGuard>());
-  const answer = useRef<((allowed: boolean) => void) | null>(null);
+  const answer = useRef<LeaveRequest | null>(null);
+  const [savedRequest, setSavedRequest] = useState<LeaveRequest | null>(null);
   const [prompt, setPrompt] = useState<DocumentGuard[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,25 +35,26 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     };
   }, []);
   const finish = useCallback((allowed: boolean) => {
-    const resolve = answer.current;
+    const request = answer.current;
     answer.current = null;
     setPrompt(null);
     setError("");
-    resolve?.(allowed);
+    request?.resolve(allowed);
   }, []);
-  const confirmLeave = useCallback(async () => {
-    // Let a successful mutation publish its saved state before judging its navigation.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const confirmLeave = useCallback(async (requestId?: string) => {
     const documents = active();
+    if (requestId && (documents.length || answer.current)) {
+      postNative({ type: "closeNeedsAttention", requestId });
+    }
+    if (answer.current) return false;
     if (!documents.length) return true;
     if (documents.some((item) => item.busy)) {
       toast.info("请等待当前保存或生成操作完成，再离开页面。");
       return false;
     }
-    if (answer.current) return false;
     setPrompt(documents);
     setError("");
-    return new Promise<boolean>((resolve) => { answer.current = resolve; });
+    return new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
   }, [active]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && active().length > 0,
@@ -61,17 +65,22 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     const current = blockerRef.current;
     if (current.state !== "blocked") return;
     let live = true;
-    void confirmLeave().then((allowed) => {
-      if (live) { if (allowed) current.proceed(); else current.reset(); }
-    });
-    return () => { live = false; };
+    // A route mutation can navigate in the same turn that it publishes its saved state.
+    const timer = setTimeout(() => {
+      void confirmLeave().then((allowed) => {
+        if (live) { if (allowed) current.proceed(); else current.reset(); }
+      });
+    }, 0);
+    return () => { live = false; clearTimeout(timer); };
   }, [blocker.state, confirmLeave]);
   useEffect(() => {
     const onNative = (event: Event) => {
       const message = (event as CustomEvent<MacMessage>).detail;
       if (message?.protocolVersion !== 1) return;
       if (message.type === "requestClose") {
-        void confirmLeave().then((allowed) => postNative({ type: "closeDecision", requestId: message.requestId, decision: allowed ? "allow" : "cancel" }));
+        void confirmLeave(message.requestId).then((allowed) => postNative({ type: "closeDecision", requestId: message.requestId, decision: allowed ? "allow" : "cancel" }));
+      } else if (message.type === "closeExpired" && message.requestId && answer.current?.requestId === message.requestId) {
+        finish(false);
       } else if (message.type === "windowActivated") {
         // Pull changes made on another device, but never refresh under unsaved local edits.
         if (active().length === 0) void queryClient.refetchQueries({ type: "active", stale: true });
@@ -86,23 +95,32 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     window.addEventListener("ai-novel-mac", onNative);
     return () => {
       window.removeEventListener("ai-novel-mac", onNative);
-      answer.current?.(false);
+      answer.current?.resolve(false);
       answer.current = null;
     };
-  }, [active, confirmLeave, queryClient]);
+  }, [active, confirmLeave, finish, queryClient]);
+
+  // Read the guards after React has committed the save result, including any edits made during the save.
+  useEffect(() => {
+    if (!savedRequest) return;
+    if (savedRequest === answer.current) {
+      if (active().length) setError("还有未保存的修改，请检查后再退出。");
+      else finish(true);
+    }
+    setSavedRequest(null);
+  }, [savedRequest, active, finish]);
 
   async function saveAndLeave() {
+    const request = answer.current;
     setSaving(true);
     try {
       for (const document of active()) {
         if (!document.save) throw new Error(`请先回到「${document.label}」完成保存。`);
         await document.save();
       }
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      if (active().length) throw new Error("还有未保存的修改，请检查后再退出。");
-      finish(true);
+      setSavedRequest(request);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "保存失败，修改仍保留在页面中。");
+      if (request === answer.current) setError(failure instanceof Error ? failure.message : "保存失败，修改仍保留在页面中。");
     } finally { setSaving(false); }
   }
 

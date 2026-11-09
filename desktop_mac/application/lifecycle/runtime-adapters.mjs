@@ -7,7 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { ensureRendererDependencies } from '../../infrastructure/dependencies/renderer.mjs';
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
-import { createLaunchdPlist, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
+import { createLaunchdPlist, isMissingAgent, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
 import { inspectProcess, processMatches, stableHash } from '../../infrastructure/processes/identity.mjs';
 import { readProcessArgv } from '../../infrastructure/processes/argv.mjs';
 import { nativeSocketPath, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
@@ -109,7 +109,11 @@ export function createRuntimeAdapters(config) {
     const supervisorArgs = [supervisor, role, outPath, errPath, executable, ...args];
     const plist = createLaunchdPlist({ label, executable: process.execPath, args: supervisorArgs, repoRealPath: repoRoot, logPath: '/dev/null', errorPath: errPath, pathValue, environment: { ...environment, MAC_LAUNCHD_LABEL: label } });
     await writeFile(plistPath, plist, { mode: 0o600 });
-    try { await launchAgent(plistPath); } catch (error) { throw internalError(`Failed to start ${role}; inspect ${errPath} and retry (${error.code ?? 'launchd'})`); }
+    try { await launchAgent(label, plistPath); }
+    catch (error) {
+      if (error.stage) throw error;
+      throw internalError(`Failed to start ${role}: ${error.stderr?.trim() || error.message}`);
+    }
     let processInfo;
     try { processInfo = await waitForAgentIdentity(label, [process.execPath, ...supervisorArgs]); }
     catch {
@@ -127,7 +131,10 @@ export function createRuntimeAdapters(config) {
   /** A repository-scoped launchd label is ours only while it still runs our supervisor for that role. */
   async function inspectOwnAgent(label, role) {
     let agent;
-    try { agent = await printAgent(label); } catch { return { loaded: false, owned: false, pid: null }; }
+    try { agent = await printAgent(label); } catch (error) {
+      if (isMissingAgent(error, label)) return { loaded: false, owned: false, pid: null };
+      throw error;
+    }
     const pid = parsePid(agent.stdout);
     if (!pid) return { loaded: true, owned: true, pid: null };
     const argv = await readProcessArgv(pid);
@@ -164,7 +171,7 @@ export function createRuntimeAdapters(config) {
     if (!await inspectProcess(record.pid)) {
       // A dead job can be unloaded only if launchd has not assigned it a new PID.
       let inactive;
-      try { inactive = await printAgent(label); } catch { return; }
+      try { inactive = await printAgent(label); } catch (error) { if (isMissingAgent(error, label)) return; throw error; }
       if (parsePid(inactive.stdout)) throw internalError(`Refusing to stop ${role}: launchd identity changed`, 4);
       await stopAgent(label);
       return;
@@ -175,13 +182,13 @@ export function createRuntimeAdapters(config) {
       const agent = await inspectOwnAgent(label, role);
       if (!agent.loaded) return;
       if (!agent.owned) throw internalError(`Refusing to stop ${role}: process ownership could not be verified`, 4);
-      try { await stopAgent(label); } catch { throw internalError(`Could not stop owned ${role}; inspect ${record.errorLogPath}`); }
+      await stopAgent(label);
       return;
     }
     let agent;
     try { agent = await printAgent(label); } catch { throw internalError(`Refusing to stop ${role}: launchd ownership could not be verified`, 4); }
     if (parsePid(agent.stdout) !== record.pid) throw internalError(`Refusing to stop ${role}: launchd PID does not match the recorded process`, 4);
-    try { await stopAgent(record.label); } catch (error) { throw internalError(`Could not stop owned ${role}; inspect ${record.errorLogPath}`); }
+    await stopAgent(record.label);
   }
 
   async function waitHttp(url, timeoutMs, { accept = (response) => response.ok } = {}) {
@@ -373,7 +380,8 @@ export function createRuntimeAdapters(config) {
           if (tracked.has(label)) continue;
           const agent = await inspectOwnAgent(label, role);
           if (!agent.loaded || !agent.owned) continue;
-          try { await stopAgent(label); stopped.push(`${mode}/${role}`); } catch {}
+          await stopAgent(label);
+          stopped.push(`${mode}/${role}`);
         }
       }
       return stopped;
