@@ -19,21 +19,6 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const active = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.dirty || item.busy), []);
-  const platform = useMemo<ClientPlatform>(() => {
-    const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
-    return {
-      editorTypography: { storageKey: "ai-novel.mac.editor.typography", fontSize: 20, lineHeight: 1.6, fontSizes: [16,18,20,22,24], lineHeights: [1.4,1.6,1.8,2] },
-      draftStorage: {
-        getItem: (key) => localStorage.getItem(prefix + key),
-        setItem: (key, value) => localStorage.setItem(prefix + key, value),
-        removeItem: (key) => localStorage.removeItem(prefix + key),
-      },
-      registerDocument: (id, read) => {
-        guards.current.set(id, read);
-        return () => { guards.current.delete(id); };
-      },
-    };
-  }, []);
   const finish = useCallback((allowed: boolean) => {
     const request = answer.current;
     answer.current = null;
@@ -56,6 +41,22 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     setError("");
     return new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
   }, [active]);
+  const platform = useMemo<ClientPlatform>(() => {
+    const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
+    return {
+      confirmDocumentLeave: confirmLeave,
+      editorTypography: { storageKey: "ai-novel.mac.editor.typography", fontSize: 20, lineHeight: 1.6, fontSizes: [16,18,20,22,24], lineHeights: [1.4,1.6,1.8,2] },
+      draftStorage: {
+        getItem: (key) => localStorage.getItem(prefix + key),
+        setItem: (key, value) => localStorage.setItem(prefix + key, value),
+        removeItem: (key) => localStorage.removeItem(prefix + key),
+      },
+      registerDocument: (id, read) => {
+        guards.current.set(id, read);
+        return () => { guards.current.delete(id); };
+      },
+    };
+  }, [confirmLeave]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && active().length > 0,
   );

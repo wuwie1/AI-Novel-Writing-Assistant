@@ -57,6 +57,8 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 错误 Toast 默认约 12 秒并带关闭按钮，成功提示会先清掉旧错误，避免残留气泡挡住按钮。引导弹窗在用户主动关闭后写入本地“已关闭”标记，进入 AI 页面时不再带着旧错误反复弹出。
 
+业务页通过 `EntityList` 注册集合标识、名称和已选键。Mac 将内容渲染进稳定的容器，Web 在原位置渲染。抽屉开关仅改变可见性与键盘可达性，避免重复挂载编辑器或请求控制器。无集合视图同时隐藏栏、开关及其焦点。
+
 ## 视觉基线与级联规则
 
 参考目录是 `/Users/likai/go/src/write/wukong`。不能只抄 `base.css` 的通用变量：wukong 的入口按 `app.css` → `base.css` → `demo.css` → `studio.css` → `side-panels.css` 导入，最终效果同时受选择器优先级和功能页面覆盖影响。灵感列表的浅蓝选中条来自 `demo.css` 的 `material-list-item.is-selected`，不是图标栏的灰色 `--active`。以正在运行的窗口和完整级联共同核对。

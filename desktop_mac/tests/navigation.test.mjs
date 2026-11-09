@@ -36,7 +36,7 @@ before(async () => {
       import {MacDocumentProtection} from './renderer/src/platform/MacDocumentProtection';
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
       import MacTaskRecords from './renderer/src/features/tasks/MacTaskRecords';
-      import {useDocumentGuard} from '@/platform';
+      import {EntityList,useDocumentGuard} from '@/platform';
       import {apiClient} from '@/api/client';
       export async function mount(initial='/settings/models') {
         const requests=[],messages=[];
@@ -66,6 +66,7 @@ before(async () => {
           return <div>编辑区</div>;
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
+          {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
           {path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
@@ -221,7 +222,7 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
       ['/tasks', '记录筛选', '进行中'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
       ['/knowledge', '资料与参考', '书籍分析'], ['/genres', '故事素材', '角色素材'],
-      ['/prompt-workbench', '写作工具', '写作规则'], ['/help', '创作指南', '创作路线'],
+      ['/prompt-workbench', '写作工具', '写作规则'],
     ]) {
       await h.go(route);
       assert.equal(h.sidebar.getAttribute('aria-label'), title);
@@ -307,4 +308,23 @@ test('context search filters loaded rows, keeps selection and resets when changi
     assert.equal(h.dialog, null);
     assert.ok(h.requests.every(({method}) => method === 'get'));
   } finally { await h.cleanup(); }
+});
+
+test('one page owns its portal across drawer toggles and help has a full canvas', async () => {
+  const media = window.matchMedia;
+  window.matchMedia = () => ({matches:true, addEventListener(){}, removeEventListener(){}});
+  const h = await mount('/fixture');
+  try {
+    const first = h.sidebar.querySelector('.mac-context-list button');
+    assert.equal(first.textContent, '记录甲');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
+    await h.flush(() => window.dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape'})));
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
+    assert.equal(document.activeElement, document.querySelector('.mac-drawer-toggle'));
+    await h.flush(() => document.activeElement.click());
+    assert.equal(h.sidebar.querySelector('.mac-context-list button'), first);
+    await h.go('/help');
+    assert.ok(h.sidebar.hidden && h.sidebar.hasAttribute('inert'));
+    assert.equal(document.querySelector('.mac-drawer-toggle'), null);
+  } finally { await h.cleanup(); window.matchMedia = media; }
 });

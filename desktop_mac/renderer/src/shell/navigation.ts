@@ -72,7 +72,7 @@ export function resolveMacNavigation(pathname: string, search = ""): MacNavigati
   if (pathIsWithin(path, "/lab/director") || pathIsWithin(path, "/auto-director")) return { key: "director", section: "director", title: pathIsWithin(path, "/auto-director") ? "导演跟进" : "导演运行记录", sidebarTitle: "导演创作", primary: "/lab/director", links: directorLinks };
   if (path === "/tasks") return { key: "tasks", section: "tasks", title: "运行记录", sidebarTitle: "记录筛选", primary: "/tasks" };
   if (pathIsWithin(path, "/settings")) return { key: "settings", section: "settings", title: settingsSections.find(([key]) => path === `/settings/${key}`)?.[1] ?? "设置", sidebarTitle: "设置分类", primary: "/settings", links: [["/settings", "设置概览"], ...settingsSections.map(([key, title]) => [`/settings/${key}`, title] as const)] };
-  if (path === "/help") return { key: "help", section: "help", title: "帮助", sidebarTitle: "创作指南", primary: "/help", links: [["/help", "创作路线"], ["/settings/models", "准备 AI 模型"], ["/create", "开始第一部作品"]] };
+  if (path === "/help") return { key: "help", section: "help", title: "帮助", sidebarTitle: "创作指南", primary: "/help" };
   if (pathIsWithin(path, "/comic")) return { key: "comic", section: "comic", title: "漫画", sidebarTitle: "漫画项目", primary: "more" };
   // 短剧入口与 Web 保持一致：路由保留，但不作为 Mac 主导航入口。
   if (pathIsWithin(path, "/drama")) return { key: "resources", section: "resources", title: "短剧", sidebarTitle: "更多功能", primary: "more", links: moreLinks };
