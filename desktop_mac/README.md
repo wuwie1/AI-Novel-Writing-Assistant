@@ -72,15 +72,16 @@ make dev_app
 从本地发布分支部署已提交的代码并重启服务，可在 Codex 项目聊天里输入“服务器更新”。也可在仓库根目录执行以下命令。
 
 ```bash
-make server_update DRY_RUN=1
-make server_update DEPLOY_VALIDATION_FILE=/absolute/path/validation.json
+make server_update
 ```
 
 `server_update` 锁定本地干净工作区的 HEAD。本地和服务器的 `origin` 须指向指定 fork，两端都须检出 `DEPLOY_REF` 指定的分支（默认 `ai`）。尚未推送的提交也可部署。服务器缺少候选对象时，本机会通过 SSH 传输增量 Git bundle。
 
-预演显示服务器当前提交、本地候选 SHA、服务与数据位置、兼容性检查和任务状态。若服务器还没有候选对象，兼容性要在正式更新导入 bundle 后才能验证。
+只想查看待部署版本和任务状态时，运行 `make server_update DRY_RUN=1`。若服务器还没有候选对象，兼容性要在正式更新导入 bundle 后才能验证。
 
-服务器已是同一提交时，直接运行 `make server_update` 也会重启并检查 API 和网页服务。切换版本须能从服务器当前提交快进，并提供本地候选 SHA 的验证记录。
+切换版本时，命令在服务器的隔离候选目录中构建前后端并串行运行小说生产状态、网页 API 错误处理回归。全部通过后，命令保存该提交的 `validation.json`，再备份并切换服务。终端输出检查阶段和服务器上的 `build.log` 路径。服务器已是同一提交时，仍会重启并检查 API 和网页服务。
+
+如果 CI 或开发机已为该提交完成构建和相关测试，可用 `DEPLOY_VALIDATION_FILE=/absolute/path/validation.json` 复用测试结果。服务器仍会构建实际部署的产物。现有记录须符合以下格式。
 
 ```json
 {

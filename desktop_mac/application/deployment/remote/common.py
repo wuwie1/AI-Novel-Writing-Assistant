@@ -31,9 +31,9 @@ def emit(stage, **fields):
     print(json.dumps(dict(stage=stage, **fields), ensure_ascii=False), flush=True)
 
 
-def command(args, cwd=None, env=None, check=True, timeout=120, log=None):
+def command(args, cwd=None, env=None, check=True, timeout=120, log=None, umask=-1):
     result = subprocess.run([str(arg) for arg in args], cwd=cwd, env=env, text=True,
-                            stdout=log or subprocess.PIPE, stderr=log or subprocess.PIPE, timeout=timeout)
+                            stdout=log or subprocess.PIPE, stderr=log or subprocess.PIPE, timeout=timeout, umask=umask)
     if check and result.returncode:
         # Never echo command output: install/build/env output can contain credentials.
         raise Refused('命令未通过：%s（退出码 %s）' % (pathlib.Path(str(args[0])).name, result.returncode))
@@ -42,7 +42,9 @@ def command(args, cwd=None, env=None, check=True, timeout=120, log=None):
 
 def git(root, *args, check=True):
     try:
-        return command(['git', '-c', 'core.fsmonitor=false', '-C', root, *args], env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_TERMINAL_PROMPT': '0'}, check=check).stdout.strip()
+        # Only tracked source checked out by root must be readable by the service account.
+        checkout_umask = 0o022 if args[0] in ('merge', 'switch') else -1
+        return command(['git', '-c', 'core.fsmonitor=false', '-C', root, *args], env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_TERMINAL_PROMPT': '0'}, check=check, umask=checkout_umask).stdout.strip()
     except Refused:
         raise Refused('服务器 Git %s 失败，请核对部署目录的仓库权限、提交和发布分支' % args[0])
 

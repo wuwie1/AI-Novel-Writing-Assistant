@@ -64,10 +64,10 @@ def inspect_deployment(payload, *, import_bundle=False):
     if states['ai-novel-api'] != states['ai-novel-web']:
         raise Refused('API/Web 启停状态不一致，先核实基线')
     db, assets = runtime_paths(root)
-    validation = payload.get('validation')
-    required_checks = {'server-build', 'client-build', 'targeted-tests'}
-    if old != candidate_sha and (not validation or validation.get('sha') != candidate_sha or validation.get('ref') != ref or not isinstance(validation.get('evidence'), str) or not validation['evidence'].strip() or not required_checks.issubset(set(validation.get('passed', [])))):
-        checks.append('缺少此固定 SHA 的验证记录：DEPLOY_VALIDATION_FILE 必须包含 sha/ref/passed（server-build/client-build/targeted-tests）')
+    if 'validation' in payload:
+        require_validation_record(payload['validation'], candidate_sha, ref)
+    elif payload['dryRun'] and old != candidate_sha:
+        checks.append('正式更新时会在候选目录完成构建和回归测试，并保存本次提交的验证记录')
     # Preserve sufficient room for old dependencies, two snapshots and a candidate.
     sizes = command(['du', '-sk', root / 'node_modules', root / 'server/storage', db], check=False).stdout.splitlines()
     used = sum(int(line.split()[0]) * 1024 for line in sizes if line.split() and line.split()[0].isdigit())
@@ -76,7 +76,7 @@ def inspect_deployment(payload, *, import_bundle=False):
         checks.append('磁盘余量不足，需至少 %s 字节；不会自动清理任何数据' % minimum)
     if states['ai-novel-api'] == 'active':
         health(config['remoteWebPort'])
-    return dict(root=root, old=old, branch=branch, sha=candidate_sha, differences=differences,
+    return dict(root=root, old=old, branch=branch, ref=ref, sha=candidate_sha, differences=differences,
                 checks=checks, states=states, db=db, assets=assets, known=candidate_known)
 
 

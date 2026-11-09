@@ -19,9 +19,8 @@ description: 在 wuwie1/AI-Novel-Writing-Assistant 中处理“服务器更新�
 
 1. 在仓库根目录核对当前分支、`git status --short` 和 `git rev-parse HEAD`。工作区须干净，当前分支与服务器发布分支一致（默认 `ai`）。有未提交改动时列出文件，让用户确定要部署的提交。沿用下方部署目标与 SSH 身份核对规则。
 2. 执行 `make server_update DRY_RUN=1`。读取 `inspection` 中服务器当前版本 `current` 和本次候选 `candidate`，核对后者等于刚记录的本地 SHA。单独要求预演时，汇报检查结果即完成。
-3. 版本不同时，按两提交的差异选取回归用例，核对服务端、客户端构建以及相关测试的真实日志。按仓库验证复用规则补跑缺少的检查。将 `sha`、`ref`、实际通过的 `passed` 和日志位置 `evidence` 写入本机忽略的 `.runtime/server-update/<SHA>/validation.json`。字段与 `desktop_mac/README.md` 的部署验证记录一致。
-4. 版本不同时执行 `make server_update DEPLOY_VALIDATION_FILE=".runtime/server-update/<SHA>/validation.json"`，将 `<SHA>` 替换为本轮完整提交。版本相同时执行 `make server_update`，同样完成重启。命令会在需要时通过 SSH 传输增量 Git bundle，在服务器隔离构建并通过现有备份、任务静止、切换、健康检查和回滚流程。
-5. 以成功的 `deployed` 回执、对应 SHA 和已校验的备份路径报告完成。失败时报告阻塞原因或事务的回滚结果，保留现场。服务锁内的停启由部署事务完成。
+3. 执行 `make server_update`。版本变更时，命令在隔离候选目录构建服务端和客户端，运行回归，保存绑定该提交和发布分支的验证记录。如果已有针对这次差异的真实 CI 或本机构建与测试记录，可显式传入 `DEPLOY_VALIDATION_FILE` 复用结果。正式执行默认自动验证。
+4. 以成功的 `deployed` 回执、对应 SHA 和已校验的备份路径报告完成。版本相同也由部署事务重启两个服务。失败时报告具体阶段和日志路径，核对事务是否已切换或回滚。
 
 ## 检查与合并
 

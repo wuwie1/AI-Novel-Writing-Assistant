@@ -125,6 +125,76 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(m.candidate_commit(root, sha), sha)
         m.git.assert_not_called()
 
+    def test_explicit_validation_must_cover_the_same_commit_and_checks(self):
+        m = module()
+        sha, ref = 'a' * 40, 'origin/ai'
+        valid = dict(sha=sha, ref=ref, passed=list(m.VALIDATION_CHECKS), evidence='CI log')
+        m.require_validation_record(valid, sha, ref)
+        for invalid in (None, dict(valid, sha='b' * 40), dict(valid, ref='origin/main'),
+                        dict(valid, passed=['server-build', 'client-build']), dict(valid, evidence=' ')):
+            with self.subTest(record=invalid), self.assertRaises(m.Refused):
+                m.require_validation_record(invalid, sha, ref)
+
+    def test_validation_precedes_backup_and_service_switch(self):
+        for failure, external in ((None, False), ('server-build', False), ('client-build', False),
+                                  ('targeted-tests', False), ('invalid-link', False), (None, True)):
+            with self.subTest(failure=failure, external=external), tempfile.TemporaryDirectory() as temporary:
+                m = module()
+                root = pathlib.Path(temporary).resolve()
+                (root / '.runtime').mkdir()
+                info = dict(root=root, old='b' * 40, sha='a' * 40, ref='origin/ai', known=True,
+                            differences=[], checks=[], states={}, db=root / 'unused.db', assets=[])
+                m.inspect_deployment = Mock(return_value=info)
+                m.check_quiescence = Mock()
+                m.backup_snapshot = Mock()
+                m.switch_transaction = Mock(return_value=0)
+                supplied = dict(sha=info['sha'], ref=info['ref'], passed=list(m.VALIDATION_CHECKS), evidence='CI log')
+                payload = dict(dryRun=False, withBundle=False)
+                if external:
+                    payload['validation'] = supplied
+                steps = []
+
+                def build_step(args, cwd=None, env=None, **kwargs):
+                    if args[0] == 'git':
+                        package = root / 'shared/package.json'
+                        package.parent.mkdir()
+                        package.write_text('{"name":"@ai-novel/shared"}')
+                        with m.tarfile.open(args[args.index('-o') + 1], 'w') as archive:
+                            archive.add(package, 'shared/package.json')
+                    elif cwd is not None:
+                        name = 'targeted-tests' if args[0] == 'node' else args[2].split('/')[-1] + '-' + args[-1]
+                        steps.append(name)
+                        self.assertEqual(env['DATABASE_URL'], 'file:' + str(cwd.parent / 'build-only.sqlite'))
+                        if name == failure:
+                            raise m.Refused('injected failure')
+                        for slot in m.ARTIFACTS:
+                            (cwd / slot).mkdir(parents=True, exist_ok=True)
+                        for artifact in ('server/dist/app.js', 'client/dist/index.html', 'pnpm-lock.yaml'):
+                            (cwd / artifact).touch()
+                        link = cwd / 'server/node_modules/@ai-novel' / ('other' if failure == 'invalid-link' else 'shared')
+                        if not link.is_symlink():
+                            link.parent.mkdir()
+                            link.symlink_to('../../../shared')
+
+                m.command = build_step
+                if failure:
+                    reason = '候选依赖链接' if failure == 'invalid-link' else failure + '.*build.log'
+                    with self.assertRaisesRegex(m.Refused, reason):
+                        m.run_remote(payload)
+                    self.assertEqual(list(root.rglob('validation.json')), [])
+                    m.backup_snapshot.assert_not_called()
+                    m.switch_transaction.assert_not_called()
+                else:
+                    self.assertEqual(m.run_remote(payload), 0)
+                    m.switch_transaction.assert_called_once()
+                    record = json.loads(next(root.rglob('validation.json')).read_text())
+                    m.require_validation_record(record, info['sha'], info['ref'])
+                    self.assertEqual('targeted-tests' in steps, not external)
+                    if external:
+                        self.assertEqual(record, supplied)
+                    else:
+                        self.assertIn('node --test', pathlib.Path(record['evidence']).read_text())
+
     def test_update_requires_matching_preview_before_importing_candidate(self):
         m = module()
         with tempfile.TemporaryDirectory() as temporary:
@@ -163,7 +233,7 @@ class DeploymentTests(unittest.TestCase):
                 m.git = Mock(return_value=sha)
                 m.health = Mock()
 
-                def build(info, batch):
+                def build(info, batch, validation):
                     candidate = batch / 'candidate'
                     for slot in m.ARTIFACTS:
                         (root / slot).parent.mkdir(parents=True, exist_ok=True)
@@ -184,7 +254,10 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(m.backup_snapshot.call_count, 2)
                 self.assertEqual(m.verify_snapshot.call_count, 2)
                 self.assertEqual(m.check_connections.call_count, 2)
-                record = json.loads((root / '.runtime/deployment.json').read_text())['desktopMacDeployment']
+                deployment = json.loads((root / '.runtime/deployment.json').read_text())
+                self.assertEqual(deployment['commit'], sha)
+                self.assertEqual(deployment['branch'], 'ai')
+                record = deployment['desktopMacDeployment']
                 self.assertEqual(record['sha'], sha)
                 self.assertEqual(record['result'], 'success')
 

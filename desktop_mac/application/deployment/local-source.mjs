@@ -27,7 +27,7 @@ async function currentCommit({ repoRealPath: root, deployRef }) {
 }
 
 /** Only the pinned commit and its missing ancestors travel to the server. GitHub refs are untouched. */
-export async function deployCurrentSource({ config, dryRun, validation, execute, report }) {
+export async function deployCurrentSource({ config, dryRun, execute, report }) {
   const root = config.repoRealPath;
   const currentSha = await currentCommit(config);
   async function run(options, expectedStage, bundleFile) {
@@ -46,9 +46,6 @@ export async function deployCurrentSource({ config, dryRun, validation, execute,
     throw new Error('服务器预演未确认本次提交和部署基线。');
   }
   if (dryRun) return inspection;
-  if (inspection.current !== currentSha && (validation?.sha !== currentSha || validation?.ref !== config.deployRef)) {
-    throw new Error(`请按本次提交 ${currentSha} 的构建与测试结果准备 DEPLOY_VALIDATION_FILE。`);
-  }
   const apply = async (bundleFile) => {
     const result = await run({ dryRun: false, serverBase: inspection.current, withBundle: Boolean(bundleFile) }, 'deployed', bundleFile);
     if (result.sha !== currentSha || !result.backup) throw new Error('部署回执缺少目标提交或已校验的备份路径。');

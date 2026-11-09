@@ -22,7 +22,7 @@ def run_remote(payload):
                 raise Refused('上次事务未完成，请按 transaction.json 和备份人工恢复；不会覆盖现场')
         prefix = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + info['sha'][:12] + '-'
         batch = pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir=deployments))
-        candidate, manifest = build_candidate(info, batch)
+        candidate, manifest = build_candidate(info, batch, payload.get('validation'))
         backup_snapshot(info, batch / 'backups/preflight', full=True)
         with remote_lock(root / '.runtime/service-control.lock'):
             fresh = inspect_deployment(payload)

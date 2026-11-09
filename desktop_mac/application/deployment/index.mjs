@@ -46,14 +46,14 @@ export async function remoteRunner({ config, payload, source, bundleFile, report
 /** Dry run does not acquire even a local lock or upload any persistent file. */
 export async function runDeployment({ repoRoot, env = process.env, dryRun = false, remote = remoteRunner, report = console.log }) {
   const config = await loadConfig({ repoRoot, env });
-  let validation = null;
+  let validation;
   if (env.DEPLOY_VALIDATION_FILE) validation = JSON.parse(await readFile(env.DEPLOY_VALIDATION_FILE, 'utf8'));
   const sources = await Promise.all(['common.py', 'inspection.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'].map((name) => readFile(path.join(directory, 'remote', name), 'utf8')));
   const quiescence = await readFile(path.join(repoRoot, 'desktop_mac/infrastructure/processes/quiescence.mjs'), 'utf8');
   const source = sources.join('\n');
   const execute = (options, output, bundleFile) => remote({ config,
     payload: { config, validation, quiescence, ...options }, source, report: output, bundleFile });
-  const deploy = () => deployCurrentSource({ config, dryRun, validation, execute, report });
+  const deploy = () => deployCurrentSource({ config, dryRun, execute, report });
   report(`[server_update] ${dryRun ? '只读预演' : '部署'} ${config.sshTarget}:${config.serverDir} · ${config.deployRef}`);
   if (dryRun) return deploy();
   const paths = getRepoPaths(config.repoRealPath);

@@ -43,6 +43,7 @@ test('server update pins an unpublished commit and imports only its verified bun
       return;
     }
     applications += 1;
+    assert.equal(payload.validation, undefined);
     assert.equal(payload.serverBase, base);
     assert.equal(payload.withBundle, true);
     const program = Buffer.from(source.split("if __name__ == '__main__':")[0] +
@@ -68,10 +69,10 @@ test('server update pins an unpublished commit and imports only its verified bun
   await writeFile(path.join(local, 'desktop_mac/infrastructure/processes/quiescence.mjs'), quiescence);
   await writeFile(path.join(local, '.git/info/exclude'), '/desktop_mac/\n');
   await mkdir(path.join(server, '.runtime'));
-  const options = { repoRoot: local, env: { SERVER_DIR: server, DEPLOY_VALIDATION_FILE: validation }, report: () => {}, remote };
+  const options = { repoRoot: local, env: { SERVER_DIR: server }, report: () => {}, remote };
   assert.equal((await runDeployment({ ...options, dryRun: true })).candidate, sha);
+  assert.equal((await runDeployment({ ...options, dryRun: true, env: { ...options.env, DEPLOY_VALIDATION_FILE: validation } })).candidate, sha);
   assert.equal(applications, 0);
-  await assert.rejects(runDeployment({ ...options, env: { SERVER_DIR: server } }), /DEPLOY_VALIDATION_FILE/);
   assert.equal((await runDeployment(options)).sha, sha);
   assert.equal(applications, 1);
   await writeFile(path.join(local, 'pending-edit'), 'keep');

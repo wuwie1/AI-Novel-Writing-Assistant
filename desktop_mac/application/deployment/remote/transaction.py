@@ -91,7 +91,13 @@ def switch_transaction(payload, info, batch, candidate, manifest):
                 raise Refused(unit + ' 重启后未处于 active 状态')
         record_path = root / '.runtime/deployment.json'
         record = json.loads(record_path.read_text()) if record_path.exists() else {}
-        record['desktopMacDeployment'] = dict(sha=info['sha'], previousSha=info['old'], backup=str(batch / 'backups'), fingerprint=manifest['fingerprint'], result='success', time=datetime.datetime.now(datetime.timezone.utc).isoformat())
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        record.update(commit=info['sha'], branch=info['branch'], updatedAt=timestamp)
+        if info['sha'] != info['old']:
+            record['previousCommit'] = info['old']
+        record['desktopMacDeployment'] = dict(sha=info['sha'], previousSha=info['old'], backup=str(batch / 'backups'), fingerprint=manifest['fingerprint'], result='success', time=timestamp)
+        if 'validation' in manifest:
+            record['desktopMacDeployment']['validation'] = manifest['validation']
         write_json(record_path, record)
         journal['phase'] = 'complete'; write_json(journal_path, journal)
         emit('deployed', sha=info['sha'], backup=str(batch / 'backups'))

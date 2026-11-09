@@ -6,7 +6,7 @@
 
 在项目聊天输入 **服务器更新**，或输入 `$ai-novel-upstream-sync 服务器更新`。它会把当前部署分支（默认 `ai`）已提交的代码更新到配置的服务器，重启 API 和网页服务，并检查首页、健康接口和小说列表。尚未推送到 GitHub 的提交也可以部署。服务器已是同一提交时，仍会重启服务。
 
-执行前先提交要部署的改动。Codex 会核对当前提交、构建与测试结果，再调用 `make server_update`。只想查看待部署版本和任务状态时，可输入“服务器更新，只预演”或运行 `make server_update DRY_RUN=1`。[部署配置与验证记录](desktop_mac/README.md#更新服务器)
+执行前先提交要部署的改动。聊天指令和终端的 `make server_update` 都会在切换版本前自动构建、测试和备份。只想查看待部署版本和任务状态时，可输入“服务器更新，只预演”或运行 `make server_update DRY_RUN=1`。[部署说明](desktop_mac/README.md#更新服务器)
 
 ## 同步小说助手上游
 
