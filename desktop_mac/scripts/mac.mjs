@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadConfig, getRepoPaths } from '../infrastructure/processes/config.mjs';
 import { createLifecycle } from '../application/lifecycle/index.mjs';
 import { createRuntimeAdapters } from '../application/lifecycle/runtime-adapters.mjs';
+import { createStageTimer, timeLifecycleAdapters } from '../application/lifecycle/timings.mjs';
 
 const command = process.argv[2];
 const allowed = new Set(['dev_app', 'app', 'stop_app', 'restart_app', 'up_app']);
@@ -24,14 +25,18 @@ async function main() {
   if (command !== 'restart_app' && process.env.DRY_RUN) throw Object.assign(new Error('DRY_RUN is only valid with up_app'), { exitCode: 2 });
   if (command === 'restart_app' && process.env.APP_MODE && !['local', 'remote'].includes(process.env.APP_MODE)) throw Object.assign(new Error('APP_MODE must be local or remote'), { exitCode: 2 });
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-  const config = await loadConfig({ repoRoot, env: process.env });
-  const paths = getRepoPaths(config.repoRealPath);
-  process.stdout.write(`[${command}] repository: ${config.repoRealPath}\n[${command}] logs: ${paths.logDir}\n`);
-  const lifecycle = createLifecycle({ config, adapters: createRuntimeAdapters(config) });
-  const result = command === 'dev_app' ? await lifecycle.startLocal()
-    : command === 'app' ? await lifecycle.startRemote()
-      : command === 'stop_app' ? await lifecycle.stop()
-        : await lifecycle.restart(process.env.APP_MODE || undefined);
+  const { logDir } = getRepoPaths(repoRoot);
+  process.stdout.write(`[${command}] repository: ${repoRoot}\n[${command}] logs: ${logDir}\n`);
+  const measure = createStageTimer(command, logDir);
+  const result = await measure('总耗时', async () => {
+    const config = await loadConfig({ repoRoot, env: process.env });
+    const adapters = timeLifecycleAdapters(createRuntimeAdapters(config, measure), measure);
+    const lifecycle = createLifecycle({ config, adapters });
+    if (command === 'dev_app') return lifecycle.startLocal();
+    if (command === 'app') return lifecycle.startRemote();
+    if (command === 'stop_app') return lifecycle.stop();
+    return lifecycle.restart(process.env.APP_MODE || undefined);
+  });
   const summary = result?.status === 'started' ? '桌面已启动。'
     : result?.status === 'focused' ? '桌面已在运行，已切换到现有窗口。'
       : result?.status === 'stopped' ? (result.retained?.length ? '桌面已退出，本机创作服务暂时保留。' : '桌面已退出，辅助服务已全部关闭。')

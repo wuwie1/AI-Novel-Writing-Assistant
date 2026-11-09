@@ -7,16 +7,48 @@ const run = promisify(execFile);
 
 export function launchdLabel({ repoRealPath, mode, role }) { return `app.ai-novel.desktop-mac.${stableHash(repoRealPath)}.${mode}.${role}`; }
 
-export function createLaunchdPlist({ label, executable, args, repoRealPath, logPath, errorPath, pathValue, environment = {} }) {
+export function createLaunchdPlist({ label, executable, args, repoRealPath, workingDirectory = repoRealPath, logPath, errorPath, pathValue, environment = {} }) {
   const xml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const array = (values) => values.map((value) => `<string>${String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</string>`).join('');
   const values = { PATH: pathValue, ...environment };
   const env = Object.entries(values).map(([key, value]) => `<key>${key}</key><string>${String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</string>`).join('');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${xml(label)}</string><key>ProgramArguments</key><array>${array([executable, ...args])}</array><key>WorkingDirectory</key><string>${xml(repoRealPath)}</string><key>EnvironmentVariables</key><dict>${env}</dict><key>StandardOutPath</key><string>${xml(logPath)}</string><key>StandardErrorPath</key><string>${xml(errorPath)}</string><key>RunAtLoad</key><true/></dict></plist>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${xml(label)}</string><key>ProgramArguments</key><array>${array([executable, ...args])}</array><key>WorkingDirectory</key><string>${xml(workingDirectory)}</string><key>EnvironmentVariables</key><dict>${env}</dict><key>StandardOutPath</key><string>${xml(logPath)}</string><key>StandardErrorPath</key><string>${xml(errorPath)}</string><key>RunAtLoad</key><true/></dict></plist>\n`;
 }
 
-export async function launchAgent(plistPath, { exec = run } = {}) { return exec('/bin/launchctl', ['bootstrap', `gui/${process.getuid()}`, plistPath]); }
-export async function stopAgent(label, { exec = run } = {}) { return exec('/bin/launchctl', ['bootout', `gui/${process.getuid()}/${label}`]); }
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function isMissingAgent(error, label) {
+  return error.code === 113 && error.stderr?.includes(`Could not find service "${label}" in domain`);
+}
+
+/** bootout acknowledges termination before the service name is available to bootstrap. */
+async function waitForRemoval(label, { exec = run, wait = delay, timeoutMs = 10_000 } = {}) {
+  const deadline = performance.now() + timeoutMs;
+  do {
+    try { await printAgent(label, { exec }); }
+    catch (error) {
+      if (isMissingAgent(error, label)) return;
+      throw error;
+    }
+    await wait(100);
+  } while (performance.now() < deadline);
+  throw Object.assign(new Error(`Timed out waiting for launchd to release ${label}`), { exitCode: 5, stage: 'launchd-unload' });
+}
+
+export async function launchAgent(label, plistPath, options = {}) {
+  // Also covers a watcher or a previous CLI invocation finishing its own bootout.
+  await waitForRemoval(label, options);
+  return (options.exec ?? run)('/bin/launchctl', ['bootstrap', `gui/${process.getuid()}`, plistPath]);
+}
+
+export async function stopAgent(label, options = {}) {
+  try { await (options.exec ?? run)('/bin/launchctl', ['bootout', `gui/${process.getuid()}/${label}`]); }
+  catch (error) {
+    // A one-shot agent may already have unloaded itself. Verify through print.
+    if (error.code !== 3 && error.code !== 113) throw error;
+  }
+  await waitForRemoval(label, options);
+}
 export async function printAgent(label, { exec = run } = {}) { return exec('/bin/launchctl', ['print', `gui/${process.getuid()}/${label}`]); }
 
 /** launchctl can expose a PID before xpcproxy has exec'd the requested process. */
