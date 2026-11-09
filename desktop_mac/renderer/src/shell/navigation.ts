@@ -14,7 +14,7 @@ export const moreLinks: readonly NavigationLink[] = [
   ["/comic", "漫画"],
   ["/auto-director/follow-ups", "导演跟进"],
 ];
-const createLinks: NavigationLink[] = [
+export const createLinks: NavigationLink[] = [
   ["/create", "从想法开始"],
   ["/create?form=short_story", "创作短篇"],
   ["/novels/auto-director?start=reference", "照着一本书写"],

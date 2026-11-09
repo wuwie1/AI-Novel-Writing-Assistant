@@ -35,17 +35,19 @@ before(async () => {
       import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
       import {MacDocumentProtection} from './renderer/src/platform/MacDocumentProtection';
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
+      import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
       import MacTaskRecords from './renderer/src/features/tasks/MacTaskRecords';
       import {EntityList,useDocumentGuard} from '@/platform';
       import {apiClient} from '@/api/client';
       export async function mount(initial='/settings/models') {
         const requests=[],messages=[];
         window.__AI_NOVEL_MAC__={protocolVersion:1,mode:'local',backendIdentity:'test',postMessage:message=>messages.push(message)};
-        const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel'};
+        const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel',updatedAt:'2026-01-01',_count:{chapters:1,characters:0},chapters:[],characters:[]};
         apiClient.defaults.adapter=async config=>{
           requests.push({url:config.url,method:config.method,params:config.params});
           let data;
-          if(config.url==='/novels') data={items:[novel],total:1};
+          if(config.url==='/novels') data={items:config.params.search==='无结果'?[]:[config.params.page===2?{...novel,id:'book-b',title:'第二页作品'}:novel],total:25,totalPages:2};
+          else if(config.url==='/novels/offpage') data={...novel,id:'offpage',workspaceSourceRoute:'/lab/director/offpage'};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
           else if(config.url==='/creative-hub/threads') data=[{id:'thread-a',title:'构思对话'}];
@@ -68,7 +70,7 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
         const root=createRoot(document.getElementById('root'));
@@ -97,9 +99,12 @@ before(async () => {
       }
     ` },
     bundle: true, format: 'esm', platform: 'node', packages: 'external', jsx: 'automatic',
+    loader: { '.webp':'dataurl', '.css':'empty' },
     alias: { '@': path.resolve(macRoot, '../client/src') },
     define: { 'import.meta.env': '{}' }, outfile: output, logLevel: 'silent',
     plugins: [{ name: 'isolated-ui', setup(build) {
+      build.onResolve({filter:/^@\/components\/layout\/TaskRecoveryContext$/}, () => ({path:'recovery',namespace:'test-recovery'}));
+      build.onLoad({filter:/.*/,namespace:'test-recovery'}, () => ({contents:'export function useTaskRecovery(){return {candidateCount:0,openDialog(){}}}'}));
       build.onResolve({ filter: /^@\/components\/common\/LLMSelector$/ }, (args) => ({ path: args.path, namespace: 'test-llm' }));
       build.onLoad({ filter: /.*/, namespace: 'test-llm' }, () => ({ resolveDir: macRoot, loader: 'tsx', contents: 'export default function LLMSelector(){return null;}' }));
       build.onResolve({ filter: /^@\/components\/ui\/(dialog|button|toast)$/ }, (args) => ({ path: args.path, namespace: 'test-ui' }));
@@ -133,7 +138,7 @@ test('clean navigation and native close do not ask for a route-level manual revi
       await h.go(route);
       assert.equal(h.pathname, route);
       assert.equal(h.dialog, null);
-      if (route === '/novels/create/') assert.equal(h.sidebar.getAttribute('aria-label'), '开始创作');
+      if (route === '/novels/create/') assert.ok(h.sidebar.hidden);
     }
     await h.close();
     assert.equal(h.messages.at(-1)?.decision, 'allow');
@@ -211,14 +216,9 @@ test('sidebar follows each menu and does not retain the previous novel or chapte
   try {
     assert.match(h.sidebar.textContent, /测试章节/);
     await h.edit({ dirty: false });
-    await h.flush(() => h.sidebar.querySelector('.mac-current-book').click());
-    assert.ok(!h.sidebar.textContent.includes('测试章节'));
-    await h.flush(() => [...h.sidebar.querySelectorAll('a')].find((link) => link.querySelector('strong')?.textContent === '测试作品').click());
-    assert.equal(h.pathname, '/novels/book-a/edit');
-    assert.match(h.sidebar.textContent, /测试章节/);
     const chapterReads = h.requests.filter(({url}) => url.endsWith('/chapters')).length;
     for (const [route, title, content] of [
-      ['/novels', '我的小说', '测试作品'], ['/create', '开始创作', '填写小说设定'],
+      ['/novels', '我的小说', '测试作品'],
       ['/creative-hub', '创作对话', '构思对话'], ['/lab/director', '导演创作', '测试创作记录'],
       ['/tasks', '运行记录', '记录甲'], ['/settings/models', '设置分类', '模型路由'],
       ['/drama', '更多功能', '视觉资源库'], ['/comic', '漫画项目', '漫画项目甲'],
@@ -289,11 +289,6 @@ test('chapter sidebar can expand, and cancelling navigation retains its chapter 
 test('context search filters loaded rows, keeps selection and resets when changing menus', async () => {
   const h = await mount('/novels');
   try {
-    await h.search('找不到的作品');
-    assert.ok(!h.sidebar.textContent.includes('测试作品'));
-    assert.match(h.sidebar.textContent, /未找到匹配的小说/);
-    await h.search('测试');
-    assert.match(h.sidebar.textContent, /测试作品/);
     await h.go('/settings/models');
     assert.equal(h.sidebar.querySelector('input').value, '');
     await h.search('模型');
@@ -349,5 +344,24 @@ test('task detail identity, filters, cursor, unavailable records and back are in
     assert.equal(h.router.state.location.search, '');
     assert.ok(!h.requests.some(r => r.url.includes('/bad/')));
     assert.ok(h.requests.every(r => r.method === 'get'));
+  } finally { await h.cleanup(); }
+});
+
+test('shelf restores page two, opens off-page metadata and keeps overview explicit', async () => {
+  const h = await mount('/novels?page=2&q=山');
+  try {
+    assert.match(h.sidebar.textContent, /第二页作品/);
+    assert.equal(h.requests.filter(r=>r.url==='/novels')[0].params.page,2);
+    assert.match(document.querySelector('.mac-book-summary').textContent,/第二页作品/);
+    await h.go('/novels?selectedNovelId=offpage');
+    await h.click('继续写作');
+    assert.equal(h.pathname,'/lab/director/offpage');
+    await h.go(-1);
+    assert.match(h.router.state.location.search,/offpage/);
+    await h.go('/novels?view=shelf');
+    assert.ok(h.sidebar.hidden);
+    await h.go('/novels?layout=detail&view=workbench&q=无结果');
+    assert.match(h.sidebar.textContent,/没有符合条件的小说/);
+    assert.ok(!h.requests.some(r=>r.params?.limit===100));
   } finally { await h.cleanup(); }
 });

@@ -92,7 +92,9 @@
 
   用同 ID 不同 kind、首页以外的深链、非法 kind、404、空结果和后退分别验收。断言列表与选行只产生读请求，刷新及轮询均保留所选记录。
 
-- [ ] **P2 · 接通书架和新建**（依赖 P1）
+- [x] **P2 · 接通书架和新建**（依赖 P1）
+
+  工程验证通过。导航 12 项、两端 typecheck、开书与书架合同 7 项。
 
   从 `MacNovelShelf` 的 render 模型提供列表，移除独立的前 100 本查询。书架引入 Mac 专用 `selectedNovelId`，宽窗首次进入时展示首本作品摘要，窄窗先选书。显式选书打开其摘要，“继续写作”才调用 `getNovelWorkspaceHref`。页外深链先读作品元数据，使短篇、V2、简易和专业创作均能解析正确入口。书架总览用 Mac 专用 `layout=overview` 打开原网格/工作台。旧链接只有显式 `view=shelf` 或 `view=workbench` 时打开对应总览。显式布局优先，选择对象的链接可独立还原详情。前进后退时从 URL 同步 `q/status/writingMode/narrativeForm/sort/page`，防止旧本地状态回写覆盖。
 

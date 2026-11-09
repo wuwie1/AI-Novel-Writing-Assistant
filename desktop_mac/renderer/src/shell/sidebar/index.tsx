@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, ChevronsUpDown } from "lucide-react";
-import { getNovelChapters, getNovelDetail, getNovelList } from "@/api/novel";
+import { getNovelChapters, getNovelDetail } from "@/api/novel";
 import { listCreativeHubThreads } from "@/api/creativeHub";
 import { listDirectorRuns } from "@/api/directorNext";
 import { listDramaProjects } from "@/api/drama";
@@ -31,22 +29,9 @@ function ListState({ pending, error, empty, emptyText }: { pending: boolean; err
   return empty ? <p className="mac-list-message">{emptyText}</p> : null;
 }
 
-function NovelList({ search }: { search: string }) {
-  const query = useQuery({ queryKey: ["novels", "mac-sidebar"], queryFn: () => getNovelList({ page: 1, limit: 100, sort: "updated" }), staleTime: 15_000, refetchOnWindowFocus: true });
-  const novels = (query.data?.data?.items ?? []).filter((novel) => matchesSearch(search, novel.title, novel.genre?.name));
-  return <>
-    <SidebarLinks links={[["/novels", "全部作品"], ["/create", "新建小说"]]} />
-    <div className="mac-list-label">最近更新</div>
-    <ListState pending={query.isPending} error={query.isError} empty={!novels.length} emptyText={search.trim() ? "未找到匹配的小说。" : "创建小说后可在这里继续写作。"} />
-    {novels.map((novel) => <Link key={novel.id} className="mac-list-row mac-detail-row" to={getNovelWorkspaceHref(novel)}><strong>{novel.title}</strong><small>{[novel.genre?.name, novel._count ? `${novel._count.chapters} 章` : null].filter(Boolean).join(" · ") || "继续写作"}</small></Link>)}
-  </>;
-}
-
 function NovelContents({ context, search }: { context: MacNavigation; search: string }) {
-  const [choosingBook, setChoosingBook] = useState(false);
   const location = useLocation();
-  const { key, pathname, search: locationSearch } = location;
-  useEffect(() => { setChoosingBook(false); }, [key]);
+  const { pathname, search: locationSearch } = location;
   const id = context.novelId!;
   const detail = useQuery({ queryKey: queryKeys.novels.detail(id), queryFn: () => getNovelDetail(id), staleTime: 15_000, refetchOnWindowFocus: true });
   const chapters = useQuery({ queryKey: queryKeys.novels.chapters(id), queryFn: () => getNovelChapters(id), staleTime: 15_000, refetchOnWindowFocus: true });
@@ -60,8 +45,8 @@ function NovelContents({ context, search }: { context: MacNavigation; search: st
     .map((step, index) => ({ to: `${editBase}?stage=${step.key}`, label: step.label, stage: step.key, order: index + 1 }))
     .filter((item) => matchesSearch(search, item.label));
   return <>
-    <button className="mac-current-book" onClick={() => setChoosingBook((value) => !value)} title="选择小说" aria-expanded={choosingBook}><BookOpen size={16}/><span>{novel?.title ?? "当前小说"}</span><ChevronsUpDown size={14}/></button>
-    {choosingBook ? <NovelList search={search}/> : <>
+    <Link className="mac-current-book" to="/novels">{novel?.title ?? "返回书架"}</Link>
+    <>
       <SidebarLinks links={[
         [novel ? getNovelWorkspaceHref(novel) : editBase, "作品工作台"],
         [`/novels/${encodeURIComponent(id)}/preview`, "阅读预览"],
@@ -80,7 +65,7 @@ function NovelContents({ context, search }: { context: MacNavigation; search: st
       <div className="mac-list-label">章节目录</div>
       <ListState pending={chapters.isPending} error={chapters.isError} empty={!items.length} emptyText={search.trim() ? "未找到匹配的章节。" : "这本小说还没有章节。"} />
       {items.map((chapter) => <Link key={chapter.id} to={`/novels/${encodeURIComponent(id)}/chapters/${encodeURIComponent(chapter.id)}`} className={`mac-list-row${chapter.id === context.chapterId ? " is-selected" : ""}`} aria-current={chapter.id === context.chapterId ? "page" : undefined}><span className="mac-chapter-order">{chapter.order}</span><span>{chapter.title || "未命名章节"}</span></Link>)}
-    </>}
+    </>
   </>;
 }
 
@@ -121,7 +106,6 @@ function ProjectList({ section, search }: { section: "drama" | "comic"; search: 
 /** 每种列表只挂载自己的读取器，切换全局菜单后不保留章节查询。 */
 export function MacSidebarContent({ context, search }: { context: MacNavigation; search: string }) {
   switch (context.section) {
-    case "shelf": return <NovelList search={search}/>;
     case "novel": return <NovelContents key={context.novelId} context={context} search={search}/>;
     case "creative": return <CreativeConversations search={search}/>;
     case "director": return <DirectorRecords context={context} search={search}/>;

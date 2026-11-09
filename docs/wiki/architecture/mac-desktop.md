@@ -61,6 +61,8 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 运行记录按 `(kind,id)` 独立读取详情，`filterKind/status/q` 与游标只属于列表。改变筛选清空游标，保留详情。空列表与详情 404 分别呈现，角标、轮询、刷新及选行只调用读接口。
 
+书架由 `NovelList` 同时提供当前页数据和作品动作。`selectedNovelId` 可单独恢复摘要，页外作品使用带 `workspaceSourceRoute` 的详情；`layout` 优先于旧 `view`。搜索仅在其发起时的 URL 仍有效时提交。开书候选按任务、批次及实体定位，预览独立于确认。
+
 ## 视觉基线与级联规则
 
 参考目录是 `/Users/likai/go/src/write/wukong`。不能只抄 `base.css` 的通用变量：wukong 的入口按 `app.css` → `base.css` → `demo.css` → `studio.css` → `side-panels.css` 导入，最终效果同时受选择器优先级和功能页面覆盖影响。灵感列表的浅蓝选中条来自 `demo.css` 的 `material-list-item.is-selected`，不是图标栏的灰色 `--active`。以正在运行的窗口和完整级联共同核对。

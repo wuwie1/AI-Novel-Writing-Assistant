@@ -9,7 +9,7 @@ import { listDirectorRuns } from "@/api/directorNext";
 import { queryKeys } from "@/api/queryKeys";
 import { EntityListContext, type EntityCollection } from "@/platform";
 import { macEnvironment } from "../platform/native";
-import { moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
+import { createLinks, moreLinks, pathIsWithin, primaryLinks, resolveMacNavigation } from "./navigation";
 import { MacReleaseNotesDialog, MacVersionBadge } from "./MacReleaseNotes";
 import { MacSidebarContent } from "./sidebar";
 
@@ -60,7 +60,7 @@ export function MacAppLayout() {
   const workbench = context.chapterId ? "chapter-editor"
     : context.section === "creative" ? "creative-workbench"
     : context.novelId && context.primary === "/lab/director" ? "director-workbench" : null;
-  const legacy = !entity && !["help", "tasks"].includes(context.section);
+  const legacy = !entity && !["help", "tasks", "create", "shelf"].includes(context.section);
   const hasList = !!entity || legacy;
   const title = entity?.title ?? context.sidebarTitle;
   const collapseKey = entity?.collection ?? workbench ?? context.section;
@@ -157,7 +157,7 @@ export function MacAppLayout() {
     </aside>
     {drawerOpen ? <button className="mac-drawer-scrim" aria-label={`关闭${title}`} onClick={closeDrawer}/> : null}
     <main className="mac-workspace">
-      <section className="mac-canvas" aria-label={context.title}><Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider></Suspense></section>
+      <section className="mac-canvas" aria-label={context.title}>{context.section === "create" && <nav className="mac-view-links" aria-label="开始创作">{createLinks.map(([href,label]) => <Link key={href} to={href} aria-current={label === context.title ? "page" : undefined}>{label}</Link>)}</nav>}<Suspense fallback={<div className="mac-loading" role="status">正在打开页面…</div>}><EntityListContext.Provider value={host}><Outlet/></EntityListContext.Provider></Suspense></section>
     </main>
     <VisualAssetLibraryDialog
       open={visualAssetsOpen}
