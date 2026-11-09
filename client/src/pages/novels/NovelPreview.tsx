@@ -1,3 +1,5 @@
+import { BookChapterDirectory } from "./components/chapterDirectory";
+import { useEntityListHost } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import type { Chapter, ChapterStatus } from "@ai-novel/shared/types/novel";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -71,7 +73,9 @@ function safeFileNamePart(value: string): string {
 export default function NovelPreview() {
   const { id = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [showChapters, setShowChapters] = useState(true);
+  const host = useEntityListHost();
+  const [webDirectory, setShowChapters] = useState(true);
+  const showChapters = !host && webDirectory;
   const [copied, setCopied] = useState(false);
   const selectedChapterId = searchParams.get("chapterId") ?? "";
 
@@ -83,15 +87,15 @@ export default function NovelPreview() {
   const chaptersQuery = useQuery({
     queryKey: queryKeys.novels.chapters(id),
     queryFn: () => getNovelChapters(id),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && !host,
   });
 
   const novel = novelQuery.data?.data ?? null;
   const directorHref = novel ? getDirectorWorkspaceHref(novel) : null;
   const workspaceHref = novel ? getNovelWorkspaceHref(novel) : `/novels/${encodeURIComponent(id)}/edit`;
   const chapters = useMemo(
-    () => [...(chaptersQuery.data?.data ?? [])].sort((a, b) => a.order - b.order),
-    [chaptersQuery.data?.data],
+    () => [...((host ? novel?.chapters : chaptersQuery.data?.data) ?? [])].sort((a, b) => a.order - b.order),
+    [host, novel?.chapters, chaptersQuery.data?.data],
   );
   const generatedChapters = useMemo(() => chapters.filter((chapter) => chapterText(chapter.content)), [chapters]);
   const activeChapter = useMemo(
@@ -159,24 +163,26 @@ export default function NovelPreview() {
     return <div className="flex min-h-full items-center justify-center"><Button asChild><Link to="/novels">返回小说列表</Link></Button></div>;
   }
 
-  const isLoading = novelQuery.isPending || chaptersQuery.isPending;
-  const isError = novelQuery.isError || chaptersQuery.isError;
+  const isLoading = novelQuery.isPending || (!host && chaptersQuery.isPending);
+  const isError = novelQuery.isError || (!host && chaptersQuery.isError);
 
+  const directory = <BookChapterDirectory novelId={id} chapters={chapters} volumes={novel?.volumes} selected={activeChapter?.id}
+    pending={isLoading} error={isError} retry={() => void novelQuery.refetch()} select={value => { const chapter = chapters.find(c => c.id === value); if (chapter) selectChapter(chapter); }}/>;
   if (isLoading) {
-    return <div className="flex min-h-full items-center justify-center text-sm text-muted-foreground">正在打开作品...</div>;
+    return <div className="flex min-h-full items-center justify-center text-sm text-muted-foreground">{directory}正在打开作品...</div>;
   }
   if (isError) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 text-center">
-        <p className="text-sm text-muted-foreground">当前无法打开这本作品。</p>
-        <Button onClick={() => { void novelQuery.refetch(); void chaptersQuery.refetch(); }}>重新加载</Button>
+        {directory}<p className="text-sm text-muted-foreground">当前无法打开这本作品。</p>
+        <Button onClick={() => { void novelQuery.refetch(); if (!host) void chaptersQuery.refetch(); }}>重新加载</Button>
       </div>
     );
   }
   if (chapters.length === 0) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 text-center">
-        <BookOpen className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        {directory}<BookOpen className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm text-muted-foreground">这本作品还没有可阅读的章节。</p>
         <Button asChild><Link to={workspaceHref}>{directorHref ? "打开导演台" : "进入工作区"}</Link></Button>
       </div>
@@ -185,10 +191,10 @@ export default function NovelPreview() {
 
   return (
     <div className="relative h-full overflow-y-auto bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 backdrop-blur">
+      {directory}<header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 backdrop-blur">
         <div className={cn("mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-5 transition-[padding]", showChapters && "lg:pl-[22.5rem]")}>
           <div className="flex items-center gap-1">
-            {!showChapters ? (
+            {!host && !showChapters ? (
               <Button type="button" variant="ghost" size="sm" className="-ml-2 text-muted-foreground hover:text-foreground" onClick={() => setShowChapters(true)} title="打开目录" aria-label="打开目录">
                 <List className="h-4 w-4" />
               </Button>

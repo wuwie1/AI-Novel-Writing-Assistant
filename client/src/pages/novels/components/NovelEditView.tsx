@@ -1,3 +1,5 @@
+import { useEntityListHost } from "@/platform";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RotateCcw, Sparkles } from "lucide-react";
@@ -45,7 +47,8 @@ import DirectorVersionControl from "@/components/directorVersion/DirectorVersion
 export default function NovelEditView(props: NovelEditViewProps) {
   const isMobileViewport = useIsMobileViewport();
 
-  if (isMobileViewport) {
+  const host = useEntityListHost();
+  if (!host && isMobileViewport) {
     return <MobileNovelEditView {...props} />;
   }
 
@@ -74,6 +77,7 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
     isSwitchingToSimpleMode = false,
   } = props;
 
+  const host = useEntityListHost();
   const [isProjectToolsOpen, setIsProjectToolsOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -193,6 +197,15 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
 
   return (
     <div className="space-y-5 lg:space-y-6">
+      {host && <nav className="mac-view-links" aria-label="写作步骤">
+        <button disabled={stepIndex <= 0} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[stepIndex-1].key)}>上一步</button>
+        <select aria-label="选择写作步骤" value={normalizedActiveTab} onChange={e => props.onActiveTabChange(e.target.value)}>
+          {NOVEL_WORKSPACE_FLOW_STEPS.map(step => <option key={step.key} value={step.key}>{step.label}</option>)}<option value="history">版本历史</option>
+        </select>
+        <button disabled={stepIndex < 0 || stepIndex >= NOVEL_WORKSPACE_FLOW_STEPS.length-1} onClick={() => props.onActiveTabChange(NOVEL_WORKSPACE_FLOW_STEPS[stepIndex+1].key)}>下一步</button>
+        {showWorkflowRecommendation && recommendedWorkflowTab && <button onClick={() => props.onActiveTabChange(recommendedWorkflowTab)}>前往推荐步骤 · {workflowStepLabel}</button>}
+        <Link to={`/novels/${id}/preview`}>阅读预览</Link><Link to={`/novels/${id}/ai-usage`}>AI 用量</Link>
+      </nav>}
       {id ? (
         <StepHero
           tone={workspaceTone}
@@ -302,6 +315,7 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
                     这里收纳次级信息。首屏只保留当前步骤和恢复接管入口，避免主工作区被项目辅助信息挤满。
                   </DialogDescription>
                 </DialogHeader>
+                  {host && <Button onClick={() => { setIsProjectToolsOpen(false); props.onActiveTabChange("history"); }}>版本历史</Button>}
                 <div className="grid gap-3 md:grid-cols-2">
                   <Card>
                     <CardHeader>

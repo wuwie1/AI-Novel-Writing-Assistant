@@ -1,3 +1,4 @@
+import { useEntityListHost } from "@/platform";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export default function OutlineCurrentVolumeWorkspace(props: OutlineCurrentVolum
     onOpenPayoffsChange,
     onGoToStructuredTab,
   } = props;
+  const host = useEntityListHost();
   const selectedStrategyVolume = selectedVolume
     ? strategyPlan?.volumes.find((item) => item.sortOrder === selectedVolume.sortOrder) ?? null
     : null;
@@ -96,8 +98,8 @@ export default function OutlineCurrentVolumeWorkspace(props: OutlineCurrentVolum
         </div>
       </div>
 
-      <div className="grid items-start gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="self-start xl:sticky xl:top-4">
+      <div className={host ? "space-y-3" : "grid items-start gap-3 xl:grid-cols-[320px_minmax(0,1fr)]"}>
+        {host ? <Button onClick={onAddVolume}>新增卷</Button> : <Card className="self-start xl:sticky xl:top-4">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -148,7 +150,7 @@ export default function OutlineCurrentVolumeWorkspace(props: OutlineCurrentVolum
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         <div className="space-y-3">
           <VolumePayoffOverviewCard selectedVolume={selectedVolume} />

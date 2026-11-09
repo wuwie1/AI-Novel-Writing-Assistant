@@ -1,3 +1,4 @@
+import { EntityList, useEntityListHost } from "@/platform";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import {
 import DirectorTakeoverEntryPanel from "./DirectorTakeoverEntryPanel";
 
 export default function ChapterManagementTab(props: ChapterTabViewProps) {
+  const host = useEntityListHost();
   const {
     novelId,
     worldInjectionSummary,
@@ -177,7 +179,8 @@ export default function ChapterManagementTab(props: ChapterTabViewProps) {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-4 xl:grid xl:h-[calc(100dvh-8rem)] xl:grid-cols-[300px_minmax(0,1fr)_332px] xl:items-stretch">
+        <div className={host ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_332px]" : "flex flex-col gap-4 xl:grid xl:h-[calc(100dvh-8rem)] xl:grid-cols-[300px_minmax(0,1fr)_332px] xl:items-stretch"}>
+          <EntityList collection={`execution:${novelId}`} title="章节队列" selection={selectedChapterId}>
           <div className="h-full min-h-0">
             <ChapterExecutionQueueCard
               chapters={filteredChapters}
@@ -194,6 +197,7 @@ export default function ChapterManagementTab(props: ChapterTabViewProps) {
             />
           </div>
 
+          </EntityList>
           <div className="min-h-0 min-w-0 h-full">
             <ChapterExecutionResultPanel
               selectedChapter={selectedChapter}

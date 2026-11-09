@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost } from "@/platform";
 import { useDocumentGuard } from "@/platform";
 import { ShortStoryReferenceSummary } from "@/components/creation/ShortStoryReferenceSummary";
 import { useEffect, useMemo, useState } from "react";
@@ -44,6 +45,8 @@ function createDownload(blob: Blob, fileName: string): void {
 }
 
 export default function ShortStoryStudioPage() {
+  const host = useEntityListHost();
+  const [focusedSegment, setFocusedSegment] = useState("");
   const novelId = useParams<{ id: string }>().id ?? "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -332,7 +335,9 @@ export default function ShortStoryStudioPage() {
                 </div>
               ) : editing ? (
                 <div className="overflow-hidden rounded-lg border border-input bg-background focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10">
-                  {story.segments.map((segment) => (
+                  <EntityDirectory collection={`segments:${novelId}`} title="短篇分段" selection={focusedSegment || story.segments[0]?.id}
+                    rows={story.segments.map((s,i) => ({id:s.id,label:`第 ${i+1} 段`,description:s.content.slice(0,36)}))} onSelect={setFocusedSegment}/>
+                  {story.segments.filter(s => !host || s.id === (story.segments.some(item => item.id === focusedSegment) ? focusedSegment : story.segments[0]?.id)).map((segment) => (
                     <textarea
                       key={segment.id}
                       aria-label="作品正文"

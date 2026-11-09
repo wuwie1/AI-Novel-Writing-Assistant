@@ -35,6 +35,8 @@ before(async () => {
       import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
       import {MacDocumentProtection} from './renderer/src/platform/MacDocumentProtection';
       import {MacAppLayout} from './renderer/src/shell/MacAppLayout';
+      import NovelPreview from '@/pages/novels/NovelPreview';
+      import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
       import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
       import MacTaskRecords from './renderer/src/features/tasks/MacTaskRecords';
       import {EntityList,useDocumentGuard} from '@/platform';
@@ -42,12 +44,14 @@ before(async () => {
       export async function mount(initial='/settings/models') {
         const requests=[],messages=[];
         window.__AI_NOVEL_MAC__={protocolVersion:1,mode:'local',backendIdentity:'test',postMessage:message=>messages.push(message)};
-        const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel',updatedAt:'2026-01-01',_count:{chapters:1,characters:0},chapters:[],characters:[]};
+        const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel',updatedAt:'2026-01-01',_count:{chapters:1,characters:0},chapters:[{id:'chapter-a',title:'测试章节',order:1,content:'原文甲'},{id:'chapter-b',title:'次章',order:2,content:'原文乙'}],characters:[]};
         apiClient.defaults.adapter=async config=>{
           requests.push({url:config.url,method:config.method,params:config.params});
           let data;
           if(config.url==='/novels') data={items:config.params.search==='无结果'?[]:[config.params.page===2?{...novel,id:'book-b',title:'第二页作品'}:novel],total:25,totalPages:2};
           else if(config.url==='/novels/offpage') data={...novel,id:'offpage',workspaceSourceRoute:'/lab/director/offpage'};
+          else if(config.url.includes('editor-workspace')) data={};
+          else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
           else if(config.url==='/novels/book-a') data=novel;
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
           else if(config.url==='/creative-hub/threads') data=[{id:'thread-a',title:'构思对话'}];
@@ -70,7 +74,7 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
-          {path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
+          {path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0},mutations:{retry:false}}});
         const root=createRoot(document.getElementById('root'));
@@ -88,7 +92,7 @@ before(async () => {
           failSave:()=>{failSave=true},
           go:async to=>flush(()=>{void router.navigate(to)}),
           search:async value=>flush(()=>{
-            const input=document.querySelector('.mac-list-tools input');
+            const input=document.querySelector('.mac-secondary input[type=search]');
             Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(input,value);
             input.dispatchEvent(new window.Event('input',{bubbles:true}));
           }),
@@ -103,6 +107,8 @@ before(async () => {
     alias: { '@': path.resolve(macRoot, '../client/src') },
     define: { 'import.meta.env': '{}' }, outfile: output, logLevel: 'silent',
     plugins: [{ name: 'isolated-ui', setup(build) {
+      build.onResolve({filter:/\/ChapterEditorShell$/}, () => ({path:'plate',namespace:'test-editor'}));
+      build.onLoad({filter:/.*/,namespace:'test-editor'}, () => ({resolveDir:macRoot,loader:'tsx',contents:'export default function Shell({chapter}){return <textarea aria-label="正文" defaultValue={chapter.content}/> }'}));
       build.onResolve({filter:/^@\/components\/layout\/TaskRecoveryContext$/}, () => ({path:'recovery',namespace:'test-recovery'}));
       build.onLoad({filter:/.*/,namespace:'test-recovery'}, () => ({contents:'export function useTaskRecovery(){return {candidateCount:0,openDialog(){}}}'}));
       build.onResolve({ filter: /^@\/components\/common\/LLMSelector$/ }, (args) => ({ path: args.path, namespace: 'test-llm' }));
@@ -212,10 +218,9 @@ test('failed saves and busy work preserve the page; explicit discard permits lea
 });
 
 test('sidebar follows each menu and does not retain the previous novel or chapter requests', async () => {
-  const h = await mount('/novels/book-a/edit');
+  const h = await mount('/novels/book-a/preview');
   try {
     assert.match(h.sidebar.textContent, /测试章节/);
-    await h.edit({ dirty: false });
     const chapterReads = h.requests.filter(({url}) => url.endsWith('/chapters')).length;
     for (const [route, title, content] of [
       ['/novels', '我的小说', '测试作品'],
@@ -252,7 +257,7 @@ test('self-contained workbenches remember their own directory preference without
     await h.go('/lab/director/book-a');
     assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
     await h.go('/novels/book-a/chapters/chapter-a');
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
+    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
   } finally { await h.cleanup(); }
 });
 
@@ -273,15 +278,13 @@ test('record sidebar status controls the page and read-only API, including back 
 test('chapter sidebar can expand, and cancelling navigation retains its chapter context', async () => {
   const h = await mount('/novels/book-a/chapters/chapter-a');
   try {
-    assert.equal(h.sidebar.getAttribute('aria-hidden'), 'true');
-    await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
     assert.equal(h.sidebar.getAttribute('aria-hidden'), 'false');
-    assert.equal(h.sidebar.querySelector('[aria-current="page"]').textContent, '1测试章节');
+    assert.match(h.sidebar.querySelector('[aria-current]').textContent,/测试章节/);
     await h.edit({ dirty: true });
-    await h.go('/settings');
+    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[1].click());
     await h.click('取消');
     assert.equal(h.pathname, '/novels/book-a/chapters/chapter-a');
-    assert.equal(h.sidebar.getAttribute('aria-label'), '小说与章节');
+    assert.equal(h.sidebar.getAttribute('aria-label'), '章节目录');
     assert.match(h.sidebar.textContent, /测试章节/);
   } finally { await h.cleanup(); }
 });
@@ -296,7 +299,6 @@ test('context search filters loaded rows, keeps selection and resets when changi
     assert.ok([...h.sidebar.querySelectorAll('a')].every(link => link.textContent.includes('模型')));
     assert.ok(h.sidebar.querySelector('[aria-current="page"]'));
     await h.go('/novels/book-a/chapters/chapter-a');
-    await h.flush(() => document.querySelector('.mac-drawer-toggle').click());
     await h.search('1');
     assert.match(h.sidebar.textContent, /测试章节/);
     await h.search('2');
@@ -364,4 +366,19 @@ test('shelf restores page two, opens off-page metadata and keeps overview explic
     assert.match(h.sidebar.textContent,/没有符合条件的小说/);
     assert.ok(!h.requests.some(r=>r.params?.limit===100));
   } finally { await h.cleanup(); }
+});
+
+test('preview switches text and retains directory search only within the same book', async () => {
+  const h = await mount('/novels/book-a/preview');
+  try {
+    await h.search('章');
+    await h.flush(() => h.sidebar.querySelectorAll('.mac-list-row')[1].click());
+    assert.equal(h.pathname, '/novels/book-a/preview');
+    assert.match(document.querySelector('article').textContent,/原文乙/);
+    assert.equal(h.sidebar.querySelector('input').value,'章');
+    await h.go('/novels/book-b/preview');
+    assert.equal(h.sidebar.querySelector('input').value,'');
+    assert.match(h.sidebar.textContent,/另一作品/);
+    assert.ok(!h.sidebar.textContent.includes('测试章节'));
+  } finally {await h.cleanup();}
 });

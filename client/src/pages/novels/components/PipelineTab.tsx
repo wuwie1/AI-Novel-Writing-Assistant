@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import type { ReactNode } from "react";
 import type { Chapter, NovelBible, PipelineJob, PlotBeat, QualityScore, ReviewIssue } from "@ai-novel/shared/types/novel";
 import AiButton from "@/components/common/AiButton";
@@ -143,6 +144,9 @@ export default function PipelineTab(props: PipelineTabProps) {
     directorTakeoverEntry,
   } = props;
 
+  const host = useEntityListHost();
+  const [,update] = useRouteFields();
+  const report = chapterReports.find(r => r.chapterId === selectedChapterId);
   const lowScoreRange = getLowScoreChapterRange(chapters, chapterReports, pipelineForm.qualityThreshold);
   const lowScoreReports = chapterReports
     .filter((item) => item.chapterId && item.overall < pipelineForm.qualityThreshold)
@@ -169,6 +173,10 @@ export default function PipelineTab(props: PipelineTabProps) {
 
   return (
     <div className="space-y-4">
+      <EntityDirectory collection={`reports:${novelId}`} title="章节质量报告" selection={report?.chapterId}
+        rows={chapters.flatMap(c => { const r = chapterReports.find(item => item.chapterId === c.id); return r ? [{ id:c.id, label:`第 ${c.order} 章 · ${c.title}`, description:`综合评分 ${r.overall}` }] : []; })}
+        onSelect={id => update({ chapterId:id })}/>
+      {host && report && <section><h2>所选章节质量报告</h2><p>综合 {report.overall} · 连贯 {report.coherence} · 节奏 {report.pacing} · 吸引力 {report.engagement}</p>{report.issues && <p>{report.issues}</p>}</section>}
       <DirectorTakeoverEntryPanel
         title="从质量修复接管"
         description="AI 会优先判断当前是否有活动中的章节批次或待修检查点，再决定恢复当前修复还是新开批次。"
@@ -245,7 +253,7 @@ export default function PipelineTab(props: PipelineTabProps) {
               <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap rounded-xl bg-background/70 p-3 text-xs">{repairAfterContent || "修复执行后显示"}</pre>
             </div>
           ) : null}
-          {lowScoreReports.length > 0 ? (
+          {!host && lowScoreReports.length > 0 ? (
             <div className="space-y-2 rounded-xl bg-background/70 p-3 text-xs">
               <div className="font-medium">低分章节筛选（阈值 {pipelineForm.qualityThreshold}）</div>
               {lowScoreReports.map((item, index) => (

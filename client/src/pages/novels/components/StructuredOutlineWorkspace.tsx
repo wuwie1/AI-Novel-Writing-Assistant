@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useState } from "react";
 import AiButton from "@/components/common/AiButton";
 import TensionCurvePanel, { type TensionCurveSeries, type TensionCurveViewportOption } from "@/components/tensionCurve/TensionCurvePanel";
@@ -113,12 +115,17 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
   const defaultChapterId = volumes[0]?.chapters[0]?.id ?? "";
   const ensureWorkspace = useStructuredOutlineWorkspaceStore((state) => state.ensureWorkspace);
   const patchWorkspace = useStructuredOutlineWorkspaceStore((state) => state.patchWorkspace);
-  const selectedVolumeId = useStructuredOutlineWorkspaceStore(
+  const host = useEntityListHost();
+  const [fields, update] = useRouteFields();
+  const storedVolume = useStructuredOutlineWorkspaceStore(
     (state) => state.workspaces[workspaceId]?.selectedVolumeId ?? defaultVolumeId,
   );
-  const selectedChapterId = useStructuredOutlineWorkspaceStore(
+  const storedChapter = useStructuredOutlineWorkspaceStore(
     (state) => state.workspaces[workspaceId]?.selectedChapterId ?? defaultChapterId,
   );
+  const selectedVolumeId = host ? fields.get("volumeId") ?? storedVolume : storedVolume;
+  const selectedChapterId = host ? fields.get("plannedChapterId") ?? fields.get("chapterId") ?? storedChapter : storedChapter;
+  const selectPlan = (id: string) => host ? update({ plannedChapterId:id }) : patchWorkspace(workspaceId, { selectedChapterId:id });
   const selectedBeatKey = useStructuredOutlineWorkspaceStore(
     (state) => state.workspaces[workspaceId]?.selectedBeatKey ?? "all",
   );
@@ -245,10 +252,14 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
     }
   }, [patchWorkspace, selectedBeat, selectedChapter, selectedVolumeChapters, visibleChapters, workspaceId]);
 
+  const savedChapter = executionChapters.find(c => (c.id === selectedChapter?.chapterId || c.id === selectedChapter?.id) && c.content?.trim());
+  const directory = <EntityDirectory collection={`planned:${workspaceId}:${selectedVolume?.id ?? ""}`} title="本卷规划章节"
+    rows={visibleChapters.map(c => ({ id:c.id, label:`第 ${c.chapterOrder} 章 · ${c.title}` }))}
+    selection={selectedChapter?.id} onSelect={selectPlan} empty="本卷还没有规划章。可在节奏板生成本卷章节。"/>;
   if (volumes.length === 0) {
     return (
       <Card className="border-0 bg-transparent shadow-none">
-        <CardHeader><CardTitle>节奏 / 拆章</CardTitle></CardHeader>
+        {directory}<CardHeader><CardTitle>节奏 / 拆章</CardTitle></CardHeader>
         <CardContent className="space-y-4 px-0">
           <WorldInjectionHint worldInjectionSummary={worldInjectionSummary} />
           {!hasCharacters ? (
@@ -265,6 +276,7 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
 
   return (
     <Card className="border-0 bg-transparent shadow-none">
+      {directory}{host && savedChapter && <Link to={`/novels/${novelId}/chapters/${savedChapter.id}`}>打开本章正文</Link>}
       <CardHeader className="flex flex-col gap-4 rounded-2xl bg-muted/20 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <CardTitle>节奏 / 拆章</CardTitle>
@@ -337,7 +349,7 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
             conflictLevelSource: chapter.conflictLevelSource ?? "ai",
           }))}
           selectedChapterId={selectedChapter?.id ?? selectedChapterId}
-          onSelectChapter={(chapterId) => patchWorkspace(workspaceId, { selectedChapterId: chapterId })}
+          onSelectChapter={selectPlan}
           onOpenChapterDetail={(chapterId) => {
             patchWorkspace(workspaceId, { selectedChapterId: chapterId });
             setTensionCurveDialogOpen(false);
@@ -392,6 +404,7 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
                     key={volume.id}
                     type="button"
                     onClick={() => {
+                      if (host) { update({ volumeId:volume.id, plannedChapterId:volume.chapters[0]?.id ?? null, chapterId:null }); return; }
                       patchWorkspace(workspaceId, {
                         selectedVolumeId: volume.id,
                         selectedBeatKey: "all",
@@ -495,7 +508,7 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
                 onGenerateChapterList={onGenerateChapterList}
                 onRemoveChapter={onRemoveChapter}
                 onSelectBeatKey={(beatKey) => patchWorkspace(workspaceId, { selectedBeatKey: beatKey })}
-                onSelectChapter={(chapterId) => patchWorkspace(workspaceId, { selectedChapterId: chapterId })}
+                onSelectChapter={selectPlan}
               />
             )}
             chapterDetailPanel={(

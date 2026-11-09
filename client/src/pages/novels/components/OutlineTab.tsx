@@ -1,3 +1,5 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
+import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import AiButton from "@/components/common/AiButton";
 import { Badge } from "@/components/ui/badge";
@@ -155,7 +157,12 @@ export default function OutlineTab(props: OutlineTabViewProps) {
   const readinessProgress = Math.round((completedReadinessCount / Math.max(readinessSteps.length, 1)) * 100);
   const nextOutlineAction = getNextOutlineAction(readiness);
   const outlineStageReady = completedReadinessCount === readinessSteps.length;
-  const [selectedVolumeId, setSelectedVolumeId] = useState(volumes[0]?.id ?? "");
+  const host = useEntityListHost();
+  const { id } = useParams();
+  const [fields, update] = useRouteFields();
+  const [webVolume, setWebVolume] = useState(volumes[0]?.id ?? "");
+  const selectedVolumeId = host ? fields.get("volumeId") ?? volumes[0]?.id : webVolume;
+  const setSelectedVolumeId = (value: string) => host ? update({ volumeId:value, chapterId:null, plannedChapterId:null }) : setWebVolume(value);
   const [workspaceTab, setWorkspaceTab] = useState<OutlineWorkspaceTab>("current");
   const volumeCountModeLabel = volumeCountGuidance.userPreferredVolumeCount != null
     ? `当前固定 ${volumeCountGuidance.userPreferredVolumeCount} 卷`
@@ -165,7 +172,7 @@ export default function OutlineTab(props: OutlineTabViewProps) {
   const volumeScaleProfileLabel = getVolumeScaleProfileLabel(volumeCountGuidance.volumeScaleProfile);
 
   useEffect(() => {
-    if (!volumes.some((volume) => volume.id === selectedVolumeId)) {
+    if (!host && !volumes.some((volume) => volume.id === selectedVolumeId)) {
       setSelectedVolumeId(volumes[0]?.id ?? "");
     }
   }, [selectedVolumeId, volumes]);
@@ -174,6 +181,9 @@ export default function OutlineTab(props: OutlineTabViewProps) {
 
   return (
     <div className="space-y-5">
+      <EntityDirectory collection={`volumes:${id}`} title="卷目录" selection={selectedVolume?.id}
+        rows={volumes.map(v => ({ id:v.id, label:`第 ${v.sortOrder} 卷 · ${v.title}`, description:v.summary }))}
+        onSelect={setSelectedVolumeId}/>
       <DirectorTakeoverEntryPanel
         title="从卷战略接管"
         description="AI 会先判断卷战略和卷骨架是否已齐，再决定继续补缺失部分还是重跑当前步骤。"

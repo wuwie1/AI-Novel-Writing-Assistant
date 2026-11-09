@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import DirectorVersionControl from "@/components/directorVersion/DirectorVersionControl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -101,7 +102,10 @@ export default function SimpleNovelShelfPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [selectedChapterId, setSelectedChapterId] = useState("");
+  const host = useEntityListHost();
+  const [params, update] = useRouteFields();
+  const [webChapter, setSelectedChapterId] = useState("");
+  const selectedChapterId = host ? params.get("chapterId") : webChapter;
 
   useEffect(() => {
     const cleaned = stripLegacyTaskUrlParams(searchParams);
@@ -132,7 +136,7 @@ export default function SimpleNovelShelfPage() {
   );
 
   useEffect(() => {
-    if (selectedChapter && selectedChapter.id !== selectedChapterId) {
+    if (!host && selectedChapter && selectedChapter.id !== selectedChapterId) {
       setSelectedChapterId(selectedChapter.id);
     }
   }, [selectedChapter, selectedChapterId]);
@@ -177,8 +181,12 @@ export default function SimpleNovelShelfPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "切换模式失败，请重试。"),
   });
 
+  const directory = <EntityDirectory collection={`simple:${id}`} title="章节目录" selection={selectedChapter?.id}
+    rows={(shelf?.chapters ?? []).map(c => ({ id:c.id, label:`第 ${c.order} 章 · ${c.title}`, description:STATUS_LABELS[c.status], disabled:!c.content?.trim() }))}
+    pending={shelfQuery.isPending} error={shelfQuery.isError} retry={() => void shelfQuery.refetch()} onSelect={value => update({chapterId:value})}/>;
+  if (shelfQuery.isError) return <>{directory}<p role="alert">章节书架读取失败。<button onClick={() => void shelfQuery.refetch()}>重新读取</button></p></>;
   if (shelfQuery.isPending || !shelf) {
-    return <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在打开章节书架</div>;
+    return <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">{directory}<Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在打开章节书架</div>;
   }
 
   const savedDraftCount = readableChapters.length;
@@ -286,7 +294,8 @@ export default function SimpleNovelShelfPage() {
             </div>
           </div>
 
-          <div className="grid min-h-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]">
+          <div className={host ? "min-h-0 flex-1" : "grid min-h-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]"}>
+            {directory}{!host &&
             <aside className="min-h-0 border-b border-border bg-muted/20 p-3 lg:overflow-y-auto lg:border-b-0 lg:border-r">
               <div className="flex items-center justify-between px-2 py-2">
                 <div className="text-sm font-semibold text-foreground">章节目录</div>
@@ -326,7 +335,7 @@ export default function SimpleNovelShelfPage() {
               <div className="mt-3 rounded-xl border border-border/70 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
                 普通质量问题会作为待跟进事项记录，不会打断全书生产。
               </div>
-            </aside>
+            </aside>}
 
             <main className="min-w-0 bg-background lg:min-h-0 lg:overflow-y-auto">
               {selectedChapter?.content ? (

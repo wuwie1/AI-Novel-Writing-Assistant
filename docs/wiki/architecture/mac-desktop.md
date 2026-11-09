@@ -63,6 +63,8 @@ Mac 界面只请求同源 `/api`。本机代理先验证回环 Host/Origin，再
 
 书架由 `NovelList` 同时提供当前页数据和作品动作。`selectedNovelId` 可单独恢复摘要，页外作品使用带 `workspaceSourceRoute` 的详情；`layout` 优先于旧 `view`。搜索仅在其发起时的 URL 仍有效时提交。开书候选按任务、批次及实体定位，预览独立于确认。
 
+书内列表取当前活动页的作品投影。章节预览与编辑可复用作品详情中的章节，卷分组只采用明确的正文章节关联。规划章使用 `plannedChapterId`，仅在能够匹配真实正文时提供编辑入口。短篇分段在同一份编辑草稿中切换，连续阅读占用整幅画布。
+
 ## 视觉基线与级联规则
 
 参考目录是 `/Users/likai/go/src/write/wukong`。不能只抄 `base.css` 的通用变量：wukong 的入口按 `app.css` → `base.css` → `demo.css` → `studio.css` → `side-panels.css` 导入，最终效果同时受选择器优先级和功能页面覆盖影响。灵感列表的浅蓝选中条来自 `demo.css` 的 `material-list-item.is-selected`，不是图标栏的灰色 `--active`。以正在运行的窗口和完整级联共同核对。
