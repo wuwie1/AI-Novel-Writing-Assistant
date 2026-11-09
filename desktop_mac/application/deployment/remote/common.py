@@ -43,7 +43,7 @@ def command(args, cwd=None, env=None, check=True, timeout=120, log=None, umask=-
 def git(root, *args, check=True):
     try:
         # Only tracked source checked out by root must be readable by the service account.
-        checkout_umask = 0o022 if args[0] in ('merge', 'switch') else -1
+        checkout_umask = 0o022 if args[0] == 'switch' else -1
         return command(['git', '-c', 'core.fsmonitor=false', '-C', root, *args], env={**os.environ, 'GIT_OPTIONAL_LOCKS': '0', 'GIT_TERMINAL_PROMPT': '0'}, check=check, umask=checkout_umask).stdout.strip()
     except Refused:
         raise Refused('服务器 Git %s 失败，请核对部署目录的仓库权限、提交和发布分支' % args[0])

@@ -19,16 +19,21 @@ def set_nginx(root, text, reload=False):
         command(['systemctl', 'reload', 'ai-novel-web'])
 
 
-def start_and_check(info, port):
-    command(['systemctl', 'start', 'ai-novel-api', 'ai-novel-web'])
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
+def wait_for_health(port, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
         try:
             health(port)
             return
-        except Exception:
+        except Exception as error:
+            if time.monotonic() >= deadline:
+                raise Refused(f'端口 {port} 的 API、网页与小说读取检查超时：{error}') from error
             time.sleep(2)
-    raise Refused('新版本未通过 API、网页与小说读取检查')
+
+
+def start_and_check(port):
+    command(['systemctl', 'start', 'ai-novel-api', 'ai-novel-web'])
+    wait_for_health(port, 120)
 
 
 def switch_transaction(payload, info, batch, candidate, manifest):
@@ -42,7 +47,8 @@ def switch_transaction(payload, info, batch, candidate, manifest):
     rollback = batch / 'rollback'
     rollback.mkdir(mode=0o700)
     journal_path = batch / 'transaction.json'
-    journal = dict(phase='prepared', old=info['old'], sha=info['sha'], branch=info['branch'], states=info['states'], movedOld=[], installed=[], pending=None)
+    branch_ref = 'refs/heads/' + info['branch']
+    journal = dict(phase='prepared', old=info['old'], sha=info['sha'], branch=info['branch'], branchTip=info['branchTip'], states=info['states'], movedOld=[], installed=[], pending=None)
     write_json(journal_path, journal)
     switched = False
     stopped = False
@@ -66,7 +72,8 @@ def switch_transaction(payload, info, batch, candidate, manifest):
         verify_snapshot(batch / 'backups/preflight')
         journal['phase'] = 'switching-source'; write_json(journal_path, journal)
         switched = True
-        git(root, 'merge', '--ff-only', info['sha'])
+        if info['sha'] != info['old']:
+            git(root, 'switch', '--detach', info['sha'])
         for name in ARTIFACTS:
             old, new, saved = root / name, candidate / name, rollback / name
             saved.parent.mkdir(parents=True, exist_ok=True)
@@ -80,15 +87,22 @@ def switch_transaction(payload, info, batch, candidate, manifest):
             journal['pending'] = None; write_json(journal_path, journal)
         journal['phase'] = 'verifying'; write_json(journal_path, journal)
         validate_nginx(root)
-        start_and_check(info, config['maintenanceProbePort'])
+        start_and_check(config['maintenanceProbePort'])
         set_nginx(root, original, reload=True)
         maintenance = False
-        health(config['remoteWebPort'])
-        if git(root, 'rev-parse', 'HEAD') != info['sha']:
-            raise Refused('实际部署提交与本次候选不符')
+        # systemctl reload returns after signalling Nginx. Old workers may still serve 503.
+        wait_for_health(config['remoteWebPort'], 30)
         for unit in info['states']:
             if command(['systemctl', 'is-active', unit], check=False).stdout.strip() != 'active':
                 raise Refused(unit + ' 重启后未处于 active 状态')
+        if git(root, 'rev-parse', 'HEAD') != info['sha']:
+            raise Refused('实际部署提交与本次候选不符')
+        # Inspection verifies fast-forward ancestry. Publish only after both ports serve
+        # the candidate, and only if the branch stayed at the inspected commit.
+        git(root, 'update-ref', branch_ref, info['sha'], info['branchTip'])
+        git(root, 'switch', '--no-guess', '--', info['branch'])
+        if git(root, 'rev-parse', 'HEAD') != info['sha']:
+            raise Refused('发布分支与已验证的提交不符')
         record_path = root / '.runtime/deployment.json'
         record = json.loads(record_path.read_text()) if record_path.exists() else {}
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -118,16 +132,18 @@ def switch_transaction(payload, info, batch, candidate, manifest):
                             raise Refused('回滚目录存在未登记内容，保留现场')
                         os.rename(saved, live)
                 # No hard reset, database restore, or deletion is permitted.
-                if info['old'] != info['sha']:
-                    git(root, 'switch', '--detach', info['old'])
+                git(root, 'switch', '--detach', info['old'])
+                if git(root, 'rev-parse', '--verify', branch_ref) == info['old']:
+                    git(root, 'switch', '--no-guess', '--', info['branch'])
             set_nginx(root, original, reload=not stopped and info['states']['ai-novel-web'] == 'active')
             maintenance = False
             if stopped and info['states']['ai-novel-api'] == 'active':
-                start_and_check(info, config['remoteWebPort'])
+                start_and_check(config['remoteWebPort'])
             if info['states']['ai-novel-api'] == 'inactive':
                 command(['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'])
             journal['phase'] = 'rolled_back' if switched else 'aborted'; write_json(journal_path, journal)
-            emit('rolled_back' if switched else 'aborted', sha=info['old'], detached=switched and info['old'] != info['sha'], backup=str(batch / 'backups'), reason=str(failure))
+            detached = not git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD', check=False)
+            emit('rolled_back' if switched else 'aborted', sha=info['old'], detached=detached, backup=str(batch / 'backups'), reason=str(failure))
             return 7 if switched else 6
         except BaseException:
             journal['phase'] = 'rollback_failed'; write_json(journal_path, journal)

@@ -53,6 +53,59 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('Retry-After 30 always', value)
         self.assertIn('if ($request_method !~ ^(GET|HEAD)$)', value)
 
+    def test_public_health_waits_for_nginx_reload_but_persistent_failure_times_out(self):
+        m = module()
+        with patch.object(m.time, 'sleep') as sleep:
+            m.health = Mock(side_effect=[m.Refused('HTTP 503'), None])
+            m.wait_for_health(18080, 30)
+            self.assertEqual([call.args for call in m.health.call_args_list], [(18080,), (18080,)])
+            sleep.assert_called_once_with(2)
+            m.health = Mock(side_effect=m.Refused('HTTP 503'))
+            with patch.object(m.time, 'monotonic', side_effect=[20, 21, 50]):
+                with self.assertRaisesRegex(m.Refused, '18080.*HTTP 503'):
+                    m.wait_for_health(18080, 30)
+
+    def test_retry_requires_matching_rollback_manifest_branch_and_ancestry(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory).resolve()
+            m.git(root, 'init', '-b', 'ai')
+            m.git(root, 'config', 'user.name', 'Deploy Test')
+            m.git(root, 'config', 'user.email', 'test@example.invalid')
+            m.git(root, 'config', 'commit.gpgsign', 'false')
+            m.git(root, 'remote', 'add', 'origin', 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git')
+            def commit(message):
+                m.git(root, 'commit', '--allow-empty', '-m', message)
+                return m.git(root, 'rev-parse', 'HEAD')
+            old = commit('deployed')
+            tip = commit('previous candidate')
+            self.assertEqual(m.deployment_branch_tip(root, 'ai', tip), tip)
+            with self.assertRaisesRegex(m.Refused, '其他分支'):
+                m.deployment_branch_tip(root, 'main', tip)
+            m.git(root, 'switch', '--detach', old)
+            divergent = commit('divergent candidate')
+            m.git(root, 'switch', '--detach', old)
+            manifest = root / '.runtime/deployment.json'
+            journal = root / '.runtime/desktop_mac-deploy/20260101/transaction.json'
+            journal.parent.mkdir(parents=True)
+            with self.assertRaisesRegex(m.Refused, 'detached HEAD'):
+                m.deployment_branch_tip(root, 'ai', old)
+            m.write_json(manifest, dict(commit=old, branch='ai'))
+            rollback = dict(phase='rolled_back', branch='ai', old=old, sha=tip)
+            for invalid in (dict(rollback, phase='verifying'), dict(rollback, old=tip),
+                            dict(rollback, sha=divergent), dict(rollback, branch='other')):
+                m.write_json(journal, invalid)
+                with self.subTest(record=invalid), self.assertRaisesRegex(m.Refused, 'detached HEAD'):
+                    m.deployment_branch_tip(root, 'ai', old)
+            m.write_json(journal, rollback)
+            self.assertEqual(m.deployment_branch_tip(root, 'ai', old), tip)
+            config = dict(serverDir=str(root), deployRef='origin/ai')
+            with self.assertRaisesRegex(m.Refused, '无法快进'):
+                m.inspect_deployment(dict(dryRun=True, currentSha=divergent, config=config))
+            m.write_json(manifest, dict(commit=tip, branch='ai'))
+            with self.assertRaisesRegex(m.Refused, 'detached HEAD'):
+                m.deployment_branch_tip(root, 'ai', old)
+
     def test_every_artifact_rename_failure_restores_code_and_all_dependencies(self):
         for fail_at in range(1, 15):
             with self.subTest(fail_at=fail_at), tempfile.TemporaryDirectory() as temporary:
@@ -72,10 +125,13 @@ class DeploymentTests(unittest.TestCase):
                         (location / 'identity').write_text(value)
                 (root / 'data').mkdir()
                 (root / 'data/novel.db').write_bytes(b'unchanged production database')
-                info = dict(root=root, old='old-sha', sha='new-sha', branch='ai', states={'ai-novel-api':'active', 'ai-novel-web':'active'})
+                info = dict(root=root, old='old-sha', sha='new-sha', branch='ai', branchTip='old-sha', states={'ai-novel-api':'active', 'ai-novel-web':'active'})
                 config = dict(remoteWebPort=18080, maintenanceProbePort=18081)
                 git_calls = []
-                m.git = lambda root, *args: git_calls.append(args)
+                def git(root, *args, **kwargs):
+                    git_calls.append(args)
+                    return 'ai' if args[0] == 'symbolic-ref' else 'old-sha'
+                m.git = git
                 m.command = lambda *a, **k: types.SimpleNamespace(stdout='', returncode=0)
                 m.check_quiescence = lambda *a: None
                 m.check_connections = lambda: None
@@ -101,6 +157,8 @@ class DeploymentTests(unittest.TestCase):
                 for name in m.ARTIFACTS:
                     self.assertEqual((root / name / 'identity').read_text(), 'old')
                 self.assertIn(('switch', '--detach', 'old-sha'), git_calls)
+                self.assertIn(('switch', '--no-guess', '--', 'ai'), git_calls)
+                self.assertNotIn('update-ref', [args[0] for args in git_calls])
                 self.assertEqual((root / '.runtime/nginx.conf').read_text(), original)
                 self.assertEqual((root / 'data/novel.db').read_bytes(), b'unchanged production database')
 
@@ -142,7 +200,7 @@ class DeploymentTests(unittest.TestCase):
                 m = module()
                 root = pathlib.Path(temporary).resolve()
                 (root / '.runtime').mkdir()
-                info = dict(root=root, old='b' * 40, sha='a' * 40, ref='origin/ai', known=True,
+                info = dict(root=root, old='b' * 40, branchTip='b' * 40, sha='a' * 40, ref='origin/ai', known=True,
                             differences=[], checks=[], states={}, db=root / 'unused.db', assets=[])
                 m.inspect_deployment = Mock(return_value=info)
                 m.check_quiescence = Mock()
@@ -219,7 +277,7 @@ class DeploymentTests(unittest.TestCase):
                 (root / template).write_text(original)
                 (root / '.runtime/nginx.conf').write_text(original.replace('@ROOT@', str(root)))
                 sha = 'a' * 40
-                info = dict(root=root, old=sha, sha=sha, branch='ai',
+                info = dict(root=root, old=sha, sha=sha, branch='ai', branchTip=sha,
                             known=True, differences=[], checks=[], db=root / 'test.db', assets=[],
                             states=dict.fromkeys(('ai-novel-api', 'ai-novel-web'), initial))
                 m.inspect_deployment = Mock(return_value=info)

@@ -26,7 +26,7 @@ def run_remote(payload):
         backup_snapshot(info, batch / 'backups/preflight', full=True)
         with remote_lock(root / '.runtime/service-control.lock'):
             fresh = inspect_deployment(payload)
-            if fresh['old'] != info['old'] or fresh['sha'] != info['sha'] or fresh['states'] != info['states']:
+            if any(fresh[key] != info[key] for key in ('old', 'branchTip', 'sha', 'states')):
                 raise Refused('构建期间部署基线或服务状态变化，请重新执行')
             return switch_transaction(payload, info, batch, candidate, manifest)
 

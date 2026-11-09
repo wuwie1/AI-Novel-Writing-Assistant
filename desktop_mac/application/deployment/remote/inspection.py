@@ -13,6 +13,31 @@ def candidate_commit(root, sha, *, import_bundle=False):
     return sha
 
 
+def deployment_branch_tip(root, branch, old):
+    attached = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD', check=False)
+    if attached == branch:
+        return old
+    if attached:
+        raise Refused('服务器已检出其他分支，请核对 DEPLOY_REF')
+    # A previous updater could restore the old checkout after advancing the branch.
+    # Accept only the precise state witnessed by the last transaction and live manifest.
+    runtime = root / '.runtime'
+    manifest_path = runtime / 'deployment.json'
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    tip = git(root, 'rev-parse', '--verify', 'refs/heads/' + branch)
+    if manifest.get('commit') == old and manifest.get('branch') == branch:
+        for path in sorted((runtime / 'desktop_mac-deploy').glob('*/transaction.json'), reverse=True):
+            record = json.loads(path.read_text())
+            if record.get('phase') == 'aborted':
+                continue  # Aborted before switching source.
+            if (record.get('phase') == 'rolled_back' and record.get('branch') == branch
+                    and record.get('old') == old and tip in (record.get('sha'), record.get('branchTip'))
+                    and command(['git', '-C', root, 'merge-base', '--is-ancestor', old, tip], check=False).returncode == 0):
+                return tip
+            break
+    raise Refused('服务器处于 detached HEAD，部署清单、发布分支和最近的回滚记录未能确认同一基线')
+
+
 def inspect_deployment(payload, *, import_bundle=False):
     config = payload['config']
     root = pathlib.Path(config['serverDir']).resolve(strict=True)
@@ -24,12 +49,13 @@ def inspect_deployment(payload, *, import_bundle=False):
     old = git(root, 'rev-parse', 'HEAD')
     if not payload['dryRun'] and old != payload.get('serverBase'):
         raise Refused('服务器版本与本次预演基线不符，请重新预演')
-    branch = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD', check=False)
-    if not branch or git(root, 'status', '--porcelain', '--untracked-files=no'):
-        raise Refused('服务器源码有修改或处于 detached HEAD，需先人工核对发布分支')
+    if git(root, 'status', '--porcelain', '--untracked-files=no'):
+        raise Refused('服务器源码有修改，请先核对工作区')
     ref = config['deployRef']
-    if not ref.startswith('origin/') or ref[7:] != branch or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/.' for c in ref):
-        raise Refused('DEPLOY_REF 必须是服务器当前发布分支的 origin/<branch>，不能自动换线')
+    if not ref.startswith('origin/') or not ref[7:] or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/.' for c in ref):
+        raise Refused('DEPLOY_REF 必须是服务器发布分支的 origin/<branch>')
+    branch = ref[7:]
+    branch_tip = deployment_branch_tip(root, branch, old)
     candidate_sha = candidate_commit(root, payload.get('currentSha'), import_bundle=import_bundle)
     candidate_known = command(['git', '-C', root, 'cat-file', '-e', candidate_sha + '^{commit}'], check=False).returncode == 0
     checks = []
@@ -39,6 +65,8 @@ def inspect_deployment(payload, *, import_bundle=False):
     else:
         if command(['git', '-C', root, 'merge-base', '--is-ancestor', old, candidate_sha], check=False).returncode:
             raise Refused('候选不是当前部署的后代，拒绝分叉或降级')
+        if branch_tip != old and command(['git', '-C', root, 'merge-base', '--is-ancestor', branch_tip, candidate_sha], check=False).returncode:
+            raise Refused('候选未包含服务器发布分支上的提交，无法快进')
         differences = git(root, 'diff', '--name-only', old, candidate_sha).splitlines()
         compatibility = git(root, 'diff', '--name-only', old, candidate_sha, '--', *COMPATIBILITY)
         old_dependencies = json.loads(git(root, 'show', old + ':server/package.json'))['dependencies']
@@ -76,7 +104,7 @@ def inspect_deployment(payload, *, import_bundle=False):
         checks.append('磁盘余量不足，需至少 %s 字节；不会自动清理任何数据' % minimum)
     if states['ai-novel-api'] == 'active':
         health(config['remoteWebPort'])
-    return dict(root=root, old=old, branch=branch, ref=ref, sha=candidate_sha, differences=differences,
+    return dict(root=root, old=old, branch=branch, branchTip=branch_tip, ref=ref, sha=candidate_sha, differences=differences,
                 checks=checks, states=states, db=db, assets=assets, known=candidate_known)
 
 
