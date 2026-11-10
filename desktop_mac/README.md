@@ -67,7 +67,7 @@ make dev_app
 | 服务器 Web | 18080 | `REMOTE_WEB_PORT` |
 | 维护探测 | 18081 | `MAINTENANCE_PROBE_PORT` |
 | 服务目录 | /data/write/AI-Novel-Writing-Assistant | `SERVER_DIR` |
-| 本地与服务器须匹配的发布分支 | origin/ai | `DEPLOY_REF` |
+| 本地与服务器须匹配的发布分支 | `current`（当前分支） | `DEPLOY_REF` |
 
 配置文件、运行状态和构建放在 `.runtime/desktop_mac/`，日志放在 `.logs/desktop_mac/`，每个输出流单文件最多 10 MiB，最多保留 5 个文件。状态损坏、未知端口或进程身份变化时脚本拒绝猜测和停止进程；先查看错误中的日志、状态与锁路径。不要用批量 `pkill node` 或删除数据库来解决启动问题。
 
@@ -79,7 +79,7 @@ make dev_app
 make server_update
 ```
 
-`server_update` 部署本地干净工作区在发布分支上的 HEAD。两端的 `origin` 须指向指定 fork，发布分支由 `DEPLOY_REF` 指定（默认 `origin/ai`）。尚未推送的提交也可部署。服务器缺少候选对象时，本机会通过 SSH 传输增量 Git bundle。
+`server_update` 默认部署本地干净工作区当前分支的 HEAD。两端的 `origin` 须指向指定 fork，服务器须检出同名发布分支。若在配置中显式设置了 `origin/<分支名>`，该值会额外限定可部署的分支。尚未推送的提交也可部署。服务器缺少候选对象时，本机会通过 SSH 传输增量 Git bundle。
 
 只想查看待部署版本和任务状态时，运行 `make server_update DRY_RUN=1`。若服务器还没有候选对象，兼容性要在正式更新导入 bundle 后才能验证。
 
@@ -99,7 +99,7 @@ make server_update
 ```json
 {
   "sha": "经过检查的完整40位提交SHA",
-  "ref": "origin/ai",
+  "ref": "origin/<当前分支名>",
   "passed": ["server-build", "client-build", "targeted-tests"],
   "evidence": "对应的构建及测试日志位置"
 }

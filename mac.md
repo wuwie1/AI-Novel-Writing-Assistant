@@ -183,7 +183,7 @@ desktop_mac/
 | `remoteWebPort` | `REMOTE_WEB_PORT` | `18080`，服务器 loopback 的 Nginx |
 | `maintenanceProbePort` | `MAINTENANCE_PROBE_PORT` | `18081`，部署期间服务器 loopback 的临时只读探测入口，冲突时拒绝部署 |
 | `serverDir` | `SERVER_DIR` | `/data/write/AI-Novel-Writing-Assistant` |
-| `deployRef` | `DEPLOY_REF` | `origin/ai`，保持现有服务器发布线；完整规则见 5.5 |
+| `deployRef` | `DEPLOY_REF` | `current`，部署当前分支的提交。可用 `origin/<分支名>` 限定发布线，完整规则见 5.5 |
 | 无持久化字段 | `APP_MODE` | 只用于 `restart_app`，取 `local` 或 `remote`；与 `app` / `dev_app` 固定语义冲突时报告参数错误 |
 | 无持久化字段 | `DRY_RUN` | `server_update` 取 `1` 时只读预演，省略时执行更新 |
 
@@ -342,9 +342,9 @@ flowchart LR
 
 作用为部署服务器服务；不负责更新本机 `.app`，也不自动执行 Git 推送、功能分支合并或公开桌面包上传。
 
-默认主机和目录为用户指定值。**默认 `DEPLOY_REF=origin/ai`**，本地与服务器的 `origin` 须为指定 fork，两端都须检出 `ai`。部署锁定本地干净工作区的 HEAD，包含尚未推送的提交。预演对比本地候选和服务器基线。正式更新需要补齐 Git 对象时，经 SSH 传输增量 bundle，并在服务器部署锁内校验。
+默认主机和目录为用户指定值。`DEPLOY_REF` 默认随本地当前分支解析。两端的 `origin` 须为指定 fork，服务器须检出同名发布分支。部署锁定本地干净工作区的 HEAD，包含尚未推送的提交。预演对比本地候选和服务器基线。正式更新需要补齐 Git 对象时，经 SSH 传输增量 bundle，并在服务器部署锁内校验。
 
-Mac 功能在当前分支验证。变更服务器发布线时须明确修改部署配置并记录迁移决定。候选 SHA 必须等于当前部署或是其后代。两种情况下都会重启 API 和网页服务并进行健康检查。
+Mac 功能在当前分支验证。迁移服务器发布线须单独核对部署清单并记录决定。候选 SHA 必须等于当前部署或是其后代。两种情况下都会重启 API 和网页服务并进行健康检查。
 
 部署范围限于发布分支上已提交并通过验证的代码，Mac 运维命令不编辑后端业务。
 

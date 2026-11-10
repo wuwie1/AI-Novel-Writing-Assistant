@@ -13,27 +13,30 @@ async function git(root, ...args) {
   return stdout.trim();
 }
 
-async function currentCommit({ repoRealPath: root, deployRef }) {
+export async function readDeploymentSource({ repoRealPath: root, deployRef }) {
   const origin = (await git(root, 'remote', 'get-url', 'origin')).replace(/\.git$/, '');
   if (![`https://github.com/${fork}`, `git@github.com:${fork}`, `ssh://git@github.com/${fork}`].includes(origin)) {
     throw new Error('当前仓库的 origin 与部署 fork 不符。');
   }
   const branch = await git(root, 'branch', '--show-current');
-  if (!branch || deployRef !== `origin/${branch}`) throw new Error(`请从服务器发布分支执行更新（${deployRef}）。`);
+  if (!branch) throw new Error('当前工作区处于 detached HEAD，无法确定部署分支。');
+  const currentRef = `origin/${branch}`;
+  if (deployRef !== 'current' && deployRef !== currentRef) {
+    throw new Error(`当前分支 ${branch} 与配置的发布分支 ${deployRef} 不一致。`);
+  }
   if (await git(root, 'status', '--porcelain', '--untracked-files=normal')) {
     throw new Error('工作区含未提交的改动。请用 git status 核对要部署的内容，提交后再运行服务器更新。');
   }
-  return git(root, 'rev-parse', '--verify', `refs/heads/${branch}^{commit}`);
+  const currentSha = await git(root, 'rev-parse', '--verify', `refs/heads/${branch}^{commit}`);
+  return { currentSha, deployRef: currentRef };
 }
 
 /** Only the pinned commit and its missing ancestors travel to the server. GitHub refs are untouched. */
-export async function deployCurrentSource({ config, dryRun, execute, report }) {
+export async function deployCurrentSource({ root, currentSha, dryRun, execute, report }) {
   const started = performance.now();
   const timing = (name, since, fields = {}) => report(JSON.stringify({
     stage: 'local_timing', name, seconds: +(Math.max(0, performance.now() - since) / 1000).toFixed(3), ...fields,
   }));
-  const root = config.repoRealPath;
-  const currentSha = await currentCommit(config);
   async function run(options, expectedStage, bundleFile) {
     let result;
     await execute({ currentSha, ...options }, (line) => {

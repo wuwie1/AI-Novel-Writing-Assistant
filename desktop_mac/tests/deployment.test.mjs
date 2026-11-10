@@ -21,7 +21,8 @@ test('server update pins an unpublished commit and imports only its verified bun
   const local = path.join(temporary, 'local'), server = path.join(temporary, 'server');
   const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   await mkdir(local);
-  git(local, 'init', '-b', 'ai');
+  const branch = 'feature/校对';
+  git(local, 'init', '-b', branch);
   git(local, 'config', 'user.name', 'Fixture');
   git(local, 'config', 'user.email', 'fixture@example.test');
   git(local, 'remote', 'add', 'origin', 'https://github.com/wuwie1/AI-Novel-Writing-Assistant.git');
@@ -33,10 +34,11 @@ test('server update pins an unpublished commit and imports only its verified bun
   git(local, 'commit', '--allow-empty', '-m', 'unpublished change');
   const sha = git(local, 'rev-parse', 'HEAD');
   const validation = path.join(temporary, 'validation.json');
-  await writeFile(validation, JSON.stringify({ sha, ref: 'origin/ai', evidence: 'fixture', passed: ['client-build', 'server-build', 'targeted-tests'] }));
+  await writeFile(validation, JSON.stringify({ sha, ref: `origin/${branch}`, evidence: 'fixture', passed: ['client-build', 'server-build', 'targeted-tests'] }));
   let applications = 0;
   const remote = async ({ config, payload, bundleFile, report, source }) => {
     assert.equal(payload.currentSha, sha);
+    assert.equal(payload.config.deployRef, `origin/${branch}`);
     if (payload.dryRun) {
       assert.equal(bundleFile, undefined);
       report(JSON.stringify({ stage: 'inspection', candidate: sha, current: base, known: false }));
@@ -75,6 +77,10 @@ test('server update pins an unpublished commit and imports only its verified bun
   assert.equal(applications, 0);
   assert.equal((await runDeployment(options)).sha, sha);
   assert.equal(applications, 1);
+  await assert.rejects(runDeployment({ ...options, env: { ...options.env, DEPLOY_REF: 'origin/pinned' } }), /与配置的发布分支/);
+  git(local, 'switch', '--detach', sha);
+  await assert.rejects(runDeployment(options), /detached HEAD/);
+  git(local, 'switch', branch);
   await writeFile(path.join(local, 'pending-edit'), 'keep');
   await assert.rejects(runDeployment(options), /未提交/);
   assert.equal(applications, 1);

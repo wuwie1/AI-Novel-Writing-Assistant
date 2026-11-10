@@ -10,7 +10,7 @@ const DEFAULTS = Object.freeze({
   remoteWebPort: 18080,
   maintenanceProbePort: 18081,
   serverDir: '/data/write/AI-Novel-Writing-Assistant',
-  deployRef: 'origin/ai',
+  deployRef: 'current',
 });
 
 const ENV_FIELDS = Object.freeze({

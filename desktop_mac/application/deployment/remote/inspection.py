@@ -52,7 +52,7 @@ def inspect_deployment(payload, *, import_bundle=False):
     if git(root, 'status', '--porcelain', '--untracked-files=no'):
         raise Refused('服务器源码有修改，请先核对工作区')
     ref = config['deployRef']
-    if not ref.startswith('origin/') or not ref[7:] or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/.' for c in ref):
+    if not ref.startswith('origin/') or command(['git', 'check-ref-format', 'refs/heads/' + ref[7:]], check=False).returncode:
         raise Refused('DEPLOY_REF 必须是服务器发布分支的 origin/<branch>')
     branch = ref[7:]
     branch_tip = deployment_branch_tip(root, branch, old)

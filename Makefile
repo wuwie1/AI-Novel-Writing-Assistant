@@ -8,7 +8,7 @@ export MAC_APP_MODE MAC_RENDERER_OUT_DIR MAC_SERVER_NODE
 ## list — 列出 Mac 桌面命令及配置说明
 list:
 	@awk '/^## / { sub(/^## /, ""); print }' Makefile
-	@printf '\n配置：\n  APP_MODE=local|remote — restart_app 的连接模式\n  SSH_TARGET, TUNNEL_PORT, REMOTE_WEB_PORT — SSH 目标和 Web 隧道两端端口\n  SERVER_DIR, DEPLOY_REF — 远端部署目录与版本（默认 DEPLOY_REF=origin/ai）\n  DRY_RUN=1 — 只读预演 server_update\n  DEPLOY_VALIDATION_FILE — 复用该提交已有的构建和测试记录（可选）\n  MAC_SERVER_NODE — 本机后端 Node 绝对路径（可选）\n'
+	@printf '\n配置：\n  APP_MODE=local|remote — restart_app 的连接模式\n  SSH_TARGET, TUNNEL_PORT, REMOTE_WEB_PORT — SSH 目标和 Web 隧道两端端口\n  SERVER_DIR, DEPLOY_REF — 远端部署目录与发布分支（默认使用当前检出的分支）\n  DRY_RUN=1 — 只读预演 server_update\n  DEPLOY_VALIDATION_FILE — 复用该提交已有的构建和测试记录（可选）\n  MAC_SERVER_NODE — 本机后端 Node 绝对路径（可选）\n'
 
 ## dev_app — 启动 Mac 桌面，连接本机测试后端
 dev_app:

@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { loadConfig, getRepoPaths } from '../../infrastructure/processes/config.mjs';
 import { acquireLock } from '../../infrastructure/processes/lock.mjs';
-import { deployCurrentSource } from './local-source.mjs';
+import { deployCurrentSource, readDeploymentSource } from './local-source.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
@@ -51,10 +51,14 @@ export async function runDeployment({ repoRoot, env = process.env, dryRun = fals
   const sources = await Promise.all(['common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'].map((name) => readFile(path.join(directory, 'remote', name), 'utf8')));
   const quiescence = await readFile(path.join(repoRoot, 'desktop_mac/infrastructure/processes/quiescence.mjs'), 'utf8');
   const source = sources.join('\n');
-  const execute = (options, output, bundleFile) => remote({ config,
-    payload: { config, validation, quiescence, ...options }, source, report: output, bundleFile });
-  const deploy = () => deployCurrentSource({ config, dryRun, execute, report });
-  report(`[server_update] ${dryRun ? '只读预演' : '部署'} ${config.sshTarget}:${config.serverDir} · ${config.deployRef}`);
+  const deploy = async () => {
+    const { currentSha, deployRef } = await readDeploymentSource(config);
+    const resolved = { ...config, deployRef };
+    const execute = (options, output, bundleFile) => remote({ config: resolved,
+      payload: { config: resolved, validation, quiescence, ...options }, source, report: output, bundleFile });
+    report(`[server_update] ${dryRun ? '只读预演' : '部署'} ${config.sshTarget}:${config.serverDir} · ${deployRef}`);
+    return deployCurrentSource({ root: config.repoRealPath, currentSha, dryRun, execute, report });
+  };
   if (dryRun) return deploy();
   const paths = getRepoPaths(config.repoRealPath);
   const owner = { repoRealPath: config.repoRealPath, operation: 'server_update' };
