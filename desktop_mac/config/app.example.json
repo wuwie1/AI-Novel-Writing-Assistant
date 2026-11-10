@@ -3,8 +3,10 @@
   "devUiPort": 15174,
   "appUiPort": 15175,
   "tunnelPort": 15173,
+  "qdrantTunnelPort": 16333,
   "sshTarget": "root@152.136.155.200",
   "remoteWebPort": 18080,
+  "remoteQdrantPort": 6333,
   "maintenanceProbePort": 18081,
   "serverDir": "/data/write/AI-Novel-Writing-Assistant",
   "deployRef": "current"

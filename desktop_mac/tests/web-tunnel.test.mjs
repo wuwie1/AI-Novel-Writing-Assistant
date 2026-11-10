@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { ensureWebTunnel, loadWebConfig } from '../../infra/server/tunnel/ensure.mjs';
-import { webHealthy } from '../../infra/server/tunnel/local.mjs';
+import { ensureQdrantTunnel, ensureWebTunnel, loadWebConfig } from '../../infra/server/tunnel/ensure.mjs';
+import { qdrantHealthy, webHealthy } from '../../infra/server/tunnel/local.mjs';
 import { defaultConfigValues } from '../infrastructure/processes/config.mjs';
 
 const config = { ...defaultConfigValues, repoRealPath: '/test/checkout' };
@@ -91,4 +91,54 @@ test('readiness requires an HTML homepage and the application health response', 
   assert.equal(await probe(new Response('OK'), health()), false);
   assert.equal(await probe(page(), page()), false);
   assert.equal(await probe(page(), Response.json({ success: false, data: { status: 'ok' } })), false);
+});
+
+test('adding Qdrant to a running Web tunnel starts only its companion and reuses it on the next invocation', async () => {
+  const web = fixture([[primary, ready]]);
+  const qdrant = fixture([], { owner: 'qdrant', manager: 12 });
+  for (const status of ['started', 'ready']) {
+    assert.equal((await ensureWebTunnel(config, web.io)).status, 'ready');
+    assert.deepEqual(await ensureQdrantTunnel(config, qdrant.io), {
+      url: 'http://127.0.0.1:16333/dashboard/', port: 16333, status,
+    });
+  }
+  assert.deepEqual(web.actions, []);
+  assert.deepEqual(qdrant.actions, [['start', 16333]]);
+});
+
+test('a Qdrant outage keeps the forward, a foreign listener is never signalled, and status is read-only', async () => {
+  const port = config.qdrantTunnelPort;
+  const { io, actions, ports } = fixture([[port, { owner: 'qdrant', manager: 12 }]]);
+  io.healthy = async () => false;
+  assert.equal((await ensureQdrantTunnel(config, io)).status, 'unavailable');
+  io.healthy = async () => true;
+  assert.equal((await ensureQdrantTunnel(config, io, 'status')).status, 'ready');
+  ports.set(port, { owner: 'other' });
+  await assert.rejects(ensureQdrantTunnel(config, io), /QDRANT_TUNNEL_PORT/);
+  await ensureQdrantTunnel(config, io, 'stop');
+  ports.delete(port);
+  await assert.rejects(ensureQdrantTunnel(config, io, 'status'), /尚未就绪/);
+  assert.deepEqual(actions, []);
+  ports.set(port, { owner: 'qdrant', manager: 12 });
+  await ensureQdrantTunnel(config, io, 'stop');
+  assert.deepEqual(actions, [['stop', port]]);
+});
+
+test('the independent browser alternate reserves the Qdrant port', async () => {
+  const { io } = fixture([[primary, { owner: 'desktop' }]]);
+  assert.equal((await ensureWebTunnel({ ...config, qdrantTunnelPort: alternate }, io)).port, alternate + 1);
+  await assert.rejects(ensureQdrantTunnel({ ...config, qdrantTunnelPort: primary }, io), /QDRANT_TUNNEL_PORT/);
+});
+
+test('Qdrant uses its own readiness probe and requires a working dashboard', async () => {
+  const url = 'http://127.0.0.1:16333/dashboard/';
+  const probe = (pageStatus, readyStatus) => qdrantHealthy(url, async input => {
+    const route = new URL(input).pathname;
+    if (route === '/dashboard/') return new Response('<html></html>', { status: pageStatus, headers: { 'content-type': 'text/html' } });
+    if (route === '/readyz') return new Response('all shards are ready', { status: readyStatus });
+    throw new Error(`Unexpected route ${route}`);
+  });
+  assert.equal(await probe(200, 200), true);
+  assert.equal(await probe(404, 200), false);
+  assert.equal(await probe(200, 503), false);
 });

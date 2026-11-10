@@ -3,12 +3,13 @@
 
 export APP_MODE LOCAL_API_PORT DEV_UI_PORT APP_UI_PORT TUNNEL_PORT SSH_TARGET
 export REMOTE_WEB_PORT MAINTENANCE_PROBE_PORT SERVER_DIR DEPLOY_REF DRY_RUN DEPLOY_VALIDATION_FILE
+export QDRANT_TUNNEL_PORT REMOTE_QDRANT_PORT
 export MAC_APP_MODE MAC_RENDERER_OUT_DIR MAC_SERVER_NODE
 
 ## list — 列出 Mac 桌面命令及配置说明
 list:
 	@awk '/^## / { sub(/^## /, ""); print }' Makefile
-	@printf '\n配置：\n  APP_MODE=local|remote — restart_app 的连接模式\n  SSH_TARGET, TUNNEL_PORT, REMOTE_WEB_PORT — SSH 目标和 Web 隧道两端端口\n  SERVER_DIR, DEPLOY_REF — 远端部署目录与发布分支（默认使用当前检出的分支）\n  DRY_RUN=1 — 只读预演 server_update\n  DEPLOY_VALIDATION_FILE — 复用该提交已有的构建和测试记录（可选）\n  MAC_SERVER_NODE — 本机后端 Node 绝对路径（可选）\n'
+	@printf '\n配置：\n  APP_MODE=local|remote — restart_app 的连接模式\n  SSH_TARGET, TUNNEL_PORT, REMOTE_WEB_PORT — SSH 目标和 Web 隧道两端端口\n  QDRANT_TUNNEL_PORT, REMOTE_QDRANT_PORT — Qdrant 管理页隧道两端端口\n  SERVER_DIR, DEPLOY_REF — 远端部署目录与发布分支（默认使用当前检出的分支）\n  DRY_RUN=1 — 只读预演 server_update\n  DEPLOY_VALIDATION_FILE — 复用该提交已有的构建和测试记录（可选）\n  MAC_SERVER_NODE — 本机后端 Node 绝对路径（可选）\n'
 
 ## dev_app — 启动 Mac 桌面，连接本机测试后端
 dev_app:
@@ -26,7 +27,7 @@ stop_app:
 restart_app:
 	@node desktop_mac/scripts/mac.mjs restart_app
 
-## ssh_server — 检查并恢复独立 Web 隧道，显示浏览器访问地址
+## ssh_server — 建立或恢复 Web 和 Qdrant 隧道，显示两个浏览器地址
 ssh_server:
 	@node infra/server/tunnel/ensure.mjs
 

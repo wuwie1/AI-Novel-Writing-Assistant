@@ -6,8 +6,10 @@ const DEFAULTS = Object.freeze({
   devUiPort: 15174,
   appUiPort: 15175,
   tunnelPort: 15173,
+  qdrantTunnelPort: 16333,
   sshTarget: 'root@152.136.155.200',
   remoteWebPort: 18080,
+  remoteQdrantPort: 6333,
   maintenanceProbePort: 18081,
   serverDir: '/data/write/AI-Novel-Writing-Assistant',
   deployRef: 'current',
@@ -16,6 +18,7 @@ const DEFAULTS = Object.freeze({
 const ENV_FIELDS = Object.freeze({
   localApiPort: 'LOCAL_API_PORT', devUiPort: 'DEV_UI_PORT', appUiPort: 'APP_UI_PORT',
   tunnelPort: 'TUNNEL_PORT', sshTarget: 'SSH_TARGET', remoteWebPort: 'REMOTE_WEB_PORT',
+  qdrantTunnelPort: 'QDRANT_TUNNEL_PORT', remoteQdrantPort: 'REMOTE_QDRANT_PORT',
   maintenanceProbePort: 'MAINTENANCE_PROBE_PORT', serverDir: 'SERVER_DIR', deployRef: 'DEPLOY_REF',
 });
 

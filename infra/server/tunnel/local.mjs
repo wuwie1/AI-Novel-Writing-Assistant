@@ -7,25 +7,37 @@ import { tunnelMatches } from '../../../desktop_mac/infrastructure/transport/ssh
 const exec = promisify(execFile);
 
 /** A responding port alone cannot tell whether quitting the desktop will close it. */
-export async function webHealthy(url, request = fetch) {
+async function browserHealthy(url, healthPath, request, checkHealthBody) {
   const options = { signal: AbortSignal.timeout(3000), redirect: 'error' };
   try {
-    const [page, api] = await Promise.all([request(url, options), request(new URL('/api/health', url), options)]);
-    const [html, health] = await Promise.all([page.text(), api.json()]);
+    const [page, api] = await Promise.all([request(url, options), request(new URL(healthPath, url), options)]);
+    const [html, health] = await Promise.all([page.text(), api.text()]);
     return page.status === 200 && /^text\/html\b/i.test(page.headers.get('content-type') ?? '')
-      && /<html[\s>]/i.test(html) && api.status === 200 && health?.success === true && health.data?.status === 'ok';
+      && /<html[\s>]/i.test(html) && api.status === 200 && (!checkHealthBody || checkHealthBody(health));
   } catch { return false; }
 }
 
-export function localTunnel(config) {
+export function webHealthy(url, request = fetch) {
+  return browserHealthy(url, '/api/health', request, text => {
+    const health = JSON.parse(text);
+    return health?.success === true && health.data?.status === 'ok';
+  });
+}
+
+export function qdrantHealthy(url, request = fetch) {
+  return browserHealthy(url, '/readyz', request);
+}
+
+export function localTunnel(config, service = 'web') {
   const root = config.repoRealPath;
-  const script = path.join(root, 'infra/server/tunnel.sh');
+  const script = path.join(root, 'infra/server/tunnel/forward.sh');
+  const remotePort = service === 'qdrant' ? config.remoteQdrantPort : config.remoteWebPort;
   const supervisor = path.join(root, 'desktop_mac/infrastructure/processes/launchers/supervisor.mjs');
 
   function control(action, port) {
     return exec('bash', [script, action], {
       cwd: root,
-      env: { ...process.env, AI_NOVEL_SSH_TARGET: config.sshTarget, AI_NOVEL_LOCAL_PORT: String(port), AI_NOVEL_REMOTE_PORT: String(config.remoteWebPort) },
+      env: { ...process.env, AI_NOVEL_TUNNEL_SERVICE: service, AI_NOVEL_SSH_TARGET: config.sshTarget, AI_NOVEL_LOCAL_PORT: String(port), AI_NOVEL_REMOTE_PORT: String(remotePort) },
     });
   }
 
@@ -60,9 +72,9 @@ export function localTunnel(config) {
         if (error.code === 1 && retry) return inspect(port, false);
         throw error;
       }
-      const matches = await tunnelMatches({ pid, sshTarget: config.sshTarget, localPort: port, remotePort: config.remoteWebPort });
-      if (manager && parent === manager) return { owner: matches ? 'web' : 'stale', manager };
-      if (matches) {
+      const matches = await tunnelMatches({ pid, sshTarget: config.sshTarget, localPort: port, remotePort });
+      if (manager && parent === manager) return { owner: matches ? service : 'stale', manager };
+      if (matches && service === 'web') {
         const argv = await readProcessArgv(parent);
         if (argv?.[1] === supervisor && argv[2] === 'tunnel') return { owner: 'desktop' };
       }
@@ -70,5 +82,5 @@ export function localTunnel(config) {
     return { owner: 'other' };
   }
 
-  return { inspect, control, healthy: webHealthy };
+  return { inspect, control, healthy: service === 'qdrant' ? qdrantHealthy : webHealthy };
 }
