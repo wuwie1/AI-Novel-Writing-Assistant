@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private(set) var window: NSWindow!
     private var web: NativeWebView!
     private var socket: NativeCommandSocket!
-    private var socketCloseApproved = false
+    private var terminationApproved = false
     private var frameRecovery = WindowFrameRecovery()
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -34,12 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if socketCloseApproved { socketCloseApproved = false; return .terminateNow }
-        guard web?.isReady == true else { return .terminateNow }
-        web.requestClose { [weak self] allowed in
-            guard let self else { return }
-            if allowed { self.socket.replyToPendingClose(ok: true); sender.reply(toApplicationShouldTerminate: true) }
-            else { self.socket.replyToPendingClose(ok: false); sender.reply(toApplicationShouldTerminate: false) }
+        if terminationApproved { terminationApproved = false; return .terminateNow }
+        guard let web else { return .terminateNow }
+        DispatchQueue.main.async {
+            web.requestQuit { result in sender.reply(toApplicationShouldTerminate: result == .allowed) }
         }
         return .terminateLater
     }
@@ -47,9 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowShouldClose(_: NSWindow) -> Bool {
         guard web.isReady else { return false }
         web.requestClose { [weak self] allowed in
-            guard let self, allowed else { self?.socket.replyToPendingClose(ok: false); return }
-            self.socket.replyToPendingClose(ok: true)
-            self.window.orderOut(nil)
+            if allowed { self?.window.orderOut(nil) }
         }
         return false
     }
@@ -98,8 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func saveFromMenu(_: Any?) { web?.requestSave() }
 
     @objc private func reloadFromMenu(_: Any?) {
-        guard web?.isReady == true else { return }
-        web.requestClose { [weak self] allowed in if allowed { self?.web.reload() } }
+        guard let web, web.isReady || web.rendererState == .terminated else { return }
+        web.reload()
     }
 
     @objc private func backFromMenu(_: Any?) { web?.navigateHistory(-1) }
@@ -136,21 +132,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showFatal(_ message: String) {
         let alert = NSAlert(); alert.alertStyle = .critical; alert.messageText = "无法启动 AI Novel"; alert.informativeText = message
-        alert.runModal(); NSApp.terminate(nil)
+        alert.runModal()
+        terminationApproved = true  // Startup failed before any workspace was loaded.
+        NSApp.terminate(nil)
     }
 }
 
 extension AppDelegate: NativeSocketDelegate {
     var socketStatus: [String: Any] {
-        ["pid": ProcessInfo.processInfo.processIdentifier, "repo": launch.repoPath, "mode": launch.mode, "backendIdentity": launch.backendIdentity, "rendererReady": web?.isReady ?? false]
+        ["pid": ProcessInfo.processInfo.processIdentifier, "repo": launch.repoPath, "mode": launch.mode, "backendIdentity": launch.backendIdentity, "rendererReady": web?.isReady ?? false, "rendererState": web.rendererState.rawValue]
     }
     func focusWindow() { if window == nil { createWindow(); web.load() }; window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
-    func requestSocketClose(_ reply: @escaping (Bool) -> Void) {
-        guard web?.isReady == true else { reply(false); return }
-        web.requestClose { [weak self] allowed in
-            self?.socket.replyToPendingClose(ok: allowed)
-            reply(allowed)
-        }
-    }
-    func terminateAfterSocketClose() { socketCloseApproved = true; NSApp.terminate(nil) }
+    func requestSocketClose(_ reply: @escaping (WindowCloseResult) -> Void) { web.requestQuit(reply) }
+    func terminateAfterSocketClose() { terminationApproved = true; NSApp.terminate(nil) }
 }

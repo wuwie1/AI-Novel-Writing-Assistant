@@ -5,8 +5,19 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
     private(set) var view: WKWebView!
     private let launch: LaunchArguments
     private weak var hostWindow: NSWindow?
-    private var closeReplies: [(Bool) -> Void] = []
-    private var awaitingClose: String?
+    private var quitAlert: NSAlert?
+    private lazy var closeGate: DocumentCloseGate = DocumentCloseGate(present: { [weak self] prompt, id in
+        if prompt == .document { self?.sendEvent("requestClose", requestId: id) }
+        else { self?.confirmQuitWhileLoading(id) }
+    }, dismiss: { [weak self] prompt, id, result in
+        guard let self else { return }
+        if prompt == .window, let sheet = self.quitAlert?.window {
+            self.quitAlert = nil
+            sheet.sheetParent?.endSheet(sheet, returnCode: .cancel)
+        } else if prompt == .document && result == .timedOut && self.isReady {
+            self.sendEvent("closeExpired", requestId: id)
+        }
+    })
     private let protocolVersion = 1
     private var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0" }
     private var dataStoreIdentifier: UUID {
@@ -14,7 +25,8 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         let s = Array(raw.prefix(32)); let formatted = "\(String(s[0..<8]))-\(String(s[8..<12]))-5\(String(s[13..<16]))-a\(String(s[17..<20]))-\(String(s[20..<32]))"
         return UUID(uuidString: formatted) ?? UUID()
     }
-    var isReady = false
+    var rendererState: DocumentCloseGate.Renderer { closeGate.renderer }
+    var isReady: Bool { rendererState == .ready }
 
     init(launch: LaunchArguments, hostWindow: NSWindow) {
         self.launch = launch; self.hostWindow = hostWindow
@@ -33,18 +45,34 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         view.autoresizingMask = [.width, .height]
     }
 
-    func load() { isReady = false; view.load(URLRequest(url: launch.url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 30)) }
-    func reload() { isReady = false; view.reload() }
+    func load() { view.load(URLRequest(url: launch.url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: 30)) }
+    func reload() { view.reload() }
     func navigateHistory(_ offset: Int) { if isReady { view.evaluateJavaScript("window.history.go(\(offset < 0 ? -1 : 1))") } }
 
     func requestClose(_ completion: @escaping (Bool) -> Void) {
-        guard isReady, awaitingClose == nil else { completion(false); return }
-        let id = UUID().uuidString; awaitingClose = id; closeReplies.append(completion)
-        sendEvent("requestClose", requestId: id)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 55) { [weak self] in
-            guard let self, self.awaitingClose == id else { return }
-            self.sendEvent("closeExpired", requestId: id)
-            self.finishClose(allowed: false)
+        closeGate.begin(quitting: false) { completion($0 == .allowed) }
+    }
+
+    func requestQuit(_ completion: @escaping (WindowCloseResult) -> Void) {
+        closeGate.begin(quitting: true, completion: completion)
+    }
+
+    private func confirmQuitWhileLoading(_ id: String) {
+        guard let window = hostWindow else { closeGate.windowDecision(.unavailable, id: id); return }
+        guard window.attachedSheet == nil else { closeGate.windowDecision(.pending, id: id); return }
+        let alert = NSAlert()
+        alert.messageText = "退出 AI Novel？"
+        alert.informativeText = "创作页面暂时无法确认保存状态。可保留窗口继续检查，退出可能丢失尚未保存的输入。"
+        alert.addButton(withTitle: "保留窗口").keyEquivalent = "\r"
+        alert.addButton(withTitle: "退出应用")
+        quitAlert = alert
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, self.quitAlert === alert else { return }
+            self.quitAlert = nil
+            self.closeGate.windowDecision(response == .alertSecondButtonReturn ? .allowed : .cancelled, id: id)
         }
     }
 
@@ -64,12 +92,6 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         view.evaluateJavaScript(js)
     }
 
-    private func finishClose(allowed: Bool) {
-        awaitingClose = nil
-        let callbacks = closeReplies; closeReplies.removeAll()
-        callbacks.forEach { $0(allowed) }
-    }
-
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "aiNovelMac", message.frameInfo.isMainFrame,
               let origin = Optional(message.frameInfo.securityOrigin),
@@ -83,16 +105,24 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
                   return value is String || value is Int || value is Bool
               }) else { return }
         switch type {
-        case "rendererReady": isReady = true
+        case "rendererReady": closeGate.documentReady()
         case "closeNeedsAttention":
-            guard let id = body["requestId"] as? String, id == awaitingClose, let window = hostWindow else { return }
+            guard let id = body["requestId"] as? String, closeGate.awaitsDocument(id), let window = hostWindow else { return }
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         case "closeDecision":
-            guard let id = body["requestId"] as? String, id == awaitingClose,
+            guard let id = body["requestId"] as? String,
                   let decision = body["decision"] as? String, ["allow", "cancel"].contains(decision) else { return }
-            finishClose(allowed: decision == "allow")
+            let result: WindowCloseResult
+            switch (decision, body["reason"] as? String) {
+            case ("allow", nil): result = .allowed
+            case ("cancel", nil): result = .cancelled
+            case ("cancel", "document_busy"): result = .busy
+            case ("cancel", "close_pending"): result = .pending
+            default: result = .unavailable
+            }
+            closeGate.documentDecision(result, id: id)
         case "saveResult": break
         case "openExternal":
             guard let address = body["url"] as? String, address.utf8.count < 4096,
@@ -112,15 +142,16 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
         let ownBlob = target.scheme == "blob" && URL(string: String(target.absoluteString.dropFirst(5))).map(sameOrigin) == true
         if action.shouldPerformDownload && (sameOrigin(target) || ownBlob) { decisionHandler(.download); return }
         if sameOrigin(target), action.targetFrame?.isMainFrame == true, isReady {
-            requestClose { [weak self] allowed in
-                if allowed { self?.isReady = false }
-                decisionHandler(allowed ? .allow : .cancel)
-            }
+            requestClose { allowed in decisionHandler(allowed ? .allow : .cancel) }
             return
         }
         if target.scheme == "about" || sameOrigin(target) { decisionHandler(.allow); return }
         if action.navigationType == .linkActivated, ["http", "https"].contains(target.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(target) }
         decisionHandler(.cancel)
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        closeGate.documentCommitted()
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
@@ -138,7 +169,7 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
 
     func webView(_ webView: WKWebView, createWebViewWith _: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures _: WKWindowFeatures) -> WKWebView? {
         guard let url = action.request.url else { return nil }
-        if sameOrigin(url) { requestClose { [weak self] allowed in if allowed { self?.isReady = false; webView.load(URLRequest(url: url)) } } }
+        if sameOrigin(url) { webView.load(URLRequest(url: url)) }
         else if ["http", "https"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
         return nil
     }
@@ -165,8 +196,7 @@ final class NativeWebView: NSObject, WKNavigationDelegate, WKUIDelegate, WKScrip
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        isReady = false
-        finishClose(allowed: false)
+        closeGate.processTerminated()
         guard let window = hostWindow else { return }
         let alert = NSAlert()
         alert.messageText = "创作页面意外停止"

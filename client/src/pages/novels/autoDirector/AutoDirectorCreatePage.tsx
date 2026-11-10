@@ -582,8 +582,7 @@ function AutoDirectorCreatePage() {
       return;
     }
     carryoverRequestedRef.current = requestKey;
-    setCarryoverPanelState({ kind: "loading" });
-    void generateCarryoverContract({ mode: resolvedCarryoverMode, bookAnalysisId: resolvedCarryoverAnalysisId, key: requestKey });
+    setCarryoverPanelState({ kind: "idle" });
   }, [activeCarryoverContract, generateCarryoverContract, resolvedCarryoverAnalysisId, resolvedCarryoverMode, showCarryoverPanel]);
 
   const adoptCarryoverContract = async () => {
@@ -644,8 +643,8 @@ function AutoDirectorCreatePage() {
       resolvedCarryoverAnalysisId,
     );
   const visibleCarryoverPanelState: CreativeCarryoverPanelState =
-    !panelBelongsToCurrentSource || !readyPanelHasCurrentContract || carryoverPanelState.kind === "idle"
-      ? { kind: "loading" }
+    !panelBelongsToCurrentSource || !readyPanelHasCurrentContract
+      ? { kind: "idle" }
       : carryoverPanelState;
   const isCarryoverGenerating = carryoverGeneratingKey === currentCarryoverKey;
   const carryoverModeLabel = resolvedCarryoverMode === "continuation" ? "续写原作" : "参考创作新书";
@@ -658,7 +657,7 @@ function AutoDirectorCreatePage() {
         ? activeCarryoverContract ? "新方案生成失败，可查看并采用保留的方案。" : "方案生成失败，可打开后重试。"
         : activeCarryoverContract?.adopted
           ? "方案已采用，将用于后续故事规划。"
-          : "方案已准备好，查看并采用后即可生成整书方向。";
+          : activeCarryoverContract ? "方案已准备好，查看并采用后即可生成整书方向。" : "查看参考作品后，可让 AI 生成创作方案。";
   const regenerateCarryoverContract = () => {
     if (!resolvedCarryoverMode || !resolvedCarryoverAnalysisId || isCarryoverGenerating || isCarryoverAdopting) return;
     void generateCarryoverContract({

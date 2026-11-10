@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientPlatformProvider, type ClientPlatform, type DocumentGuard } from "@/platform";
@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/toast";
 import { macEnvironment, postNative, type MacMessage } from "./native";
 
 type LeaveRequest = { requestId?: string; resolve: (allowed: boolean) => void };
+type LeaveDecision = "allow" | "cancel" | "document_busy" | "close_pending";
 
 /** Explicit document contracts; never inspect DOM text to infer saved state. */
 export function MacDocumentProtection({ children }: { children: ReactNode }) {
@@ -18,10 +19,52 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   const [prompt, setPrompt] = useState<DocumentGuard[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const remember = (event: PointerEvent) => {
+      const activeElement = document.activeElement;
+      previousFocus.current = event.target instanceof Element && event.target.closest(".mac-secondary,.mac-icon-rail,.mac-toolbar") &&
+        activeElement instanceof HTMLElement && activeElement.matches('input,textarea,[contenteditable="true"]') ? activeElement : null;
+    };
+    document.addEventListener("pointerdown", remember, true);
+    return () => document.removeEventListener("pointerdown", remember, true);
+  }, []);
+  useLayoutEffect(() => {
+    if (!prompt && returnFocus.current?.isConnected) returnFocus.current.focus({preventScroll:true});
+  }, [prompt]);
   const active = useCallback(() => [...guards.current.values()].map((read) => read()).filter((item) => item.dirty || item.busy), []);
+  const finish = useCallback((allowed: boolean) => {
+    const request = answer.current;
+    answer.current = null;
+    if (allowed) returnFocus.current = null;
+    setPrompt(null);
+    setError("");
+    request?.resolve(allowed);
+  }, []);
+  const decideLeave = useCallback(async (requestId?: string): Promise<LeaveDecision> => {
+    const documents = active();
+    if (requestId && (documents.length || answer.current)) {
+      postNative({ type: "closeNeedsAttention", requestId });
+    }
+    if (answer.current) return "close_pending";
+    if (!documents.length) return "allow";
+    if (documents.some((item) => item.busy)) {
+      toast.info("请等待当前保存或生成操作完成，再离开页面。");
+      return "document_busy";
+    }
+    returnFocus.current = previousFocus.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    previousFocus.current = null;
+    setPrompt(documents);
+    setError("");
+    const allowed = await new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
+    return allowed ? "allow" : "cancel";
+  }, [active]);
+  const confirmLeave = useCallback(async () => (await decideLeave()) === "allow", [decideLeave]);
   const platform = useMemo<ClientPlatform>(() => {
     const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
     return {
+      confirmDocumentLeave: confirmLeave,
       editorTypography: { storageKey: "ai-novel.mac.editor.typography", fontSize: 20, lineHeight: 1.6, fontSizes: [16,18,20,22,24], lineHeights: [1.4,1.6,1.8,2] },
       draftStorage: {
         getItem: (key) => localStorage.getItem(prefix + key),
@@ -33,29 +76,7 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
         return () => { guards.current.delete(id); };
       },
     };
-  }, []);
-  const finish = useCallback((allowed: boolean) => {
-    const request = answer.current;
-    answer.current = null;
-    setPrompt(null);
-    setError("");
-    request?.resolve(allowed);
-  }, []);
-  const confirmLeave = useCallback(async (requestId?: string) => {
-    const documents = active();
-    if (requestId && (documents.length || answer.current)) {
-      postNative({ type: "closeNeedsAttention", requestId });
-    }
-    if (answer.current) return false;
-    if (!documents.length) return true;
-    if (documents.some((item) => item.busy)) {
-      toast.info("请等待当前保存或生成操作完成，再离开页面。");
-      return false;
-    }
-    setPrompt(documents);
-    setError("");
-    return new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
-  }, [active]);
+  }, [confirmLeave]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && active().length > 0,
   );
@@ -78,7 +99,10 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       const message = (event as CustomEvent<MacMessage>).detail;
       if (message?.protocolVersion !== 1) return;
       if (message.type === "requestClose") {
-        void confirmLeave(message.requestId).then((allowed) => postNative({ type: "closeDecision", requestId: message.requestId, decision: allowed ? "allow" : "cancel" }));
+        void decideLeave(message.requestId).then(result => postNative({
+          type: "closeDecision", requestId: message.requestId, decision: result === "allow" ? "allow" : "cancel",
+          ...(result === "document_busy" || result === "close_pending" ? {reason: result} : {}),
+        }));
       } else if (message.type === "closeExpired" && message.requestId && answer.current?.requestId === message.requestId) {
         finish(false);
       } else if (message.type === "windowActivated") {
@@ -92,13 +116,17 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
         })().catch((failure: unknown) => toast.error(failure instanceof Error ? failure.message : "保存失败，请重试。"));
       }
     };
+    const reportReady = () => postNative({type: "rendererReady"});
     window.addEventListener("ai-novel-mac", onNative);
+    window.addEventListener("pageshow", reportReady);
+    reportReady();
     return () => {
+      window.removeEventListener("pageshow", reportReady);
       window.removeEventListener("ai-novel-mac", onNative);
       answer.current?.resolve(false);
       answer.current = null;
     };
-  }, [active, confirmLeave, finish, queryClient]);
+  }, [active, decideLeave, finish, queryClient]);
 
   // Read the guards after React has committed the save result, including any edits made during the save.
   useEffect(() => {
@@ -127,7 +155,9 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
   return <ClientPlatformProvider value={platform}>
     {children}
     <Dialog open={prompt !== null} onOpenChange={(open) => { if (!open && !saving) finish(false); }}>
-      <DialogContent aria-describedby="mac-close-description">
+      <DialogContent aria-describedby="mac-close-description" onCloseAutoFocus={event => {
+        if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus({preventScroll:true}); }
+      }}>
         <DialogTitle>保存修改后离开？</DialogTitle>
         <DialogDescription id="mac-close-description">{prompt?.map((item) => item.label).join("、")}有未保存的修改。</DialogDescription>
         {error ? <p role="alert">{error}</p> : null}

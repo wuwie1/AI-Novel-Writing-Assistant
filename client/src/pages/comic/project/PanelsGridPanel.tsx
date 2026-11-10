@@ -19,7 +19,7 @@ import {
   estimateBatchCost,
   generatePanelImage,
   getBatchJob,
-  listComicEpisodes,
+  type ComicEpisode,
   listComicPanels,
   panelImageUrl,
   preparePanelImage,
@@ -631,7 +631,7 @@ function PanelDetailDialog({
   );
 }
 
-export function PanelsGridPanel({ projectId, provider }: { projectId: string; provider: string }) {
+export function PanelsGridPanel({ projectId, provider, episodes, controlledId }: { projectId: string; provider: string; episodes: ComicEpisode[]; controlledId?: string | null }) {
   const queryClient = useQueryClient();
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [busyPanelId, setBusyPanelId] = useState("");
@@ -639,14 +639,8 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
   const [viewMode, setViewMode] = useState<"grid" | "strip">("grid");
   const imageFlow = useImageGenerationFlow();
 
-  const { data: episodes = [] } = useQuery({
-    queryKey: ["comic", "episodes", projectId],
-    queryFn: () => listComicEpisodes(projectId),
-  });
-
-  const activeEpisode = selectedEpisodeId
-    ? episodes.find((episode) => episode.id === selectedEpisodeId)
-    : episodes[0];
+  const episodeId = controlledId === undefined ? selectedEpisodeId ?? episodes[0]?.id : controlledId;
+  const activeEpisode = episodes.find(episode => episode.id === episodeId);
 
   const { data: panels = [], isLoading: panelsLoading, refetch: refetchPanels } = useQuery({
     queryKey: ["comic", "panels", activeEpisode?.id],
@@ -685,7 +679,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
       <ImageGenerationConfirmDialog {...imageFlow.dialogProps} />
       {episodes.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <div className="flex flex-1 flex-wrap gap-1.5">
+          {controlledId === undefined && <div className="flex flex-1 flex-wrap gap-1.5">
             {episodes.map((episode) => (
               <button
                 key={episode.id}
@@ -696,7 +690,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
                 第 {episode.order} 话
               </button>
             ))}
-          </div>
+          </div>}
           <div className="ml-auto flex rounded-md border bg-background p-0.5">
             <button
               type="button"

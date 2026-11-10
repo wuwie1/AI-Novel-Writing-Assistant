@@ -59,7 +59,7 @@ main().catch((error) => {
   const code = Number.isInteger(error.exitCode) ? error.exitCode : (isDeployment ? 6 : 5);
   const hint = error.lockBusy
     ? '另一个桌面启动或关闭命令正在运行，请等它结束后再试。'
-    : FAILURE_HINTS[code] ?? FAILURE_HINTS[5];
+    : error.userHint ?? FAILURE_HINTS[code] ?? FAILURE_HINTS[5];
   process.stderr.write(`[${command}] 失败：${hint}\n[${command}] 详情（${error.stage ?? 'lifecycle'}）：${error.message}\nMAC_EXIT_CODE=${code}\n`);
   process.exitCode = code;
 });

@@ -1,5 +1,6 @@
 import { acquireLock, readState, writeState } from '../../infrastructure/processes/lock.mjs';
 import { getRepoPaths } from '../../infrastructure/processes/config.mjs';
+import { requireWindowClose } from './window-close.mjs';
 
 const emptyState = (repoRealPath) => ({ schemaVersion: 1, repoRealPath, requestedMode: null, runningMode: null, backendIdentity: null, buildFingerprint: null, previousSuccessfulBuild: null, processes: {} });
 const validMode = (mode) => mode === 'local' || mode === 'remote';
@@ -58,7 +59,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         try { build ??= await adapters.prepare({ mode, development, config, paths }); }
         catch (error) { await save({ ...snapshot, requestedMode: mode }); throw Object.assign(error, { exitCode: error.exitCode ?? 5 }); }
         const closed = await adapters.requestNativeClose?.(current);
-        if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; the current mode remains available'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
+        requireWindowClose(closed);
         await adapters.waitAppExited?.(current, 60_000);
         previousWindowClosed = true;
       }
@@ -132,7 +133,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
         if (status) {
           if (status.repo !== config.repoRealPath || status.mode !== current.runningMode || status.backendIdentity !== current.backendIdentity) throw Object.assign(new Error('Native window identity does not match the saved state'), { exitCode: 4 });
           const close = await adapters.requestNativeClose?.(current);
-          if (!close?.ok) throw Object.assign(new Error('Application close was cancelled; services remain running'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
+          requireWindowClose(close);
           await adapters.waitAppExited?.(current, 60_000);
         } else if (current.processes.app && await adapters.nativeProcessAlive?.(current)) {
           throw Object.assign(new Error('Native process is still running but its control socket is unavailable; services were left running'), { exitCode: 4 });
@@ -168,7 +169,7 @@ export function createLifecycle({ config, adapters, clock = () => new Date().toI
       try { build = await adapters.prepare({ mode: selectedMode, development: false, config, paths }); }
       catch (error) { await save({ ...current, requestedMode: selectedMode }); throw Object.assign(error, { exitCode: error.exitCode ?? 5 }); }
       const closed = current.runningMode ? await adapters.requestNativeClose?.(current) : { ok: true };
-      if (!closed?.ok) throw Object.assign(new Error('Application close was cancelled; current services remain running'), { exitCode: 3, cancelled: true, stage: '等待窗口确认退出' });
+      requireWindowClose(closed);
       await adapters.waitAppExited?.(current, 60_000);
       if (current.runningMode || current.processes.app) await save(exitedWindowState(current, selectedMode));
       try {

@@ -1,3 +1,5 @@
+import { EntityList, useEntityListHost, useRouteFields, useDocumentGuard } from "@/platform";
+import { useEffect } from "react";
 import { useMemo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Activity, Brain, Clock3, Eye, Network, Package, ScrollText, UserRound } from "lucide-react";
@@ -67,6 +69,16 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
     onBackfillCharacterResources,
     isBackfillingCharacterResources = false,
   } = props;
+  const host = useEntityListHost();
+  const [params, update] = useRouteFields();
+  const requested = params.get("characterId");
+  useEffect(() => {
+    if (host && requested && requested !== selectedCharacterId && characters.some(c => c.id === requested)) onSelectedCharacterChange(requested);
+  }, [host, requested, characters, selectedCharacterId, onSelectedCharacterChange]);
+  const selectCharacter = (id: string) => host ? update({characterId:id}) : onSelectedCharacterChange(id);
+  const changedFields = Object.entries(characterForm).some(([key, value]) => value !== (selectedCharacter?.[key as keyof typeof characterForm] ?? (key === "gender" ? "unknown" : "")));
+  useDocumentGuard({ label:"角色档案", dirty:!!host && !!selectedCharacter && changedFields, busy:isSavingCharacter,
+    discard:() => { if (selectedCharacter) for (const field of Object.keys(characterForm) as Array<keyof typeof characterForm>) onCharacterFormChange(field, String(selectedCharacter[field] ?? (field === "gender" ? "unknown" : ""))); } });
   const lastAppearanceChapter = useMemo(
     () => getLastAppearanceChapter(timelineEvents),
     [timelineEvents],
@@ -99,17 +111,18 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
           </div>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 bg-[linear-gradient(90deg,hsl(var(--muted)/0.18)_0%,hsl(var(--background))_38%)] p-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <CardContent className={host ? "p-4" : "grid gap-4 bg-[linear-gradient(90deg,hsl(var(--muted)/0.18)_0%,hsl(var(--background))_38%)] p-4 xl:grid-cols-[280px_minmax(0,1fr)]"}>
+        <EntityList collection={`characters:${novelId}`} title="本书角色" selection={selectedCharacterId}>
         <aside className="xl:max-h-[calc(100dvh-220px)] xl:overflow-y-auto xl:pr-1">
           <CharacterAssetSidebar
             characters={characters}
             selectedCharacterId={selectedCharacterId}
-            onSelectedCharacterChange={onSelectedCharacterChange}
+            onSelectedCharacterChange={selectCharacter}
             onDeleteCharacter={onDeleteCharacter}
             isDeletingCharacter={isDeletingCharacter}
             deletingCharacterId={deletingCharacterId}
           />
-        </aside>
+        </aside></EntityList>
 
         {!selectedCharacter ? (
           <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed px-6 text-center text-sm text-muted-foreground">
@@ -209,7 +222,7 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
                   characters={characters}
                   selectedCharacter={selectedCharacter}
                   selectedCharacterId={selectedCharacterId}
-                  onSelectedCharacterChange={onSelectedCharacterChange}
+                  onSelectedCharacterChange={selectCharacter}
                   llmProvider={llmProvider}
                   llmModel={llmModel}
                 />
@@ -219,7 +232,7 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
                   novelId={novelId}
                   selectedCharacter={selectedCharacter}
                   selectedCharacterId={selectedCharacterId}
-                  onSelectedCharacterChange={onSelectedCharacterChange}
+                  onSelectedCharacterChange={selectCharacter}
                 />
               </TabsContent>
               <TabsContent value="intelligence" className="mt-4">

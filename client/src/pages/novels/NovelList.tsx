@@ -4,11 +4,12 @@ import type {
   DirectorBookAutomationAction,
   DirectorBookAutomationProjection,
 } from "@ai-novel/shared/types/directorRuntime";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useRouteFields } from "@/platform";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDirectorBookAutomationProjection } from "@/api/novelDirector";
 import { continueNovelWorkflow } from "@/api/novelWorkflow";
-import { deleteNovel, downloadNovelExport, getNovelList, type NovelListItem } from "@/api/novel";
+import { deleteNovel, downloadNovelExport, getNovelDetail, getNovelList, type NovelListItem } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
 import AICockpit from "@/components/autoDirector/AICockpit";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,10 @@ function createDownload(blob: Blob, fileName: string): void {
 
 export interface NovelListPresentation {
   novels: NovelListItem[];
+  selectedNovel: NovelListItem | null;
+  selectionPending: boolean;
+  retrySelection: () => void;
+  clearFilters: () => void;
   total: number;
   page: number;
   totalPages: number;
@@ -86,7 +91,7 @@ export interface NovelListPresentation {
 
 export default function NovelList({ render }: { render?: (model: NovelListPresentation) => ReactNode } = {}) {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams, update] = useRouteFields();
   const queryClient = useQueryClient();
   const storedView = typeof window !== "undefined" ? window.localStorage.getItem("novel-list-view") : null;
   const initialView = searchParams.get("view") === "workbench" || searchParams.get("view") === "shelf"
@@ -105,16 +110,30 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
     ? searchParams.get("sort")
     : "updated") as "updated" | "created" | "progress";
   const initialSearch = searchParams.get("q")?.trim() ?? "";
-  const [view, setView] = useState<"shelf" | "workbench">(initialView);
-  const [status, setStatus] = useState<StatusFilter>(initialStatus);
-  const [writingMode, setWritingMode] = useState<WritingModeFilter>(initialWritingMode);
-  const [narrativeForm, setNarrativeForm] = useState<"all" | "short_story" | "long_novel">(initialNarrativeForm);
-  const [searchInput, setSearchInput] = useState(initialSearch);
-  const [search, setSearch] = useState(initialSearch);
-  const [sort, setSort] = useState<"updated" | "created" | "progress">(initialSort);
+  const view = initialView;
+  const status = initialStatus;
+  const writingMode = initialWritingMode;
+  const narrativeForm = initialNarrativeForm;
+  const sort = initialSort;
+  const search = initialSearch;
+  const rawPage = Number(searchParams.get("page"));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const filter = (key: string, value: string, fallback = "all") => update({ [key]: value === fallback ? null : value, page: null }, true);
+  const setStatus = (value: StatusFilter) => filter("status", value);
+  const setWritingMode = (value: WritingModeFilter) => filter("writingMode", value);
+  const setNarrativeForm = (value: NovelListPresentation["narrativeForm"]) => filter("narrativeForm", value);
+  const setSort = (value: NovelListPresentation["sort"]) => filter("sort", value, "updated");
+  const setPage = (value: number) => update({ page: value > 1 ? String(value) : null });
+  const [draft, setDraft] = useState<{ origin: URLSearchParams; text: string } | null>(null);
+  const searchInput = draft?.origin === searchParams ? draft.text : search;
+  const setSearchInput = (text: string) => setDraft({ origin: searchParams, text });
+  useEffect(() => {
+    if (draft?.origin !== searchParams) return;
+    const timer = window.setTimeout(() => update({ q: draft.text.trim(), page: null }, true), 250);
+    return () => window.clearTimeout(timer);
+  }, [draft, searchParams, update]);
   const [cockpitNovelId, setCockpitNovelId] = useState<string | null>(null);
   const [coverNovelId, setCoverNovelId] = useState<string | null>(null);
-  const [page, setPage] = useState(Math.max(1, Number(searchParams.get("page") || "1") || 1));
   const { candidateCount: recoveryCandidateCount, openDialog: openRecoveryDialog } = useTaskRecovery();
   const effectiveSearch = render || view === "shelf" ? search : "";
   const effectiveNarrativeForm = render || view === "shelf" ? narrativeForm : "all";
@@ -144,35 +163,6 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
         : false;
     },
   });
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [searchInput]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [view, search, status, writingMode, narrativeForm, sort]);
-
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    const assign = (key: string, value: string, fallback: string) => {
-      if (!value || value === fallback) next.delete(key);
-      else next.set(key, value);
-    };
-    assign("view", view, "shelf");
-    assign("status", status, "all");
-    assign("writingMode", writingMode, "all");
-    assign("narrativeForm", narrativeForm, "all");
-    assign("sort", sort, "updated");
-    assign("q", search, "");
-    assign("page", String(page), "1");
-    const current = searchParams.toString();
-    const upcoming = next.toString();
-    if (current !== upcoming) {
-      setSearchParams(next, { replace: true });
-    }
-  }, [narrativeForm, page, search, searchParams, setSearchParams, sort, status, view, writingMode]);
 
   const cockpitProjectionQuery = useQuery({
     queryKey: cockpitNovelId
@@ -252,17 +242,28 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   const allNovels = novelListQuery.data?.data?.items ?? [];
   const totalPages = novelListQuery.data?.data?.totalPages ?? 1;
   const totalNovels = novelListQuery.data?.data?.total ?? 0;
-  const selectedCockpitNovel = allNovels.find((item) => item.id === cockpitNovelId) ?? null;
+  const selectedId = render ? searchParams.get("selectedNovelId") : null;
+  const listed = allNovels.find((item) => item.id === selectedId);
+  const metadata = useQuery({
+    queryKey: queryKeys.novels.detail(selectedId ?? ""),
+    queryFn: () => getNovelDetail(selectedId!), enabled: !!selectedId && !listed && !novelListQuery.isPending, retry: false,
+  });
+  const book = metadata.data?.data;
+  const selectedNovel: NovelListItem | null = listed ?? (book && book.id === selectedId ? {
+    ...book, _count: { chapters: book.chapters.length, characters: book.characters.length },
+  } : null);
+  const findBook = (id: string | null) => allNovels.find(item => item.id === id) ?? (selectedNovel?.id === id ? selectedNovel : null);
+  const selectedCockpitNovel = findBook(cockpitNovelId);
   const cockpitProjection = cockpitProjectionQuery.data?.data?.projection ?? null;
 
   const novels = allNovels;
   const summary = useMemo(() => buildNovelListSummary(allNovels), [allNovels]);
 
   useEffect(() => {
-    if (page > Math.max(1, totalPages)) {
-      setPage(Math.max(1, totalPages));
+    if (novelListQuery.isSuccess && page > Math.max(1, totalPages)) {
+      update({ page: totalPages > 1 ? String(totalPages) : null }, true);
     }
-  }, [page, totalPages]);
+  }, [page, totalPages, novelListQuery.isSuccess, update]);
 
   const handleDelete = (novelId: string, title: string, options?: { confirmed?: boolean }) => {
     if (!options?.confirmed) {
@@ -275,25 +276,15 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   };
 
   const openNovelEditor = (novelId: string) => {
-    const novel = allNovels.find((item) => item.id === novelId);
-    if (!novel) {
-      navigate(`/novels/${novelId}/edit`);
-      return;
-    }
-    navigate(getNovelWorkspaceHref(novel));
+    const novel = findBook(novelId);
+    if (novel) navigate(getNovelWorkspaceHref(novel));
   };
 
   const handleViewChange = (nextView: "shelf" | "workbench") => {
-    setView(nextView);
     window.localStorage.setItem("novel-list-view", nextView);
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set("view", nextView);
-      return next;
-    }, { replace: true });
+    update({ view: nextView, page: null }, true);
   };
-
-  const coverNovel = coverNovelId ? allNovels.find((item) => item.id === coverNovelId) ?? null : null;
+  const coverNovel = findBook(coverNovelId);
   const continueNovels = useMemo(
     () => novels.filter((novel) => {
       const task = getNovelWorkflowTask(novel);
@@ -350,7 +341,10 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   return (
     <div className={render ? "mac-novel-feature" : "space-y-5"}>
       {render ? render({
-        novels, total: totalNovels, page, totalPages,
+        novels, selectedNovel, selectionPending: novelListQuery.isPending || metadata.isFetching,
+        retrySelection: () => { void metadata.refetch(); },
+        clearFilters: () => { setDraft(null); update({ status: null, q: null, writingMode: null, narrativeForm: null, sort: null, page: null }, true); },
+        total: totalNovels, page, totalPages,
         isPending: novelListQuery.isPending, isError: novelListQuery.isError, isFetching: novelListQuery.isFetching,
         search: searchInput, setSearch: setSearchInput, status, setStatus,
         writingMode, setWritingMode, narrativeForm, setNarrativeForm, sort, setSort,

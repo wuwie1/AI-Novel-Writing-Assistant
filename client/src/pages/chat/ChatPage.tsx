@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields, useDocumentGuard } from "@/platform";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SSEFrame } from "@ai-novel/shared/types/api";
@@ -92,11 +93,27 @@ function stepTitle(step: AgentStep): string {
 }
 
 export default function ChatPage() {
+  const [route] = useSearchParams();
+  return <ChatSessionPage key={route.get("sessionId")}/>;
+}
+
+function ChatSessionPage() {
+  const host = useEntityListHost();
+  const [, update] = useRouteFields();
   const [searchParams, setSearchParams] = useSearchParams();
   const runIdFromUrl = searchParams.get("runId")?.trim() ?? "";
   const novelIdFromUrl = searchParams.get("novelId")?.trim() ?? "";
   const llm = useLLMStore();
   const chatStore = useChatStore();
+  const requestedSessionId = searchParams.get("sessionId");
+  const currentSessionId = requestedSessionId ?? chatStore.currentSessionId;
+  useEffect(() => {
+    if (!host || !chatStore.hydrated) return;
+    if (!requestedSessionId && chatStore.currentSessionId) update({sessionId: chatStore.currentSessionId}, true);
+    else if (requestedSessionId && chatStore.currentSessionId !== requestedSessionId && chatStore.sessions.some(item => item.id === requestedSessionId)) {
+      void chatStore.setCurrentSession(requestedSessionId);
+    }
+  }, [host, chatStore.hydrated, chatStore.currentSessionId, requestedSessionId, chatStore.sessions, update]);
   const [chatMode, setChatMode] = useState<ChatMode>("standard");
   const [contextMode, setContextMode] = useState<ContextMode>("global");
   const [enableRag, setEnableRag] = useState(true);
@@ -140,8 +157,8 @@ export default function ChatPage() {
   const novels = novelListQuery.data?.data?.items ?? [];
 
   const currentSession = useMemo(
-    () => chatStore.sessions.find((session) => session.id === chatStore.currentSessionId),
-    [chatStore.currentSessionId, chatStore.sessions],
+    () => chatStore.sessions.find((session) => session.id === currentSessionId),
+    [currentSessionId, chatStore.sessions],
   );
   const runHistoryIds = currentSession?.runIds ?? (currentSession?.latestRunId ? [currentSession.latestRunId] : []);
   const currentRunId = currentSession?.latestRunId ?? runIdFromUrl;
@@ -171,11 +188,11 @@ export default function ChatPage() {
 
   const approvalSse = useSSE({
     onDone: async (fullContent) => {
-      if (!chatStore.currentSessionId || !fullContent.trim()) {
+      if (!currentSessionId || !fullContent.trim()) {
         await runDetailQuery.refetch();
         return;
       }
-      await chatStore.appendMessage(chatStore.currentSessionId, {
+      await chatStore.appendMessage(currentSessionId, {
         id: `msg_${Date.now()}`,
         role: "assistant",
         content: fullContent,
@@ -191,7 +208,7 @@ export default function ChatPage() {
     setRuntimePendingApprovals([]);
     setRuntimeLatestRun(null);
     setRuntimeError(null);
-  }, [chatStore.currentSessionId, currentRunId]);
+  }, [currentSessionId, currentRunId]);
 
   const persistedRunState = persistedRun
     ? {
@@ -208,11 +225,11 @@ export default function ChatPage() {
   const displayError = localError || runtimeError || approvalSse.error || "";
 
   useEffect(() => {
-    if (!chatStore.currentSessionId || !latestRun?.runId) {
+    if (!currentSessionId || !latestRun?.runId) {
       return;
     }
     if (currentSession?.latestRunId !== latestRun.runId) {
-      void chatStore.setSessionRunId(chatStore.currentSessionId, latestRun.runId);
+      void chatStore.setSessionRunId(currentSessionId, latestRun.runId);
     }
     const needRunParamUpdate = runIdFromUrl !== latestRun.runId;
     const needNovelParamUpdate = contextMode === "novel"
@@ -243,18 +260,18 @@ export default function ChatPage() {
   ]);
 
   useEffect(() => {
-    if (!chatStore.currentSessionId || !runIdFromUrl) {
+    if (!currentSessionId || !runIdFromUrl) {
       return;
     }
     if (currentSession?.latestRunId === runIdFromUrl) {
       return;
     }
-    void chatStore.setSessionRunId(chatStore.currentSessionId, runIdFromUrl);
-  }, [chatStore, chatStore.currentSessionId, currentSession?.latestRunId, runIdFromUrl]);
+    void chatStore.setSessionRunId(currentSessionId, runIdFromUrl);
+  }, [chatStore, currentSessionId, currentSession?.latestRunId, runIdFromUrl]);
 
   const ensureSession = useCallback(async () => {
-    if (chatStore.currentSessionId) {
-      return chatStore.currentSessionId;
+    if (currentSessionId) {
+      return currentSessionId;
     }
     return chatStore.createSession("新对话");
   }, [chatStore]);
@@ -363,8 +380,8 @@ export default function ChatPage() {
         setLocalError(response.error ?? "重放失败。");
         return;
       }
-      if (chatStore.currentSessionId) {
-        await chatStore.setSessionRunId(chatStore.currentSessionId, newRunId);
+      if (currentSessionId) {
+        await chatStore.setSessionRunId(currentSessionId, newRunId);
       }
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
@@ -464,9 +481,24 @@ export default function ChatPage() {
       step,
     }));
 
+  useDocumentGuard({ label: "旧版对话", dirty: false, busy: isStreaming });
+  const selectSession = (id: string) => {
+    const session = chatStore.sessions.find(item => item.id === id);
+    if (session && !isStreaming) update({sessionId: id, runId: session.latestRunId ?? null});
+  };
+  const createSession = async () => {
+    const id = await chatStore.createSession("新对话");
+    if (host) update({sessionId: id, runId: null});
+  };
+  const directory = <EntityDirectory collection="legacy-chat" title="旧版会话" selection={currentSessionId || null}
+    rows={chatStore.sessions.map(item => ({id: item.id, label: item.title, description: item.updatedAt}))}
+    pending={!chatStore.hydrated} disabled={isStreaming} onSelect={selectSession}
+    tools={<Button disabled={isStreaming} onClick={() => void createSession()}>新建对话</Button>}/>;
+  if (host && requestedSessionId && chatStore.hydrated && !currentSession) return <>{directory}<p>这段对话不可用，请在会话目录选择其他对话。</p></>;
   return (
-    <div className="grid min-h-[70vh] gap-4 lg:grid-cols-[240px_minmax(0,1fr)_360px]">
-      <Card>
+    <div className={host ? "grid min-h-[70vh] gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : "grid min-h-[70vh] gap-4 lg:grid-cols-[240px_minmax(0,1fr)_360px]"}>
+      {directory}
+      {!host && <Card>
         <CardHeader>
           <CardTitle className="text-base">会话列表</CardTitle>
         </CardHeader>
@@ -480,7 +512,7 @@ export default function ChatPage() {
                 key={session.id}
                 type="button"
                 className={`w-full rounded-md px-2 py-1 text-left text-sm ${
-                  chatStore.currentSessionId === session.id ? "bg-accent" : "hover:bg-muted"
+                  currentSessionId === session.id ? "bg-accent" : "hover:bg-muted"
                 }`}
                 onClick={() => void chatStore.setCurrentSession(session.id)}
               >
@@ -494,7 +526,7 @@ export default function ChatPage() {
             ))}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
@@ -512,7 +544,7 @@ export default function ChatPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <AssistantChatPanel
-            key={`${chatStore.currentSessionId || "empty"}:${runtimeResetToken}`}
+            key={`${currentSessionId || "empty"}:${runtimeResetToken}`}
             initialMessages={currentSession?.messages ?? []}
             ensureSession={ensureSession}
             chatMode={chatMode}
@@ -557,10 +589,10 @@ export default function ChatPage() {
         runHistoryIds={runHistoryIds}
         currentRunId={currentRunId}
         onSelectRun={(nextRunId) => {
-          if (!chatStore.currentSessionId) {
+          if (!currentSessionId) {
             return;
           }
-          void chatStore.setSessionRunId(chatStore.currentSessionId, nextRunId);
+          void chatStore.setSessionRunId(currentSessionId, nextRunId);
           setSearchParams((prev) => {
             const next = new URLSearchParams(prev);
             next.set("runId", nextRunId);

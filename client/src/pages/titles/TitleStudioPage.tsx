@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useRouteFields } from "@/platform";
+import { useMemo } from "react";
 import { NOVEL_LIST_PAGE_LIMIT_MAX } from "@ai-novel/shared/types/pagination";
 import { useQuery } from "@tanstack/react-query";
 import { flattenGenreTreeOptions, getGenreTree } from "@/api/genre";
@@ -9,7 +10,9 @@ import TitleFactoryPanel from "./components/TitleFactoryPanel";
 import TitleLibraryPanel from "./components/TitleLibraryPanel";
 
 export default function TitleStudioPage() {
-  const [tab, setTab] = useState("factory");
+  const [route, update] = useRouteFields();
+  const tab = route.get("tab") === "library" ? "library" : "factory";
+  const setTab = (tab: string) => update({tab, titleId: null});
   const genreTreeQuery = useQuery({
     queryKey: queryKeys.genres.all,
     queryFn: getGenreTree,

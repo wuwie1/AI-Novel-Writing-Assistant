@@ -1,4 +1,4 @@
-import { useDocumentGuard } from "@/platform";
+import { EntityDirectory, useDirectorySelection, useDocumentGuard } from "@/platform";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -117,6 +117,8 @@ export default function ModelRoutesPage() {
   const modelRouteConnectivity = modelRouteConnectivityQuery.data?.data;
   const structuredFallback = structuredFallbackQuery.data?.data;
   const taskTypes = modelRoutes?.taskTypes ?? [];
+  const rows = taskTypes.map(taskType => ({id: taskType, label: MODEL_ROUTE_LABELS[taskType].title, description: MODEL_ROUTE_LABELS[taskType].description}));
+  const directory = useDirectorySelection("taskType", rows);
   const providerOptions = useMemo(() => providerConfigs.map((item) => item.provider), [providerConfigs]);
   const routeMap = useMemo(() => new Map((modelRoutes?.routes ?? []).map((item) => [item.taskType, item])), [modelRoutes?.routes]);
   const connectivityMap = useMemo(
@@ -230,10 +232,7 @@ export default function ModelRoutesPage() {
     setActionResult(`模型设置填入 ${targetTaskTypes.length} 个任务，保存后生效。`);
   }
 
-  function getStructuredFallbackDraft(): StructuredFallbackDraft {
-    if (structuredFallbackDraft) {
-      return structuredFallbackDraft;
-    }
+  function savedFallbackDraft(): StructuredFallbackDraft {
     return {
       enabled: structuredFallback?.enabled ?? false,
       provider: structuredFallback?.provider ?? "deepseek",
@@ -247,18 +246,33 @@ export default function ModelRoutesPage() {
   }
 
   function patchStructuredFallbackDraft(patch: Partial<StructuredFallbackDraft>) {
-    const current = getStructuredFallbackDraft();
+    const current = structuredFallbackDraft ?? savedFallbackDraft();
     setStructuredFallbackDraft({
       ...current,
       ...patch,
     });
   }
 
-  const fallbackDraft = getStructuredFallbackDraft();
+  const fallbackDraft = structuredFallbackDraft ?? savedFallbackDraft();
+  const fallbackPayload = {
+                enabled: fallbackDraft.enabled,
+                provider: fallbackDraft.provider,
+                model: fallbackDraft.model,
+                temperature: Number(fallbackDraft.temperature || 0.2),
+                maxTokens: fallbackDraft.maxTokens.trim() ? Number(fallbackDraft.maxTokens) : null,
+                retryCount: parseStructuredRetryCount(fallbackDraft.retryCount),
+              };
+  useDocumentGuard({label: "备用模型设置", dirty: JSON.stringify(fallbackDraft) !== JSON.stringify(savedFallbackDraft()), busy: saveStructuredFallbackMutation.isPending,
+    save: async () => {
+      if (!fallbackDraft.provider.trim() || !fallbackDraft.model.trim()) throw Error("请选择备用模型。");
+      await saveStructuredFallbackMutation.mutateAsync(fallbackPayload);
+    }, discard: () => setStructuredFallbackDraft(null)});
   const routeBulkDraft = getBulkDraft();
 
   return (
     <div className="space-y-4">
+      <EntityDirectory {...directory} collection="model-routes" title="任务模型路由" rows={rows} pending={modelRoutesQuery.isLoading}
+        error={modelRoutesQuery.isError} retry={() => void modelRoutesQuery.refetch()}/>
       <Card>
         <CardHeader>
           <CardTitle>模型路由管理</CardTitle>
@@ -452,14 +466,7 @@ export default function ModelRoutesPage() {
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
-              onClick={() => saveStructuredFallbackMutation.mutate({
-                enabled: fallbackDraft.enabled,
-                provider: fallbackDraft.provider,
-                model: fallbackDraft.model,
-                temperature: Number(fallbackDraft.temperature || 0.2),
-                maxTokens: fallbackDraft.maxTokens.trim() ? Number(fallbackDraft.maxTokens) : null,
-                retryCount: parseStructuredRetryCount(fallbackDraft.retryCount),
-              })}
+              onClick={() => saveStructuredFallbackMutation.mutate(fallbackPayload)}
               disabled={saveStructuredFallbackMutation.isPending || !fallbackDraft.provider.trim() || !fallbackDraft.model.trim()}
             >
               {saveStructuredFallbackMutation.isPending ? "保存中..." : "保存容错设置"}
@@ -468,7 +475,7 @@ export default function ModelRoutesPage() {
         </CardContent>
       </Card>
 
-      {taskTypes.map((taskType) => {
+      {taskTypes.filter(taskType => directory.includes(taskType)).map((taskType) => {
         const draft = getRouteDraft(taskType);
         const label = MODEL_ROUTE_LABELS[taskType];
         const providerName = getProviderDisplayName(providerConfigs, draft.provider);

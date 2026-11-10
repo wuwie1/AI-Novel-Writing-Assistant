@@ -17,6 +17,7 @@ export interface DraftStorage {
 }
 
 export interface ClientPlatform {
+  confirmDocumentLeave?: () => Promise<boolean>;
   draftStorage?: DraftStorage;
   registerDocument?: (id: string, read: () => DocumentGuard) => () => void;
   editorTypography?: { storageKey: string; fontSize: number; lineHeight: number; fontSizes: number[]; lineHeights: number[] };
@@ -60,3 +61,7 @@ export function useHostDraftState<T>(key: string, initial: T | (() => T)) {
     clear,
   }] as const;
 }
+
+export { EntityList, EntityListContext, useEntityListHost, type EntityCollection } from "./EntityList";
+export { useRouteFields } from "./useRouteFields";
+export { EntityDirectory, DirectoryRows, useDirectorySelection, type DirectoryRow } from "./EntityDirectory";

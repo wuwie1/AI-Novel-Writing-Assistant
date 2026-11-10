@@ -6,13 +6,14 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { prepareDesktopBuild } from '../../infrastructure/builds/index.mjs';
 import { runUntimed } from './timings.mjs';
+import { requireWindowClose } from './window-close.mjs';
 export { sourceFingerprint } from '../../infrastructure/builds/index.mjs';
 import { ensureRendererDependencies } from '../../infrastructure/dependencies/renderer.mjs';
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, isMissingAgent, launchAgent, launchdLabel, printAgent, stopAgent, waitForAgentIdentity } from '../../infrastructure/processes/launchd.mjs';
 import { inspectProcess, processMatches, stableHash } from '../../infrastructure/processes/identity.mjs';
 import { readProcessArgv } from '../../infrastructure/processes/argv.mjs';
-import { nativeSocketPath, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
+import { nativeSocketPath, requestOwnedWindowClose, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
 import { backendIdentity as makeBackendIdentity } from '../../infrastructure/processes/identity.mjs';
 import { inspectSqliteQuiescence, resolveLocalDatabasePath } from '../../infrastructure/processes/quiescence.mjs';
 import { selectServerNode } from '../../infrastructure/processes/launchers/server-node.mjs';
@@ -206,9 +207,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
       if (!result.ok || result.repo !== repoRoot || result.mode !== current.runningMode || result.backendIdentity !== current.backendIdentity) throw internalError('Existing native window identity does not match the saved state', 4);
     },
     async requestNativeClose(current) {
-      const status = await sendNativeCommand(nativeSocketPath(repoRoot), 'status');
-      if (status.repo !== repoRoot || status.mode !== current.runningMode || status.backendIdentity !== current.backendIdentity) throw internalError('Native window identity does not match the saved state', 4);
-      return sendNativeCommand(nativeSocketPath(repoRoot), 'close', { timeoutMs: 60_000 });
+      return requestOwnedWindowClose(repoRoot, current);
     },
     async prepare({ mode, development }) {
       requireMacOS();
@@ -394,7 +393,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
         try {
           if (await this.nativeProcessAlive(failed)) {
             const result = await this.requestNativeClose(failed);
-            if (!result.ok) throw internalError('Close was cancelled', 3);
+            requireWindowClose(result);
             await this.waitAppExited(failed, 60_000);
           }
           createdRecords.delete(app);

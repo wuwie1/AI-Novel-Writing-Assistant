@@ -5,7 +5,7 @@ import AppKit
 protocol NativeSocketDelegate: AnyObject {
     var socketStatus: [String: Any] { get }
     func focusWindow()
-    func requestSocketClose(_ reply: @escaping (Bool) -> Void)
+    func requestSocketClose(_ reply: @escaping (WindowCloseResult) -> Void)
     func terminateAfterSocketClose()
 }
 
@@ -13,7 +13,7 @@ final class NativeCommandSocket {
     private let path: String
     private weak var delegate: NativeSocketDelegate?
     private var source: DispatchSourceRead?
-    private var pendingCloseFD: Int32?
+    private var pendingClose: UUID?
 
     init(path: String, delegate: NativeSocketDelegate) throws {
         self.path = path; self.delegate = delegate
@@ -37,13 +37,6 @@ final class NativeCommandSocket {
         readSource.setEventHandler { [weak self] in self?.acceptOne(fd) }
         readSource.setCancelHandler { close(fd) }
         source = readSource; readSource.resume()
-    }
-
-    func replyToPendingClose(ok: Bool) {
-        guard let fd = pendingCloseFD else { return }
-        pendingCloseFD = nil
-        writeJSON(["ok": ok, "cancelled": !ok, "requestId": queuedRequestID], to: fd)
-        if ok { DispatchQueue.main.async { self.delegate?.terminateAfterSocketClose() } }
     }
 
     func stop() {
@@ -111,22 +104,22 @@ final class NativeCommandSocket {
             var value = delegate?.socketStatus ?? [:]; value["ok"] = true; value["requestId"] = requestID; value["protocolVersion"] = 1
             writeJSON(value, to: fd)
         case "close":
-            guard pendingCloseFD == nil else { writeJSON(["ok": false, "error": "close_pending", "requestId": requestID], to: fd); return }
-            pendingCloseFD = fd
-            queuedRequestID = requestID
-            delegate?.requestSocketClose { [weak self] allowed in
-                guard let self else { return }
-                self.replyToPendingClose(ok: allowed)
+            guard pendingClose == nil else { writeJSON(WindowCloseResult.pending.socketReply(requestID: requestID), to: fd); return }
+            guard let delegate else { writeJSON(WindowCloseResult.unavailable.socketReply(requestID: requestID), to: fd); return }
+            let transaction = UUID()
+            pendingClose = transaction
+            delegate.requestSocketClose { [weak self] result in
+                guard let self, self.pendingClose == transaction else { return }
+                self.pendingClose = nil
+                self.writeJSON(result.socketReply(requestID: requestID), to: fd)
+                if result == .allowed { DispatchQueue.main.async { self.delegate?.terminateAfterSocketClose() } }
             }
         default: writeJSON(["ok": false, "error": "unsupported_command", "requestId": requestID], to: fd)
         }
     }
 
-    private var queuedRequestID = ""
     private func writeJSON(_ object: [String: Any], to fd: Int32) {
-        var value = object
-        if let id = value["requestId"] as? String, id.isEmpty { value["requestId"] = queuedRequestID }
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { close(fd); return }
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { close(fd); return }
         var bytes = data; bytes.append(0x0a)
         bytes.withUnsafeBytes { raw in _ = Darwin.write(fd, raw.baseAddress, raw.count) }
         close(fd)

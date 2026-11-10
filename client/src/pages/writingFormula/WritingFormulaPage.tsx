@@ -1,3 +1,4 @@
+import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -53,7 +54,11 @@ export default function WritingFormulaPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const editorDialogRef = useRef<HTMLDivElement | null>(null);
-  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const host = useEntityListHost();
+  const [, updateRoute] = useRouteFields();
+  const [webProfileId, setWebProfileId] = useState("");
+  const selectedProfileId = host ? searchParams.get("styleId") ?? "" : webProfileId;
+  const setSelectedProfileId = (id: string) => host ? updateRoute({styleId: id}) : setWebProfileId(id);
   const [message, setMessage] = useState("");
   const [activeWorkspaceDialog, setActiveWorkspaceDialog] = useState<WorkspaceDialog>(
     searchParams.get("profileId") ? "editor" : null,
@@ -172,7 +177,7 @@ export default function WritingFormulaPage() {
   };
 
   useEffect(() => {
-    if (!selectedProfileId && profiles.length > 0) {
+    if (!host && !selectedProfileId && profiles.length > 0) {
       setSelectedProfileId(profiles[0].id);
     }
   }, [profiles, selectedProfileId]);
@@ -229,7 +234,8 @@ export default function WritingFormulaPage() {
       return;
     }
 
-    setSelectedProfileId(incomingProfile.id);
+    if (host) nextSearchParams.set("styleId", incomingProfile.id);
+    else setSelectedProfileId(incomingProfile.id);
     setActiveWorkspaceDialog("editor");
     setEditorFocusIntent("editor");
     if (incomingSource === "book-analysis") {
@@ -514,6 +520,10 @@ export default function WritingFormulaPage() {
         />
       ) : null}
 
+      <EntityDirectory collection="style-profiles" title="写法资产" selection={selectedProfileId || null}
+        rows={landingProfileItems.map(profile => ({id: profile.id, label: profile.name, description: profile.summaryLine}))}
+        onSelect={setSelectedProfileId} onClear={() => updateRoute({styleId: null}, true)}
+        pending={profilesQuery.isLoading} error={profilesQuery.isError} retry={() => void profilesQuery.refetch()}/>
       <WritingFormulaLanding
         onOpenCreate={() => setCreateDialogOpen(true)}
         onOpenPromptLab={() => navigate("/prompt-workbench?experience=writing")}
@@ -531,7 +541,7 @@ export default function WritingFormulaPage() {
           deleteProfileMutation.mutate(profileId);
         }}
         deletePending={deleteProfileMutation.isPending}
-        profileItems={landingProfileItems}
+        profileItems={host ? landingProfileItems.filter(item => item.id === selectedProfileId) : landingProfileItems}
         selectedProfileId={selectedProfileId}
         loading={profilesQuery.isLoading}
         error={profilesQuery.isError ? "写法资产加载失败，请重新加载。" : undefined}

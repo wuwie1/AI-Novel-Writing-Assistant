@@ -1,3 +1,4 @@
+import { EntityList, useClientPlatform, useEntityListHost, useRouteFields } from "@/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -27,13 +28,21 @@ import { WritingPlatformProfileManager } from "./components/WritingPlatformProfi
 type PromptEditMode = "slots" | "advanced";
 
 export default function PromptWorkbenchPage() {
+  const [route] = useSearchParams();
+  return <PromptWorkbench key={JSON.stringify([route.get("experience"), route.get("novelId"), route.get("chapterId")])}/>;
+}
+
+function PromptWorkbench() {
   const [searchParams] = useSearchParams();
   const writingLab = searchParams.get("experience") === "writing";
   const requestedNovelId = searchParams.get("novelId")?.trim() ?? "";
   const requestedChapterId = searchParams.get("chapterId")?.trim() ?? "";
+  const platform = useClientPlatform();
+  const host = useEntityListHost();
+  const [, updateRoute] = useRouteFields();
   const writingLabSetupRef = useRef(false);
   const [keyword, setKeyword] = useState(() => writingLab ? "novel.chapter.writer" : "");
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedKey = searchParams.get("key");
   const [entrypoint, setEntrypoint] = useState("manual_test");
   const [selectedContextBlockId, setSelectedContextBlockId] = useState<string | null>(null);
   const [immersiveMode, setImmersiveMode] = useState(false);
@@ -54,16 +63,18 @@ export default function PromptWorkbenchPage() {
     maxTokens: globalLlmMaxTokens,
   }));
 
-  const catalog = usePromptCatalog(keyword);
+  const catalog = usePromptCatalog(writingLab ? "novel.chapter.writer" : "");
   const prompts = catalog.prompts;
+  const needle = keyword.trim().toLocaleLowerCase();
+  const visiblePrompts = prompts.filter(prompt => [prompt.key, prompt.id, prompt.shortDescription, prompt.description, prompt.taskType].some(value => value?.toLocaleLowerCase().includes(needle)));
   const selectedPrompt = useMemo(() => {
     if (prompts.length === 0) {
       return null;
     }
     if (writingLab) {
-      return prompts.find((item) => item.id === "novel.chapter.writer") ?? prompts[0] ?? null;
+      return prompts.find((item) => item.id === "novel.chapter.writer") ?? null;
     }
-    return prompts.find((item) => item.key === selectedKey) ?? prompts[0] ?? null;
+    return selectedKey ? prompts.find(item => item.key === selectedKey) ?? null : prompts[0] ?? null;
   }, [prompts, selectedKey, writingLab]);
 
   const slotState = usePromptDraftSlots(selectedPrompt);
@@ -143,6 +154,7 @@ export default function PromptWorkbenchPage() {
     if (slotState.scope !== "novel" || !slotState.activeNovelId || chapters.length === 0) {
       return;
     }
+    if (writingLab && requestedChapterId) return;
     if (selectedChapterId && chapters.some((chapter) => chapter.id === selectedChapterId)) {
       return;
     }
@@ -197,8 +209,11 @@ export default function PromptWorkbenchPage() {
   }
 
   function handleSelectPrompt(prompt: PromptCatalogItem) {
-    setSelectedKey(prompt.key);
-    setSelectedContextBlockId(null);
+    updateRoute({key: prompt.key});
+  }
+
+  async function changeEditorContext(change: () => void) {
+    if (!platform.confirmDocumentLeave || await platform.confirmDocumentLeave()) change();
   }
 
   const saveDisabled = !selectedPrompt?.slotSupported
@@ -236,11 +251,12 @@ export default function PromptWorkbenchPage() {
       )}
     >
       {!immersiveMode && !writingLab ? (
-        <div className="flex h-full min-h-0 w-[260px] min-w-[220px] max-w-[300px] shrink-0 overflow-hidden">
+        <EntityList title="提示词目录" collection="prompt-catalog" selection={selectedPrompt?.key ?? null}><div className={host ? "min-h-0" : "flex h-full min-h-0 w-[260px] min-w-[220px] max-w-[300px] shrink-0 overflow-hidden"}>
+          {catalog.query.isError && <p role="alert">提示词目录读取失败。 <button onClick={() => void catalog.refetch()}>重新读取</button></p>}
           <PromptCatalogSidebar
             keyword={keyword}
             onKeywordChange={setKeyword}
-            prompts={prompts}
+            prompts={visiblePrompts}
             selectedKey={selectedPrompt?.key ?? null}
             isLoading={catalog.query.isLoading}
             isFetching={catalog.query.isFetching}
@@ -248,10 +264,11 @@ export default function PromptWorkbenchPage() {
             onRefresh={() => void catalog.refetch()}
             onManagePlatforms={() => setPlatformManagerOpen(true)}
           />
-        </div>
+        </div></EntityList>
       ) : null}
 
       <main className="h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+        {selectedKey && !writingLab && !selectedPrompt && !catalog.query.isPending && <button onClick={() => updateRoute({key: null}, true)}>条目不可用，返回目录</button>}
         {selectedPrompt ? (
           <PromptEditorShell
             prompt={selectedPrompt}
@@ -261,14 +278,14 @@ export default function PromptWorkbenchPage() {
             immersive={immersiveMode}
             onImmersiveChange={setImmersiveMode}
             entrypoint={entrypoint}
-            onEntrypointChange={setEntrypoint}
+            onEntrypointChange={value => { if (value !== entrypoint) void changeEditorContext(() => setEntrypoint(value)); }}
             scope={slotState.scope}
-            onScopeChange={slotState.setScope}
+            onScopeChange={value => { if (!writingLab && value !== slotState.scope) void changeEditorContext(() => slotState.setScope(value)); }}
             selectedNovelId={slotState.selectedNovelId}
-            onNovelChange={slotState.setSelectedNovelId}
+            onNovelChange={value => { if (!(writingLab && requestedNovelId) && value !== slotState.selectedNovelId) void changeEditorContext(() => slotState.setSelectedNovelId(value)); }}
             novels={slotState.novels}
             selectedChapterId={selectedChapterId}
-            onChapterChange={setSelectedChapterId}
+            onChapterChange={value => { if (!(writingLab && requestedChapterId) && value !== selectedChapterId) void changeEditorContext(() => setSelectedChapterId(value)); }}
             chapters={chapters.map((chapter) => ({
               id: chapter.id,
               title: chapter.title,

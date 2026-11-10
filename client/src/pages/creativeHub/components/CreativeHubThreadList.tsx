@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useEntityListHost } from "@/platform";
 import type { CreativeHubThread } from "@ai-novel/shared/types/creativeHub";
 import { RefreshCw } from "lucide-react";
 import { WorkspaceStateNotice } from "@/components/workspace";
@@ -53,6 +55,9 @@ export default function CreativeHubThreadList({
   onArchive,
   onDelete,
 }: CreativeHubThreadListProps) {
+  const host = useEntityListHost();
+  const [search, setSearch] = useState("");
+  const visible = threads.filter(t => (t.title ?? "").toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
     <Card
       className="flex h-full min-h-0 flex-col rounded-lg shadow-none"
@@ -65,6 +70,8 @@ export default function CreativeHubThreadList({
         </div>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+        {host && <input aria-label="搜索已加载的对话" placeholder="搜索已加载的对话" value={search} onChange={e=>setSearch(e.target.value)}/>}
+        {search && !visible.length && <p>没有匹配的对话。</p>}
         <Button className="h-9 w-full" onClick={onCreate} disabled={actionPending || actionDisabled}>
           {actionPending ? "正在创建..." : "新建线程"}
         </Button>
@@ -85,7 +92,7 @@ export default function CreativeHubThreadList({
           />
         ) : (
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {threads.map((thread) => {
+            {visible.map((thread) => {
               const current = thread.id === activeThreadId;
               const pending = pendingThreadId === thread.id;
               return (

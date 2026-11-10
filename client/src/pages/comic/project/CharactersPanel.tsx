@@ -1,7 +1,8 @@
+import { EntityDirectory, useDirectorySelection, useDocumentGuard } from "@/platform";
+import { FactsSection } from "./continuity";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BookMarked,
   Bot,
   Image as ImageIcon,
   Loader2,
@@ -21,7 +22,6 @@ import {
   characterSheetImageUrl,
   createCharacterAsset,
   deleteCharacterAsset,
-  deleteComicFact,
   generateCharacterAssetImage,
   prepareCharacterAssetImage,
   prepareCharacterExpressionSheet,
@@ -29,7 +29,6 @@ import {
   generateCharacterExpressionSheet,
   generateCharacterSheet,
   listCharacterAssets,
-  listComicFacts,
   rewriteCharacterVisualAnchor,
   updateCharacterGender,
   updateCharacterVisualAnchor,
@@ -39,7 +38,6 @@ import {
   type ComicCharacterAsset,
   type ComicCharacterGender,
   type CharacterExpressionData,
-  type ComicFact,
   type GenerateCharacterSheetOptions,
   type CharacterSheetData,
   type ComicCharacter,
@@ -313,6 +311,8 @@ function VisualAnchorEditor({ character }: { character: ComicCharacter }) {
     onError: (e) => toast.error(String(e)),
   });
 
+  useDocumentGuard({label: "漫画角色外貌", dirty: editing && (text !== initial || override !== initialOverride), busy: saveMut.isPending || rewriteMut.isPending,
+    save: () => saveMut.mutateAsync(), discard: () => {setText(initial); setOverride(initialOverride); setEditing(false);}});
   const adoptSuggestion = () => {
     if (!suggestion) return;
     setText(suggestion.appearance);
@@ -1179,96 +1179,6 @@ function AssetSection({
   );
 }
 
-const FACT_CATEGORY_BADGE: Record<
-  string,
-  { label: string; className: string }
-> = {
-  completed: { label: "已发生", className: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-300" },
-  revealed: { label: "首次登场", className: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-300" },
-  state_changed: { label: "状态变化", className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
-};
-
-function FactsSection({ projectId }: { projectId: string }) {
-  const queryClient = useQueryClient();
-
-  const { data: facts = [], isLoading } = useQuery({
-    queryKey: ["comic", "facts", projectId],
-    queryFn: () => listComicFacts(projectId),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: (factId: string) => deleteComicFact(factId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comic", "facts", projectId] });
-    },
-    onError: (e) => toast.error(String(e)),
-  });
-
-  const grouped = facts.reduce<Record<number, ComicFact[]>>((acc, fact) => {
-    if (!acc[fact.episodeOrder]) acc[fact.episodeOrder] = [];
-    acc[fact.episodeOrder].push(fact);
-    return acc;
-  }, {});
-  const sortedOrders = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-
-  return (
-    <div className="border-t px-4 py-4">
-      <div className="mb-3 flex items-center gap-2">
-        <BookMarked className="h-4 w-4 text-muted-foreground" />
-        <p className="text-sm font-medium">跨话事实库</p>
-        <span className="rounded border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{facts.length}</span>
-      </div>
-      <p className="mb-3 text-xs text-muted-foreground">
-        生成分格脚本后系统自动提取，用于保证跨话剧情与角色状态一致性。可手动删除不准确的条目。
-      </p>
-
-      {isLoading && <div className="text-xs text-muted-foreground">加载中...</div>}
-
-      {!isLoading && facts.length === 0 && (
-        <div className="rounded-md border border-dashed bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
-          尚无事实条目。生成至少一话的分格脚本后会自动提取。
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {sortedOrders.map((order) => (
-          <div key={order}>
-            <div className="mb-1.5 text-[11px] font-semibold text-muted-foreground">第 {order} 话</div>
-            <div className="space-y-1">
-              {grouped[order].map((fact) => {
-                const badge = FACT_CATEGORY_BADGE[fact.category] ?? {
-                  label: fact.category,
-                  className: "border-border bg-muted text-muted-foreground",
-                };
-                return (
-                  <div
-                    key={fact.id}
-                    className="flex items-start gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs"
-                  >
-                    <span className={`mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] leading-none ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                    <span className="flex-1 leading-relaxed text-muted-foreground">{fact.text}</span>
-                    <button
-                      type="button"
-                      title="删除此条目"
-                      disabled={deleteMut.isPending}
-                      className="ml-1 mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => deleteMut.mutate(fact.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function CharactersPanel({
   project,
   provider,
@@ -1278,10 +1188,13 @@ export function CharactersPanel({
 }) {
   const [selectedCharacterId, setSelectedCharacterId] = useState(project.characters[0]?.id ?? "");
 
+  const directory = useDirectorySelection("itemId", project.characters);
+  const list = <EntityDirectory {...directory} title="漫画角色" collection={`comic:${project.id}:characters`}
+    rows={project.characters.map(item => ({id: item.id, label: item.name, description: item.persona}))}/>;
   if (project.characters.length === 0) {
     return (
       <div className="space-y-2 py-12 text-center text-sm text-muted-foreground">
-        <Users className="mx-auto h-10 w-10 opacity-30" />
+        {list}<Users className="mx-auto h-10 w-10 opacity-30" />
         <p>暂无角色。</p>
         <p className="text-xs">导入内容源后，角色会自动提取到这里。</p>
       </div>
@@ -1289,17 +1202,17 @@ export function CharactersPanel({
   }
 
   const selectedCharacter =
-    project.characters.find((character) => character.id === selectedCharacterId) ?? project.characters[0];
+    directory.host ? project.characters.find(character => directory.includes(character.id)) : project.characters.find(character => character.id === selectedCharacterId) ?? project.characters[0];
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <CharacterList
+      {list}<div className={directory.host ? "min-w-0" : "grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"}>
+        {!directory.host && selectedCharacter && <CharacterList
           characters={project.characters}
           selectedCharacterId={selectedCharacter.id}
           onSelect={setSelectedCharacterId}
-        />
-        <CharacterDetail key={selectedCharacter.id} character={selectedCharacter} provider={provider} />
+        />}
+        {selectedCharacter && <CharacterDetail key={selectedCharacter.id} character={selectedCharacter} provider={provider} />}
       </div>
       <div className="rounded-lg border bg-background">
         <FactsSection projectId={project.id} />

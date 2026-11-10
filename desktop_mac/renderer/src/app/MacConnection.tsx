@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { macEnvironment, postNative } from "../platform/native";
+import { macEnvironment } from "../platform/native";
 
 export function MacConnection({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -29,7 +29,6 @@ export function MacConnection({ children }: { children: ReactNode }) {
     const timer = setInterval(() => void probe(), 10_000);
     return () => { alive = false; lifetime.abort(); clearInterval(timer); };
   }, [attempt]);
-  useEffect(() => { postNative({ type: "rendererReady" }); }, []);
   const mode = macEnvironment()?.mode === "local" ? "本地测试服务" : "服务器";
   if (!ready) return <div className="mac-connection-screen"><h1>连接{mode}</h1><p role="status">{error || "正在准备创作工作台…"}</p><Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>重新检查</Button></div>;
   return <>{children}{disconnected ? <div role="status" className="mac-connection-banner">连接中断，页面内容仍保留。恢复连接后会重新读取状态。</div> : null}</>;

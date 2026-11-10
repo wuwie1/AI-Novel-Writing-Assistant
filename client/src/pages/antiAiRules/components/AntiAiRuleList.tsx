@@ -1,3 +1,4 @@
+import { EntityList, DirectoryRows, useDirectorySelection } from "@/platform";
 import { useState } from "react";
 import type { AntiAiRule } from "@ai-novel/shared/types/styleEngine";
 import { ChevronDown, Edit3, FlaskConical, Search } from "lucide-react";
@@ -36,8 +37,8 @@ export default function AntiAiRuleList(props: AntiAiRuleListProps) {
   ));
   const testingRuleIdSet = new Set(props.testingRuleIds);
 
-  return (
-    <section aria-labelledby="anti-ai-rule-list-title" className="min-w-0 rounded-xl bg-card text-card-foreground">
+  const directory = useDirectorySelection("ruleId", props.rules);
+  const tools = (
       <div className="space-y-4 px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-baseline justify-between gap-3">
           <h2 id="anti-ai-rule-list-title" className="text-lg font-semibold">规则列表</h2>
@@ -46,7 +47,7 @@ export default function AntiAiRuleList(props: AntiAiRuleListProps) {
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
-            aria-label="搜索规则名称或说明" placeholder="搜索规则名称或说明" className="pl-9" />
+            aria-label="搜索已加载的规则名称或说明" placeholder="搜索已加载的规则名称或说明" className="pl-9" />
         </div>
         <div role="group" aria-label="筛选规则" className="flex flex-wrap gap-1">
           {filters.map(([value, label]) => (
@@ -62,6 +63,14 @@ export default function AntiAiRuleList(props: AntiAiRuleListProps) {
           全局默认供正文生成使用；写法专属规则需在写法资产中绑定。加入测试只影响本页预览。
         </p>
       </div>
+  );
+  return (
+    <section aria-label="写作规则" className="min-w-0">
+      <EntityList collection="writing-rules" title="写作规则" selection={directory.selection} inline={tools} tools={tools}>
+        {props.loading ? <p>正在读取规则…</p> : props.error ? <button onClick={props.onRetry}>重新读取</button> :
+          visibleRules.length ? <DirectoryRows {...directory} rows={visibleRules.map(rule => ({id: rule.id, label: rule.name, description: rule.description}))}/> : <p>没有匹配的规则。</p>}
+      </EntityList>
+
 
       {props.loading ? <div role="status" className="px-6 py-10 text-sm text-muted-foreground">正在加载规则…</div> : null}
       {props.error ? (
@@ -78,7 +87,7 @@ export default function AntiAiRuleList(props: AntiAiRuleListProps) {
       ) : null}
 
       <div className="divide-y divide-border/60">
-        {visibleRules.map((rule) => {
+        {(directory.host ? props.rules.filter(rule => directory.includes(rule.id)) : visibleRules).map((rule) => {
           const isTesting = testingRuleIdSet.has(rule.id);
           return (
             <article key={rule.id} className={cn("px-5 py-5 sm:px-6", !rule.enabled && "bg-muted/20", isTesting && "bg-primary/5")}>

@@ -1,0 +1,1 @@
+export { FactsSection } from "./FactsSection";

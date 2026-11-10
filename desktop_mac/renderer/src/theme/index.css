@@ -323,3 +323,8 @@ html[data-app-shell="mac"] .mac-rail-badge {
   pointer-events:none;
 }
 html[data-app-shell="mac"] .mac-mode-indicator { margin-left:0; }
+
+html[data-app-shell="mac"] .mac-secondary[hidden] { display: none; }
+html[data-app-shell="mac"] .mac-collection-slot { display: contents; }
+html[data-app-shell="mac"] .mac-collection-tools { padding: 8px; display: grid; gap: 6px; }
+html[data-app-shell="mac"] .mac-collection-tools :is(input,select) { max-width: 100%; min-width: 0; }

@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -509,11 +510,12 @@ export default function ComicWorkspacePage() {
   const [showWizard, setShowWizard] = useState(false);
   const [busyId, setBusyId] = useState("");
 
-  const { data: projects = [], isLoading } = useQuery({
+  const { data: projects = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["comic", "projects"],
     queryFn: listComicProjects,
   });
 
+  const directory = useDirectorySelection("projectId", projects);
   const importMut = useMutation({
     mutationFn: (projectId: string) => importComicSourceBundle(projectId),
     onMutate: (id) => setBusyId(id),
@@ -526,6 +528,9 @@ export default function ComicWorkspacePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6">
+      <EntityDirectory title="漫画项目" collection="comic:projects" {...directory} onSelect={id => navigate(`/comic/projects/${encodeURIComponent(id)}`)}
+        rows={projects.map(project => ({id: project.id, label: project.title, description: project.status}))}
+        pending={isLoading} error={isError} retry={() => void refetch()}/>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -568,7 +573,7 @@ export default function ComicWorkspacePage() {
       )}
 
       <div className="space-y-4">
-        {projects.map((proj) => (
+        {projects.filter(project => directory.includes(project.id)).map((proj) => (
           <ProjectCard
             key={proj.id}
             project={proj}

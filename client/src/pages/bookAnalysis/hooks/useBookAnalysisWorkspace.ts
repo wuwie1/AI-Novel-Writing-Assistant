@@ -49,13 +49,10 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   const llmStore = useLLMStore();
 
   const [keyword, setKeyword] = useState("");
-  const [analysisMode, setAnalysisModeState] = useState<BookAnalysisMode>(
-    searchParams.get("mode") === "diagnosis" ? "diagnosis" : "reference",
-  );
+  const analysisMode: BookAnalysisMode = searchParams.get("mode") === "diagnosis" ? "diagnosis" : "reference";
   const [status, setStatus] = useState<BookAnalysisStatus | "">("");
-  const [selectedAnalysisId, setSelectedAnalysisId] = useState(searchParams.get("analysisId") ?? "");
-  const [selectedDocumentId, setSelectedDocumentId] = useState(searchParams.get("documentId") ?? "");
-  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const selectedAnalysisId = searchParams.get("analysisId") ?? "";
+
   const [selectedNovelId, setSelectedNovelId] = useState("");
   const [selectedDiagnosisNovelId, setSelectedDiagnosisNovelId] = useState("");
   const [userFocusInstruction, setUserFocusInstruction] = useState("");
@@ -98,19 +95,6 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
     queryFn: () => getNovelList({ page: 1, limit: 100 }),
   });
 
-  const sourceDocumentQuery = useQuery({
-    queryKey: queryKeys.knowledge.detail(selectedDocumentId || "none"),
-    queryFn: () => getKnowledgeDocument(selectedDocumentId),
-    enabled: Boolean(selectedDocumentId),
-    retry: (failureCount, error) => {
-      const responseStatus = (error as { response?: { status?: number } })?.response?.status;
-      if (responseStatus === 404) {
-        return false;
-      }
-      return failureCount < 2;
-    },
-  });
-
   const detailQuery = useQuery({
     queryKey: queryKeys.bookAnalysis.detail(selectedAnalysisId || "none"),
     queryFn: () => getBookAnalysis(selectedAnalysisId),
@@ -128,10 +112,28 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
     },
   });
 
+  const selectedDocumentId = searchParams.get("documentId") ?? detailQuery.data?.data?.documentId ?? "";
+  const sourceDocumentQuery = useQuery({
+    queryKey: queryKeys.knowledge.detail(selectedDocumentId || "none"),
+    queryFn: () => getKnowledgeDocument(selectedDocumentId),
+    enabled: Boolean(selectedDocumentId),
+    retry: (failureCount, error) => {
+      const responseStatus = (error as { response?: { status?: number } })?.response?.status;
+      if (responseStatus === 404) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+  });
+
   const analyses = analysesQuery.data?.data ?? [];
   const selectedAnalysis = detailQuery.data?.data;
   const sourceDocument = sourceDocumentQuery.data?.data;
-  const selectedSourceVersionId = selectedVersionId || sourceDocument?.activeVersionId || sourceDocument?.versions[0]?.id || "";
+  const requestedVersionId = searchParams.get("versionId");
+  const selectedVersionId = requestedVersionId
+    ? sourceDocument?.versions.find(version => version.id === requestedVersionId)?.id ?? ""
+    : sourceDocument?.activeVersionId || sourceDocument?.versions[0]?.id || "";
+  const selectedSourceVersionId = selectedVersionId;
 
   const documentChaptersQuery = useQuery({
     queryKey: queryKeys.knowledge.chapters(
@@ -215,18 +217,15 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   });
 
   const setAnalysisMode = (mode: BookAnalysisMode) => {
-    setAnalysisModeState(mode);
     setSelectedSourceRange(null);
     setSourceChaptersRequested(false);
-    if (mode === "diagnosis") {
-      setSelectedDocumentId("");
-      setSelectedVersionId("");
-    }
+
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (mode === "diagnosis") {
         next.set("mode", "diagnosis");
         next.delete("documentId");
+        next.delete("versionId");
       } else {
         next.delete("mode");
       }
@@ -237,6 +236,7 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   const openAnalysis = (analysisId: string, documentId: string, mode: BookAnalysisMode = analysisMode) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
+      next.delete("versionId");
       next.set("analysisId", analysisId);
       next.set("documentId", documentId);
       if (mode === "diagnosis") {
@@ -292,9 +292,7 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
       if (!result?.analysis) {
         return;
       }
-      setAnalysisModeState("diagnosis");
-      setSelectedDocumentId(result.document.id);
-      setSelectedVersionId(result.document.activeVersionId ?? "");
+
       sectionDraftsState.setDraftsFromAnalysis(result.analysis);
       openAnalysis(result.analysis.id, result.document.id, "diagnosis");
       await queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.documents("book-analysis-source") });
@@ -350,36 +348,19 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   });
 
   useEffect(() => {
-    const nextAnalysisId = searchParams.get("analysisId");
-    const nextDocumentId = searchParams.get("documentId");
-    const nextMode = searchParams.get("mode") === "diagnosis" ? "diagnosis" : "reference";
-    if (nextMode !== analysisMode) {
-      setAnalysisModeState(nextMode);
-    }
-    if (nextAnalysisId && nextAnalysisId !== selectedAnalysisId) {
-      setSelectedAnalysisId(nextAnalysisId);
-    }
-    if (nextDocumentId && nextDocumentId !== selectedDocumentId) {
-      setSelectedDocumentId(nextDocumentId);
-    }
-  }, [analysisMode, searchParams, selectedAnalysisId, selectedDocumentId]);
-
-  useEffect(() => {
-    if (!selectedDocumentId) {
-      return;
-    }
+    if (!searchParams.has("documentId")) return;
     const responseStatus = (sourceDocumentQuery.error as { response?: { status?: number } } | null)?.response?.status;
     if (responseStatus !== 404) {
       return;
     }
-    setSelectedDocumentId("");
-    setSelectedVersionId("");
+
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("documentId");
+      next.delete("versionId");
       return next;
-    });
-  }, [selectedDocumentId, setSearchParams, sourceDocumentQuery.error]);
+    }, { replace: true });
+  }, [searchParams, selectedDocumentId, setSearchParams, sourceDocumentQuery.error]);
 
   useEffect(() => {
     if (!selectedAnalysisId) {
@@ -389,23 +370,13 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
     if (responseStatus !== 404) {
       return;
     }
-    setSelectedAnalysisId("");
+
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("analysisId");
       return next;
-    });
+    }, { replace: true });
   }, [detailQuery.error, selectedAnalysisId, setSearchParams]);
-
-  useEffect(() => {
-    const document = sourceDocumentQuery.data?.data;
-    if (!selectedDocumentId || !document) {
-      return;
-    }
-    const currentOptions = document.versions.map((item) => item.id);
-    const fallbackVersionId = document.activeVersionId || document.versions[0]?.id || "";
-    setSelectedVersionId((current) => (currentOptions.includes(current) ? current : fallbackVersionId));
-  }, [selectedDocumentId, sourceDocumentQuery.data?.data]);
 
   useEffect(() => {
     if (selectedNovelId || novelOptions.length === 0) {
@@ -422,28 +393,28 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   }, [novelOptions, selectedDiagnosisNovelId]);
 
   useEffect(() => {
-    if (selectedAnalysisId || analyses.length === 0) {
+    if (selectedDocumentId || selectedAnalysisId || analyses.length === 0) {
       return;
     }
     const next = analyses[0];
-    setSelectedAnalysisId(next.id);
+
     setSearchParams((prev) => {
       const nextParams = new URLSearchParams(prev);
       nextParams.set("analysisId", next.id);
       nextParams.set("documentId", next.documentId);
       return nextParams;
-    });
-  }, [analyses, selectedAnalysisId, setSearchParams]);
+    }, { replace: true });
+  }, [analyses, selectedDocumentId, selectedAnalysisId, setSearchParams]);
 
   const selectDocument = (documentId: string) => {
-    setAnalysisModeState("reference");
-    setSelectedDocumentId(documentId);
-    setSelectedVersionId("");
+
     setSelectedSourceRange(null);
     setSourceChaptersRequested(false);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("mode");
+      next.delete("versionId");
+      next.delete("analysisId");
       if (documentId) {
         next.set("documentId", documentId);
       } else {
@@ -454,17 +425,17 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
   };
 
   const selectVersion = (versionId: string) => {
-    setSelectedVersionId(versionId);
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set("versionId",versionId); return next; });
     setSelectedSourceRange(null);
     setSourceChaptersRequested(false);
   };
 
+  useEffect(() => { setSelectedSourceRange(null); setSourceChaptersRequested(false); }, [selectedDocumentId, selectedVersionId]);
+
   const requestSourceChapters = () => setSourceChaptersRequested(true);
 
   const createAnalysis = async () => {
-    if (!selectedDocumentId) {
-      return;
-    }
+    if (!selectedDocumentId || !selectedVersionId) return;
     await createMutation.mutateAsync({
       documentId: selectedDocumentId,
       versionId: selectedVersionId || undefined,

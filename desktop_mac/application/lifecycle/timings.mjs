@@ -1,4 +1,5 @@
 import { appendRoleLog } from '../../infrastructure/processes/logging.mjs';
+import { describeWindowClose } from './window-close.mjs';
 
 export const runUntimed = (_stage, operation) => operation();
 
@@ -44,7 +45,7 @@ export function timeLifecycleAdapters(adapters, measure) {
     if (!adapters[method]) continue;
     timed[method] = (...args) => measure(stage, () => adapters[method].apply(timed, args), (result) => {
       if (method === 'nativeStatus' && !result) return '未发现可响应的窗口';
-      if (method === 'requestNativeClose' && !result?.ok) return '未获退出确认';
+      if (method === 'requestNativeClose') return describeWindowClose(result);
       if (method === 'localApiIdle' && result !== true) return '保留本机服务';
       return '完成';
     });

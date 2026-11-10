@@ -12,6 +12,7 @@ interface GenreTreeBrowserProps {
   onDelete: (genre: GenreTreeNode) => void;
   deletingId?: string;
   initialSelectedId?: string;
+  controlledId?: string | null;
 }
 
 function findGenrePath(nodes: GenreTreeNode[], targetId: string, parents: string[] = []): string[] {
@@ -30,19 +31,21 @@ export default function GenreTreeBrowser({
   onEdit,
   onDelete,
   deletingId,
-  initialSelectedId,
+  initialSelectedId, controlledId,
 }: GenreTreeBrowserProps) {
-  const [selectedId, setSelectedId] = useState(initialSelectedId || nodes[0]?.id || "");
+  const [localId, setSelectedId] = useState(initialSelectedId || nodes[0]?.id || "");
+  const selectedId = controlledId === undefined ? localId : controlledId ?? "";
   const selectedNode = useMemo(() => findGenreNode(nodes, selectedId), [nodes, selectedId]);
   const selectedPath = useMemo(() => findGenrePath(nodes, selectedId), [nodes, selectedId]);
 
   useEffect(() => {
+    if (controlledId !== undefined) return;
     if (initialSelectedId && findGenreNode(nodes, initialSelectedId)) {
       setSelectedId(initialSelectedId);
       return;
     }
     if (!selectedNode && nodes[0]) setSelectedId(nodes[0].id);
-  }, [initialSelectedId, nodes, selectedNode]);
+  }, [controlledId, initialSelectedId, nodes, selectedNode]);
 
   if (!selectedNode) return null;
 
@@ -50,8 +53,8 @@ export default function GenreTreeBrowser({
   const deleteDisabled = boundNovelCount > 0;
 
   return (
-    <div className="grid overflow-hidden rounded-lg border border-border/80 bg-background lg:grid-cols-[320px_minmax(0,1fr)]">
-      <AssetTreeNavigator
+    <div className={controlledId === undefined ? "grid overflow-hidden rounded-lg border border-border/80 bg-background lg:grid-cols-[320px_minmax(0,1fr)]" : "min-w-0"}>
+      {controlledId === undefined && <AssetTreeNavigator
         nodes={nodes}
         selectedId={selectedId}
         onSelect={setSelectedId}
@@ -59,7 +62,7 @@ export default function GenreTreeBrowser({
         hint="点击节点查看详情"
         ariaLabel="题材基底树"
         viewportClassName="max-h-[380px]"
-      />
+      />}
 
       <section className="flex min-w-0 flex-col" aria-labelledby="selected-genre-title">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3">

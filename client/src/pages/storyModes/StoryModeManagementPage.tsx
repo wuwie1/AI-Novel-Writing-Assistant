@@ -1,3 +1,4 @@
+import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -153,6 +154,7 @@ export default function StoryModeManagementPage() {
   });
 
   const storyModeTree = storyModeTreeQuery.data?.data ?? [];
+  const directory = useDirectorySelection("selectedId", storyModeTree);
   const isCreatingChild = Boolean(defaultParentId);
   const totalStoryModes = useMemo(() => countStoryModes(storyModeTree), [storyModeTree]);
   const editingStoryMode = useMemo(
@@ -439,6 +441,9 @@ export default function StoryModeManagementPage() {
 
   return (
     <div className="space-y-4">
+      <EntityDirectory collection="storyModes" title="推进模式目录" {...directory}
+        rows={flattenStoryModeTreeOptions(storyModeTree).map(option => ({id: option.id, label: option.name, description: option.path}))}
+        pending={storyModeTreeQuery.isLoading} error={storyModeTreeQuery.isError} retry={() => void storyModeTreeQuery.refetch()}/>
       <StoryModeCreateDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
@@ -594,6 +599,7 @@ export default function StoryModeManagementPage() {
             <StoryModeTreeBrowser
               nodes={storyModeTree}
               initialSelectedId={searchParams.get("selectedId") ?? ""}
+              controlledId={directory.host ? directory.selection : undefined}
               onCreateChild={handleCreateChild}
               onEdit={setEditingStoryModeId}
               onDelete={handleDelete}

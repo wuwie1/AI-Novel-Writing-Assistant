@@ -12,6 +12,7 @@ import ProviderStatusCard, { type ProviderCardViewModel } from "./ProviderStatus
 
 export default function ProviderSettingsSection(props: {
   embedded?: boolean;
+  selectedProvider?: string | null;
   providers: APIKeyStatus[];
   balances: ProviderBalanceStatus[];
   isBalanceLoading: boolean;
@@ -31,7 +32,7 @@ export default function ProviderSettingsSection(props: {
   removingProvider?: string;
 }) {
   const {
-    embedded = false,
+    embedded = false, selectedProvider,
     providers,
     balances,
     isBalanceLoading,
@@ -71,8 +72,8 @@ export default function ProviderSettingsSection(props: {
     };
   });
   const visibleViewModels = useMemo(
-    () => viewModels.filter(({ provider }) => provider.isConfigured && provider.isActive),
-    [viewModels],
+    () => viewModels.filter(({ provider }) => selectedProvider !== undefined ? provider.provider === selectedProvider : provider.isConfigured && provider.isActive),
+    [viewModels, selectedProvider],
   );
   const addableBuiltIns = providers.filter((provider) => provider.kind === "builtin" && (!provider.isConfigured || !provider.isActive));
 

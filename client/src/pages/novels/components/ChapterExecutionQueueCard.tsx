@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useEntityListHost } from "@/platform";
 import type { Chapter } from "@ai-novel/shared/types/novel";
 import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -44,11 +46,15 @@ export default function ChapterExecutionQueueCard(props: ChapterExecutionQueueCa
     removingChapterId,
   } = props;
 
+  const host = useEntityListHost();
+  const [search, setSearch] = useState("");
+  const visible = chapters.filter(c => !host || (`第 ${c.order} 章 ${c.title}`).includes(search.trim()));
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/70 lg:sticky lg:top-4">
       <CardHeader className="gap-3 border-b bg-gradient-to-b from-muted/30 to-background pb-4">
         <div className="space-y-1">
           <CardTitle className="text-base">章节队列</CardTitle>
+          {host && <input aria-label="搜索已加载的章节" placeholder="搜索已加载的章节" value={search} onChange={e => setSearch(e.target.value)}/>}
           <p className="text-sm leading-6 text-muted-foreground">
             左侧只负责切章和查看推进状态，把正文阅读区完整留给中间的主写作面板。
           </p>
@@ -75,12 +81,12 @@ export default function ChapterExecutionQueueCard(props: ChapterExecutionQueueCa
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col pb-4 pt-4">
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          {chapters.length === 0 ? (
+          {visible.length === 0 ? (
             <div className="rounded-xl border border-dashed p-4 text-xs leading-6 text-muted-foreground">
               当前筛选下还没有章节。
             </div>
           ) : (
-            chapters.map((chapter) => {
+            visible.map((chapter) => {
               const chapterRisks = parseRiskFlags(chapter.riskFlags);
               const isSelected = selectedChapterId === chapter.id;
               const isStreamingTarget = streamingChapterId === chapter.id;
