@@ -1,0 +1,84 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getRepoPaths, loadConfig } from '../../../desktop_mac/infrastructure/processes/config.mjs';
+import { acquireLock, writeState } from '../../../desktop_mac/infrastructure/processes/lock.mjs';
+import { resolveSshEndpoint } from '../../../desktop_mac/infrastructure/transport/ssh-identity.mjs';
+import { localTunnel } from './local.mjs';
+
+function alternatePort(config) {
+  // Skip ports reserved by the desktop even when its windows are closed.
+  const reserved = new Set([config.localApiPort, config.devUiPort, config.appUiPort, config.remoteWebPort, config.maintenanceProbePort]);
+  let port = config.tunnelPort;
+  do { port = port === 65535 ? 1024 : port + 1; } while (reserved.has(port));
+  return port;
+}
+
+export async function ensureWebTunnel(config, io, rememberedPort) {
+  const primary = config.tunnelPort;
+  const alternate = alternatePort(config);
+  let port = rememberedPort === alternate ? alternate : primary;
+  let state = await io.inspect(port);
+  if (port === primary && state.owner === 'desktop') {
+    port = alternate;
+    state = await io.inspect(port);
+  }
+  const url = `http://127.0.0.1:${port}/`;
+  if (state.owner === 'web' && await io.healthy(url)) return { url, port, status: 'ready' };
+  if (state.owner === 'other' || state.owner === 'desktop') {
+    throw new Error(`端口 ${port} 由其他进程使用。请用 TUNNEL_PORT 指定空闲端口后重试。`);
+  }
+
+  const log = path.join(config.repoRealPath, '.logs/tunnel.log');
+  const action = state.manager ? 'restart' : 'start';
+  try { await io.control(action, port); }
+  catch (error) { throw new Error(`独立 Web 隧道连接失败。${error.stderr?.trim() || error.message}（日志 ${log}）`); }
+  if ((await io.inspect(port)).owner !== 'web' || !await io.healthy(url)) {
+    throw new Error(`独立 Web 隧道未通过网页和 API 检查，请检查 SSH 连接和远端服务。日志 ${log}`);
+  }
+  return { url, port, status: action === 'restart' ? 'restored' : 'started' };
+}
+
+export async function loadWebConfig(repoRoot, environment = process.env) {
+  const env = {
+    ...environment,
+    SSH_TARGET: environment.SSH_TARGET || environment.AI_NOVEL_SSH_TARGET,
+    TUNNEL_PORT: environment.TUNNEL_PORT || environment.AI_NOVEL_LOCAL_PORT,
+    REMOTE_WEB_PORT: environment.REMOTE_WEB_PORT || environment.AI_NOVEL_REMOTE_PORT,
+  };
+  const config = await loadConfig({ repoRoot, env });
+  if (env.SSH_TARGET) return config;
+  let saved;
+  try { saved = (await readFile(path.join(config.repoRealPath, '.runtime/tunnel/target'), 'utf8')).trim(); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (!saved || saved === config.sshTarget) return config;
+  const legacy = await loadConfig({ repoRoot, env, fallbackSshTarget: saved });
+  if (legacy.sshTarget === config.sshTarget) return config; // Explicit desktop config wins.
+  const [desktop, web] = await Promise.all([resolveSshEndpoint(config.sshTarget), resolveSshEndpoint(legacy.sshTarget)]);
+  // Use the desktop profile for an equivalent endpoint; a legacy alias may also forward unrelated ports.
+  return JSON.stringify(desktop) === JSON.stringify(web) ? config : legacy;
+}
+
+async function main() {
+  const config = await loadWebConfig(fileURLToPath(new URL('../../../', import.meta.url)));
+  if (config.tunnelPort < 1024 || config.remoteWebPort < 1024) throw new Error('Web 隧道端口需在 1024 到 65535 之间。');
+  const { lifecycleLock } = getRepoPaths(config.repoRealPath);
+  const guard = await acquireLock(lifecycleLock, { repoRealPath: config.repoRealPath, operation: 'ssh_server' });
+  try {
+    const portFile = path.join(config.repoRealPath, '.runtime/tunnel', `${config.tunnelPort}.browser-port`);
+    let rememberedPort;
+    try { rememberedPort = Number((await readFile(portFile, 'utf8')).trim()); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const { port, url, status } = await ensureWebTunnel(config, localTunnel(config), rememberedPort);
+    if (port !== config.tunnelPort && port !== rememberedPort) await writeState(portFile, port);
+    const message = { ready: '独立 Web 隧道通畅', started: '独立 Web 隧道已建立', restored: '独立 Web 隧道已恢复' };
+    console.log(`${message[status]}，浏览器访问 ${url}`);
+  } finally { await guard.release(); }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error.lockBusy ? '桌面连接命令正在运行，请稍后重试 make ssh_server。' : error.message);
+    process.exitCode = error.exitCode ?? 1;
+  });
+}

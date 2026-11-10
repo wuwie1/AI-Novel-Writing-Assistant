@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 const execute = promisify(execFile);
 
@@ -21,6 +22,10 @@ print(json.dumps([item.decode() for item in raw[pos:].split(b'\0')[:argc]]))
 export async function readProcessArgv(pid, { exec = execute } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   try {
+    if (process.platform === 'linux') {
+      const raw = await readFile(`/proc/${pid}/cmdline`, 'utf8');
+      return raw.replace(/\0$/, '').split('\0');
+    }
     const result = await exec('/usr/bin/python3', ['-c', READ_ARGV, String(pid)], { timeout: 5000, maxBuffer: 300_000 });
     const argv = JSON.parse(result.stdout);
     return Array.isArray(argv) && argv.every((arg) => typeof arg === 'string') ? argv : null;

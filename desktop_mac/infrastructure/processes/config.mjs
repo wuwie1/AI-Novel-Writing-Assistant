@@ -38,7 +38,7 @@ function validate(config, repoRealPath) {
 }
 
 /** Load non-secret Mac settings. Environment/Make values override the JSON file. */
-export async function loadConfig({ repoRoot = process.cwd(), env = process.env, configPath } = {}) {
+export async function loadConfig({ repoRoot = process.cwd(), env = process.env, configPath, fallbackSshTarget = DEFAULTS.sshTarget } = {}) {
   let repoRealPath;
   try { repoRealPath = await realpath(repoRoot); } catch { bad(`Repository path does not exist: ${repoRoot}`); }
   const filePath = configPath ?? path.join(repoRealPath, '.runtime/desktop_mac/config.json');
@@ -54,7 +54,7 @@ export async function loadConfig({ repoRoot = process.cwd(), env = process.env, 
   } catch (error) {
     if (error.code !== 'ENOENT') bad(`Cannot read Mac config ${filePath}: ${error.message}`);
   }
-  const config = { ...DEFAULTS, ...fileConfig };
+  const config = { ...DEFAULTS, sshTarget: fallbackSshTarget, ...fileConfig };
   for (const [key, name] of Object.entries(ENV_FIELDS)) {
     if (env[name] === undefined || env[name] === '') continue;
     config[key] = key.toLowerCase().endsWith('port') ? Number(env[name]) : env[name];

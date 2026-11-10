@@ -7,14 +7,14 @@ LOCAL_PORT=${AI_NOVEL_LOCAL_PORT:-15173}
 REMOTE_PORT=${AI_NOVEL_REMOTE_PORT:-18080}
 STATE="$ROOT/.runtime/tunnel"
 LOG="$ROOT/.logs/tunnel.log"
-case "$ACTION" in start|stop|restart|status) ;; *) echo 'Usage: tunnel.sh start|stop|restart|status' >&2; exit 2 ;; esac
+case "$ACTION" in start|stop|restart|status|pid) ;; *) echo 'Usage: tunnel.sh start|stop|restart|status|pid' >&2; exit 2 ;; esac
 for port in "$LOCAL_PORT" "$REMOTE_PORT"; do
   [[ $port =~ ^[0-9]+$ && $port -ge 1024 && $port -le 65535 ]] || { echo '端口需在 1024–65535 之间。' >&2; exit 2; }
 done
 umask 077
 mkdir -p "$STATE" "$(dirname "$LOG")"
 PID_FILE="$STATE/$LOCAL_PORT.pid"
-is_running() {
+manager_pid() {
   [[ -f $PID_FILE ]] || return 1
   local pid command process_name
   pid=$(cat "$PID_FILE" 2>/dev/null) || return 1
@@ -22,13 +22,21 @@ is_running() {
   kill -0 "$pid" 2>/dev/null || return 1
   process_name=$(ps -p "$pid" -o comm=) || return 1
   command=$(ps -ww -p "$pid" -o command=) || return 1
-  [[ ${process_name##*/} == autossh && $command == *"127.0.0.1:$LOCAL_PORT:127.0.0.1:"* ]]
+  [[ ${process_name##*/} == autossh && $command == *"127.0.0.1:$LOCAL_PORT:127.0.0.1:"* ]] || return 1
+  # The open log follows a renamed checkout and identifies its manager even if
+  # the recorded SSH -E path no longer exists. A reused PID may belong elsewhere.
+  if command -v lsof >/dev/null; then
+    lsof -a -p "$pid" "$LOG" >/dev/null 2>&1 || return 1
+  fi
+  printf '%s\n' "$pid"
 }
+is_running() { manager_pid >/dev/null; }
 stop_tunnel() {
-  if is_running; then
-    kill -TERM "$(cat "$PID_FILE")"
+  local pid
+  if pid=$(manager_pid); then
+    if ! kill -TERM "$pid" 2>/dev/null && kill -0 "$pid" 2>/dev/null; then return 1; fi
     for ((attempt=0; attempt<50; attempt++)); do
-      if ! is_running; then
+      if [[ $(manager_pid || true) != "$pid" ]]; then
         echo "本地通道已停止：$LOCAL_PORT"
         return 0
       fi
@@ -40,6 +48,7 @@ stop_tunnel() {
   echo '本地通道未运行。'
 }
 case "$ACTION" in
+  pid) manager_pid; exit 0 ;;
   status) if is_running; then echo "通道运行中：http://127.0.0.1:$LOCAL_PORT"; else echo '通道未运行。'; exit 1; fi; exit 0 ;;
   stop) stop_tunnel; exit 0 ;;
   restart) stop_tunnel ;;
@@ -67,7 +76,7 @@ autossh -M 0 -f -N -T -L "127.0.0.1:$LOCAL_PORT:127.0.0.1:$REMOTE_PORT" -E "$LOG
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -o ConnectTimeout=10 -o ControlMaster=no -o ControlPath=none "$SSH_TARGET"
 for ((attempt=0; attempt<20; attempt++)); do
-  if is_running && curl -fsS --max-time 2 "http://127.0.0.1:$LOCAL_PORT/api/health" >/dev/null 2>&1; then
+  if is_running && curl --noproxy '*' -fsS --max-time 2 "http://127.0.0.1:$LOCAL_PORT/api/health" >/dev/null 2>&1; then
     echo "本地通道已就绪：http://127.0.0.1:$LOCAL_PORT"
     echo "通道日志：$LOG"
     exit 0

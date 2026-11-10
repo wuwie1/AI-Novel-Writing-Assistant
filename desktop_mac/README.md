@@ -14,6 +14,8 @@ make app
 
 启动时会检查本机桌面依赖，缺失或与当前分支不一致时按锁文件补齐，再打开窗口。安装失败时可在终端查看 pnpm 的具体原因，处理后重新运行同一命令。用 `make list` 查看命令，`make stop_app` 退出，`make restart_app` 按上次请求的模式重启。
 
+用浏览器访问远端时，运行 `make ssh_server`，打开终端显示的地址。独立 Web 隧道中断时可再次运行同一命令恢复，执行 `make stop_app` 后也可继续使用浏览器。[本地通道与端口](../infra/server/README.md#本地通道)
+
 使用本机测试后端时，先准备 `server/.env`、本机数据库与后端依赖。
 
 ```bash

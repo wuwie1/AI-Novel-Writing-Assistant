@@ -94,7 +94,11 @@ tail -F logs/server.log logs/nginx-error.log
 
 ## 本地通道
 
-本机需可免交互 SSH 登录目标主机，并安装 autossh。将目标保存为本机忽略文件：
+在本机仓库根目录运行 `make ssh_server`。命令检查独立 SSH 隧道、远端网页和 API。通畅时直接显示浏览器访问地址，连接中断时自动建立或恢复。退出桌面后，浏览器仍可使用这个地址。
+
+默认地址为 `http://127.0.0.1:15173/`。如果桌面先占用了该端口，浏览器会获得另一个独立地址，默认配置下为 `http://127.0.0.1:15176/`。下次执行命令会沿用这个地址。SSH 目标和端口沿用 `make app` 的配置。未指定 SSH 目标时，也会读取独立通道保存的服务器地址。需要指定 SSH 别名或端口时，可运行 `make ssh_server SSH_TARGET=my-server TUNNEL_PORT=15200`。
+
+本机需可免交互 SSH 登录目标主机，并安装 autossh 和 lsof。直接使用通道脚本时，可将目标保存为本机忽略文件：
 
 ```bash
 mkdir -p .runtime/tunnel
@@ -103,7 +107,7 @@ printf '%s\n' 'user@your-server' > .runtime/tunnel/target
 bash infra/server/tunnel.sh start
 ```
 
-默认访问 `http://127.0.0.1:15173`。通道后台运行、连接失败自动重连；日志在本机 `.logs/tunnel.log`。它在当前电脑会话中持续运行，电脑重启后需重新执行 start。
+通道在当前电脑会话中后台运行，日志在本机 `.logs/tunnel.log`。电脑重启后可重新运行 `make ssh_server`。
 
 ```bash
 bash infra/server/tunnel.sh status
