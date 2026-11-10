@@ -33,3 +33,24 @@ export function sendNativeCommand(socketPath, command, { timeoutMs = 2_000, requ
 }
 
 export async function getNativeStatus(repoRealPath, options) { return sendNativeCommand(nativeSocketPath(repoRealPath), 'status', options); }
+
+export async function requestOwnedWindowClose(repoRoot, current, send = sendNativeCommand) {
+  const socket = nativeSocketPath(repoRoot);
+  const status = await send(socket, 'status');
+  const pid = current.processes?.app?.pid;
+  if (status.ok !== true || status.repo !== repoRoot || status.mode !== current.runningMode ||
+      status.backendIdentity !== current.backendIdentity || (pid != null && status.pid !== pid)) {
+    throw Object.assign(new Error('Native window identity does not match the saved state'), {exitCode: 4});
+  }
+  let result;
+  try { result = await send(socket, 'close', {timeoutMs: 60_000}); }
+  catch (error) {
+    if (error.code === 'ETIMEDOUT') return {ok: false, error: 'close_timeout'};
+    throw error;
+  }
+  // The original binary returned the same cancellation for an unready page and a user decision.
+  if (!status.rendererState && status.rendererReady === false && result.ok === false && result.cancelled === true && !result.error) {
+    return {...result, cancelled: false, error: 'legacy_renderer_unavailable'};
+  }
+  return result;
+}

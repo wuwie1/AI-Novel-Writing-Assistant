@@ -193,6 +193,9 @@ test('dirty content can cancel, then save and navigate once without a second con
     await h.go('/novels');
     assert.equal(h.pathname, '/settings/models');
     assert.match(h.dialog.textContent, /测试正文/);
+    await h.close();
+    assert.equal(h.messages.at(-1)?.reason, 'close_pending');
+    assert.match(h.dialog.textContent, /测试正文/);
     await h.click('取消');
     assert.equal(h.dialog, null);
     await h.go('/novels');
@@ -211,8 +214,10 @@ test('an occluded window answers close without animation frames and brings only 
   // WebKit may suspend all frames while occluded.
   Object.defineProperty(globalThis, 'requestAnimationFrame', { configurable: true, value: () => 0 });
   try {
+    assert.deepEqual(h.messages.map(message => message.type), ['rendererReady']);
+    await h.flush(() => window.dispatchEvent(new window.Event('pageshow')));
     await h.close();
-    assert.deepEqual(h.messages.map((message) => message.type), ['closeDecision']);
+    assert.deepEqual(h.messages.map(message => message.type), ['rendererReady', 'rendererReady', 'closeDecision']);
     assert.equal(h.messages.at(-1).decision, 'allow');
     await h.edit({ dirty: true });
     await h.close();
@@ -239,6 +244,7 @@ test('failed saves and busy work preserve the page; explicit discard permits lea
     await h.edit({ busy: true });
     await h.close();
     assert.equal(h.messages.at(-1)?.decision, 'cancel');
+    assert.equal(h.messages.at(-1)?.reason, 'document_busy');
     await h.edit({ dirty: true, busy: false });
     h.failSave();
     await h.go('/novels');

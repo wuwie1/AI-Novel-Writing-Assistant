@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createLifecycle } from '../application/lifecycle/index.mjs';
 import { readState, writeState, acquireLock } from '../infrastructure/processes/lock.mjs';
 import { processMatches, signalOwnedProcess, stableHash } from '../infrastructure/processes/identity.mjs';
+import { requestOwnedWindowClose } from '../infrastructure/processes/native-socket.mjs';
 
 async function setup(t, overrides = {}) {
   const repoRealPath = await mkdtemp(path.join(os.tmpdir(), 'mac-life-'));
@@ -17,7 +18,7 @@ async function setup(t, overrides = {}) {
   const adapters = {
     ensureRendererDependencies: async () => calls.push('dependencies'),
     nativeStatus: async (current) => current?.runningMode ? ({ rendererReady: ready, repo: repoRealPath, mode: current.runningMode, backendIdentity: current.backendIdentity, pid: current.processes?.app?.pid }) : null, focus: async () => calls.push('focus'),
-    requestNativeClose: async () => ({ ok: !cancelClose }), waitAppExited: async () => calls.push('waitExit'),
+    requestNativeClose: async () => ({ ok: !cancelClose, cancelled: cancelClose }), waitAppExited: async () => calls.push('waitExit'),
     prepare: async ({ mode }) => { calls.push(`prepare:${mode}`); if (failPrepare) throw Error('build failed'); return { fingerprint: `build-${mode}` }; },
     ensureConnection: async ({ mode }) => { calls.push(`connect:${mode}`); return { backendIdentity: `identity-${mode}`, processes: {} }; },
     startHelpers: async ({ mode }) => { calls.push(`helpers:${mode}`); return { processes: { proxy: { ownership: 'owned', mode } } }; },
@@ -39,6 +40,63 @@ test('repeated start focuses the owned native window and does not duplicate help
   assert.equal((await lifecycle.startLocal()).status, 'focused');
   assert.equal(calls.filter((item) => item === 'prepare:local').length, 1);
   assert.ok(calls.includes('focus'));
+});
+
+test('an unready legacy window can refuse stop, restart and mode switch without reporting user cancellation or stopping helpers', async t => {
+  const {lifecycle, calls, adapters, repoRealPath} = await setup(t);
+  await lifecycle.startRemote();
+  const original = await lifecycle.getState();
+  const status = {ok: true, repo: repoRealPath, mode: 'remote', backendIdentity: original.backendIdentity, rendererReady: false};
+  const send = async (_socket, command) => command === 'status' ? status : {ok: false, cancelled: true};
+  adapters.requestNativeClose = state => requestOwnedWindowClose(repoRealPath, state, send);
+  for (const run of [lifecycle.stop, lifecycle.restart, lifecycle.startLocal]) {
+    calls.length = 0;
+    await assert.rejects(run(), error => {
+      assert.equal(error.exitCode, 5);
+      assert.equal(error.cancelled, false);
+      assert.match(error.userHint, /⌘Q/);
+      return true;
+    });
+    assert.equal(calls.includes('waitExit'), false);
+    assert.equal(calls.some(call => call.startsWith('stop:')), false);
+    assert.deepEqual((await lifecycle.getState()).processes, original.processes);
+  }
+  status.rendererReady = true;
+  await assert.rejects(lifecycle.stop(), {exitCode: 3, cancelled: true});
+});
+
+test('the close protocol verifies the window before quitting and preserves busy, timeout and pending reasons', async t => {
+  const {lifecycle, adapters, calls, repoRealPath} = await setup(t);
+  await lifecycle.startLocal();
+  const original = await lifecycle.getState();
+  const status = {ok: true, rendererReady: true, rendererState: 'ready', repo: repoRealPath, mode: 'local', backendIdentity: original.backendIdentity};
+  let requests = 0;
+  let reason;
+  const send = async (_socket, command) => {
+    if (command === 'status') return status;
+    requests++;
+    if (reason === 'timeout') throw Object.assign(new Error('socket timed out'), {code: 'ETIMEDOUT'});
+    return reason ? {ok: false, cancelled: false, error: reason} : {ok: true};
+  };
+  adapters.requestNativeClose = state => requestOwnedWindowClose(repoRealPath, state, send);
+  status.repo = '/different';
+  await assert.rejects(lifecycle.stop(), {exitCode: 4});
+  assert.equal(requests, 0);
+  status.repo = repoRealPath;
+  for (const [reply, hint] of [['document_busy', /保存或生成/], ['close_pending', /已有的确认/], ['timeout', /保存状态/]]) {
+    reason = reply;
+    await assert.rejects(lifecycle.stop(), error => {
+      assert.equal(error.cancelled, false);
+      assert.match(error.userHint, hint);
+      return true;
+    });
+  }
+  assert.equal(calls.includes('waitExit'), false);
+  status.rendererReady = false;
+  status.rendererState = 'terminated';
+  reason = null;
+  assert.equal((await lifecycle.stop()).status, 'stopped');
+  assert.equal(calls.includes('waitExit'), true);
 });
 
 test('remote dependencies are checked under the lifecycle lock before build, focus and restart', async (t) => {

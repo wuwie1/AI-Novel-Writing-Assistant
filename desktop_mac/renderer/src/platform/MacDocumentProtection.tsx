@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/toast";
 import { macEnvironment, postNative, type MacMessage } from "./native";
 
 type LeaveRequest = { requestId?: string; resolve: (allowed: boolean) => void };
+type LeaveDecision = "allow" | "cancel" | "document_busy" | "close_pending";
 
 /** Explicit document contracts; never inspect DOM text to infer saved state. */
 export function MacDocumentProtection({ children }: { children: ReactNode }) {
@@ -41,23 +42,25 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
     setError("");
     request?.resolve(allowed);
   }, []);
-  const confirmLeave = useCallback(async (requestId?: string) => {
+  const decideLeave = useCallback(async (requestId?: string): Promise<LeaveDecision> => {
     const documents = active();
     if (requestId && (documents.length || answer.current)) {
       postNative({ type: "closeNeedsAttention", requestId });
     }
-    if (answer.current) return false;
-    if (!documents.length) return true;
+    if (answer.current) return "close_pending";
+    if (!documents.length) return "allow";
     if (documents.some((item) => item.busy)) {
       toast.info("请等待当前保存或生成操作完成，再离开页面。");
-      return false;
+      return "document_busy";
     }
     returnFocus.current = previousFocus.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     previousFocus.current = null;
     setPrompt(documents);
     setError("");
-    return new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
+    const allowed = await new Promise<boolean>((resolve) => { answer.current = { requestId, resolve }; });
+    return allowed ? "allow" : "cancel";
   }, [active]);
+  const confirmLeave = useCallback(async () => (await decideLeave()) === "allow", [decideLeave]);
   const platform = useMemo<ClientPlatform>(() => {
     const prefix = `mac:${macEnvironment()?.backendIdentity ?? macEnvironment()?.mode ?? "unknown"}:`;
     return {
@@ -96,7 +99,10 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
       const message = (event as CustomEvent<MacMessage>).detail;
       if (message?.protocolVersion !== 1) return;
       if (message.type === "requestClose") {
-        void confirmLeave(message.requestId).then((allowed) => postNative({ type: "closeDecision", requestId: message.requestId, decision: allowed ? "allow" : "cancel" }));
+        void decideLeave(message.requestId).then(result => postNative({
+          type: "closeDecision", requestId: message.requestId, decision: result === "allow" ? "allow" : "cancel",
+          ...(result === "document_busy" || result === "close_pending" ? {reason: result} : {}),
+        }));
       } else if (message.type === "closeExpired" && message.requestId && answer.current?.requestId === message.requestId) {
         finish(false);
       } else if (message.type === "windowActivated") {
@@ -110,13 +116,17 @@ export function MacDocumentProtection({ children }: { children: ReactNode }) {
         })().catch((failure: unknown) => toast.error(failure instanceof Error ? failure.message : "保存失败，请重试。"));
       }
     };
+    const reportReady = () => postNative({type: "rendererReady"});
     window.addEventListener("ai-novel-mac", onNative);
+    window.addEventListener("pageshow", reportReady);
+    reportReady();
     return () => {
+      window.removeEventListener("pageshow", reportReady);
       window.removeEventListener("ai-novel-mac", onNative);
       answer.current?.resolve(false);
       answer.current = null;
     };
-  }, [active, confirmLeave, finish, queryClient]);
+  }, [active, decideLeave, finish, queryClient]);
 
   // Read the guards after React has committed the save result, including any edits made during the save.
   useEffect(() => {
