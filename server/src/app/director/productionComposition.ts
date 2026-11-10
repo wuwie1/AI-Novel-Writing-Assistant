@@ -43,7 +43,10 @@ export function createDirectorProductionOptions(): DirectorNextServiceOptions {
     const workspace = await volumes.getVolumes(context.contract.novelId, {hydrateCanonical:false});
     return {...modelOptions(context), workspace, targetVolumeId: targetVolume(context, workspace),
       estimatedChapterCount: requireLaunch(context.contract).estimatedChapterCount};
-  }, contentHash});
+  }, contentHash, onProgress: (context, progress) => events.append({
+    runId: context.runId, type: "chapter_list_progress",
+    payload: {controlVersion: context.control.version, progress},
+  })});
   const routeService = new ChapterRouteWindowService(volumes);
   const productionRoutes = createChapterRouteWindowStepHandler({volumeService: volumes, routeService,
     inputProvider: async context => {
@@ -67,7 +70,7 @@ export function createDirectorProductionOptions(): DirectorNextServiceOptions {
           return characters.applyCharacterCastOption(novelId, ids[0], {requireEmptyCast: true, postApplyMode: "deferred"});
         }}, contentHash}),
     volume_strategy: createVolumeStrategyStepHandler({volumeService: volumes, inputProvider: async context => ({...modelOptions(context), estimatedChapterCount: requireLaunch(context.contract).estimatedChapterCount,
-      ...(context.contract.chapterRange?.from === 1 ? {skeletonVolumeCount: 1} : {})}), contentHash}),
+      userPreferredVolumeCount: requireLaunch(context.contract).userPreferredVolumeCount}), contentHash}),
     volume_beat_sheet: createVolumeBeatSheetStepHandler({volumeService: volumes, inputProvider: async context => {
       // Old runs may have adopted a skeleton as a complete strategy. Check the saved business facts.
       await volumes.recoverVolumeStrategy(context.contract.novelId, {

@@ -686,6 +686,7 @@ test("generateBeatChunkedChapterList resumes after the last persisted complete b
   const originalRunStructuredPrompt = promptRunner.runStructuredPrompt;
   const generatedBeatKeys = [];
   const intermediateEvents = [];
+  const progressEvents = [];
 
   promptRunner.runStructuredPrompt = async ({ promptInput }) => {
     generatedBeatKeys.push(promptInput.targetBeat.key);
@@ -732,12 +733,13 @@ test("generateBeatChunkedChapterList resumes after the last persisted complete b
         targetVolumeId: "volume-1",
         generationMode: "full_volume",
       },
-      notifyPhase: async () => {},
+      notifyPhase: async (_label, progress) => { progressEvents.push(progress); },
       notifyIntermediateDocument: async (event) => {
         intermediateEvents.push(event);
       },
     });
 
+    assert.deepEqual(progressEvents.map(event => [event.completedChapters, event.totalChapters]), [[2, 4], [4, 4]]);
     assert.deepEqual(generatedBeatKeys, ["midpoint_turn"]);
     assert.equal(intermediateEvents[0].isFinal, false);
     assert.equal(intermediateEvents[0].targetBeatKey, "midpoint_turn");
@@ -842,6 +844,7 @@ test("generateBeatChunkedChapterList emits a single-beat intermediate document w
   const document = createDocument();
   const originalRunStructuredPrompt = promptRunner.runStructuredPrompt;
   const intermediateEvents = [];
+  const progressEvents = [];
 
   promptRunner.runStructuredPrompt = async ({ promptInput }) => ({
     output: {
@@ -886,12 +889,13 @@ test("generateBeatChunkedChapterList emits a single-beat intermediate document w
         generationMode: "single_beat",
         targetBeatKey: "midpoint_turn",
       },
-      notifyPhase: async () => {},
+      notifyPhase: async (_label, progress) => { progressEvents.push(progress); },
       notifyIntermediateDocument: async (event) => {
         intermediateEvents.push(event);
       },
     });
 
+    assert.deepEqual(progressEvents.map(event => [event.completedChapters, event.totalChapters]), [[0, 2], [2, 2]]);
     assert.equal(intermediateEvents.length, 2);
     assert.equal(intermediateEvents[0].isFinal, false);
     assert.equal(intermediateEvents[0].targetBeatKey, "midpoint_turn");
@@ -1018,6 +1022,7 @@ test("generateBeatChunkedChapterList emits a resumable intermediate document aft
   const document = createDocument();
   const originalRunStructuredPrompt = promptRunner.runStructuredPrompt;
   const intermediateEvents = [];
+  const progressEvents = [];
 
   promptRunner.runStructuredPrompt = async ({ promptInput }) => ({
     output: {
@@ -1071,12 +1076,13 @@ test("generateBeatChunkedChapterList emits a resumable intermediate document aft
         targetVolumeId: "volume-1",
         generationMode: "full_volume",
       },
-      notifyPhase: async () => {},
+      notifyPhase: async (_label, progress) => { progressEvents.push(progress); },
       notifyIntermediateDocument: async (event) => {
         intermediateEvents.push(event);
       },
     });
 
+    assert.deepEqual(progressEvents.map(event => [event.completedChapters, event.totalChapters]), [[0, 4], [2, 4], [2, 4], [4, 4]]);
     assert.equal(intermediateEvents.length, 3);
     assert.equal(intermediateEvents[0].isFinal, false);
     assert.equal(intermediateEvents[0].targetBeatKey, "open_hook");

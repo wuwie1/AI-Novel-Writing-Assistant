@@ -475,6 +475,7 @@ export interface DirectorTaskSeedPayloadSnapshot {
   autoExecutionPlan?: DirectorAutoExecutionPlan;
   autoApproval?: DirectorAutoApprovalConfig | null;
   styleProfileId?: string | null;
+  issuePolicy?: DirectorIssuePolicy;
   styleIntentSummary?: StyleIntentSummary | null;
   postGenerationStyleReviewEnabled?: boolean | null;
   taskNotice?: DirectorTaskNotice | null;
@@ -648,6 +649,7 @@ export interface DirectorProjectContextInput {
   postGenerationStyleReviewEnabled?: boolean;
   defaultChapterLength?: number;
   estimatedChapterCount?: number;
+  userPreferredVolumeCount?: number;
   projectStatus?: ProjectProgressStatus;
   storylineStatus?: ProjectProgressStatus;
   outlineStatus?: ProjectProgressStatus;

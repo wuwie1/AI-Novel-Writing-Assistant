@@ -12,6 +12,7 @@ import {directorChapterBudgetGrantSchema, type DirectorChapterBudgetGrant} from 
 import {directorUnknownClaimResolutionSchema} from "@ai-novel/shared/types/director/unknownClaims";
 
 export type DirectorCommand =
+  | { type: "pause"; runId: string; expectedVersion: number; idempotencyKey: string }
   | {type: "retry_start"; runId: string; expectedVersion: number; idempotencyKey: string}
   | { type: "open_run"; novelId: string; driver: RunContract["driver"]; stepIdsInScope: string[] | null; launchInput?: RunLaunchInput; idempotencyKey: string }
   | { type: "resolve_gate"; runId: string; decision: "confirm" | "confirm_after_edit" | "regenerate"; guidance?: string; chapterPlanEdit?: import("@ai-novel/shared/types/director/revision").ChapterPlanEdit; expectedVersion: number; idempotencyKey: string }
@@ -142,6 +143,8 @@ export class CommandService {
         return this.resolveGate(command);
       case "resume":
         return this.resume(command);
+      case "pause":
+        return this.transition(command, { type: "pause", pause: { kind: "manual_recovery", reason: "user_requested_pause" } });
       case "retry_start":
         if ((await this.requireControl(command.runId)).status !== "queued") {
           throw new InvalidDirectorCommandError("只有尚未启动的创作可以重新排队。");
@@ -177,8 +180,8 @@ export class CommandService {
 
   private async resume(command: Extract<DirectorCommand, { type: "resume" }>): Promise<DirectorCommandResult> {
     const control = await this.requireControl(command.runId);
-    if (control.status !== "paused") {
-      throw new InvalidDirectorCommandError("只有暂停中的创作可以继续。");
+    if (control.status !== "paused" && control.status !== "failed") {
+      throw new InvalidDirectorCommandError("只有暂停或生成失败的创作可以继续。");
     }
     if (command.chapterBudget && (!directorChapterBudgetGrantSchema.safeParse(command.chapterBudget).success || control.pause?.kind !== "manual_recovery")) {
       throw new InvalidDirectorCommandError("只能为预算暂停中的章节追加有效额度。");
@@ -186,7 +189,7 @@ export class CommandService {
     if (command.resolveUnknownClaims && (!directorUnknownClaimResolutionSchema.safeParse(command.resolveUnknownClaims).success || control.pause?.kind !== "manual_recovery")) {
       throw new InvalidDirectorCommandError("只能为人工恢复暂停中的章节确认未决步骤。");
     }
-    return this.transition(command, { type: "resume" });
+    return this.transition(command, { type: control.status === "failed" ? "recover_failed_step" : "resume" });
   }
 
   private async resolveGate(command: Extract<DirectorCommand, { type: "resolve_gate" }>): Promise<DirectorCommandResult> {

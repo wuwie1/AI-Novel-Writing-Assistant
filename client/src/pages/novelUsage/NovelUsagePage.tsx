@@ -1,7 +1,9 @@
 import { EntityDirectory, useEntityListHost, useRouteFields } from "@/platform";
-import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { getNovelInvocation } from "@/api/novel/usage";
+import { UsageTiming } from "./components/UsageTiming";
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getNovelUsage } from "@/api/novel";
 import { Button } from "@/components/ui/button";
 import { UsageOverview } from "./components/UsageOverview";
@@ -10,10 +12,9 @@ import { formatUsageTokens, usageFiltersFromParams, usageStageLabel, usageStatus
 
 export default function NovelUsagePage() {
   const { id: novelId = "" } = useParams();
-  const [params, setParams] = useSearchParams();
+  const [params, update] = useRouteFields();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const host = useEntityListHost();
-  const [,update] = useRouteFields();
   const filters = usageFiltersFromParams(params);
   const queryClient = useQueryClient();
   const queryKey = ["novelInvocationUsage", novelId, filters];
@@ -24,25 +25,35 @@ export default function NovelUsagePage() {
     refetchInterval: q => autoRefresh && (q.state.data?.pages.length ?? 0) <= 1 ? 15000 : false,
   });
   const data = query.data?.pages[0]?.data;
+  const hasTiming = Boolean(data?.timing);
+  const focusedId = params.get("invocation") || params.get("invocationId") || undefined;
+  const focused = useQuery({ queryKey: ["novel-invocation", novelId, focusedId], queryFn: () => getNovelInvocation(novelId, focusedId!), enabled: Boolean(novelId && focusedId && hasTiming) });
   const items = query.data?.pages.flatMap(page => page.data?.items ?? []) ?? [];
+  const focusedItem = focused.data?.data?.item;
+  if (focusedItem && !items.some(item => item.invocationId === focusedItem.invocationId)) items.unshift({ ...focusedItem, chapter: data?.facets.chapters.find(ch => ch.id === focusedItem.chapterId) ?? null });
+  useEffect(() => { if (focusedId) document.getElementById(`usage-${focusedId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [focusedId, focusedItem]);
+  const jump = (id: string) => update({ invocation: id, invocationId: null }, !host);
+  const clearFocus = () => update({ invocation: null, invocationId: null }, true);
+  const clearFilters = () => update({ chapterId: null, stage: null, provider: null, model: null, status: null, invocation: null, invocationId: null }, true);
   const setFilter = (key: string, value: string) => {
-    const next = new URLSearchParams(params);
-    next.delete("invocationId");
-    if (value) next.set(key, value); else next.delete(key);
-    setParams(next, {replace: true});
+    update({ [key]: value || null, invocation: null, invocationId: null }, true);
   };
+  const visibleItems = host ? items.filter(item => item.invocationId === focusedId) : items;
   return <div className="mx-auto max-w-7xl space-y-6 pb-10">
-    <EntityDirectory collection={`usage:${novelId}`} title="调用记录" selection={params.get("invocationId")}
+    <EntityDirectory collection={`usage:${novelId}`} title="调用记录" selection={focusedId ?? null}
       rows={items.map(i => ({ id:i.invocationId, label:usageStageLabel(i.stage), description:[i.model, new Date(i.startedAt).toLocaleString()].filter(Boolean).join(" · ") }))}
       tools={query.hasNextPage && <button disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>查看更多调用</button>}
-      pending={query.isPending} error={query.isError} retry={() => void query.refetch()} onSelect={id => update({ invocationId:id })}/>
+      pending={query.isPending} error={query.isError} retry={() => void query.refetch()} onSelect={jump}/>
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 pb-5">
       <div><h1 className="text-2xl font-semibold">AI 用量与调用日志</h1><p className="mt-2 text-sm text-muted-foreground">{data?.novel.title ?? "本书"} · 查看各次创作的输入、输出与缓存用量。</p></div>
       <div className="flex flex-wrap gap-2"><Button asChild variant="ghost"><Link to={`/lab/director/${encodeURIComponent(novelId)}`}>返回小说导演台</Link></Button><Button asChild variant="ghost"><Link to="/novels">返回书架</Link></Button></div>
     </header>
-    {query.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm"><p>{query.error instanceof Error ? query.error.message : "本书 AI 用量读取失败。"}</p><Button size="sm" variant="outline" onClick={() => void query.refetch()}>重新读取</Button>{Object.keys(filters).length ? <Button size="sm" variant="ghost" onClick={() => setParams({}, {replace: true})}>清除筛选</Button> : null}</div> : null}
+    {query.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm"><p>{query.error instanceof Error ? query.error.message : "本书 AI 用量读取失败。"}</p><Button size="sm" variant="outline" onClick={() => void query.refetch()}>重新读取</Button>{Object.keys(filters).length ? <Button size="sm" variant="ghost" onClick={clearFilters}>清除筛选</Button> : null}</div> : null}
     {query.isPending ? <p className="py-10 text-sm text-muted-foreground">正在读取本书 AI 用量…</p> : data ? <>
       <UsageOverview data={data} />
+      {hasTiming ? <UsageTiming data={data} onJump={jump} /> : null}
+      {focused.isError ? <p role="alert" className="text-sm text-destructive">所选调用读取失败，请重新选择。</p> : null}
+      {focusedItem ? <p className="text-xs text-muted-foreground">所选调用显示在日志中，可能位于筛选或分页范围之外。<button className="ml-2 text-primary" onClick={clearFocus}>取消定位</button></p> : null}
       <section aria-label="调用日志" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">调用日志</h2><div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <label className="flex items-center gap-2"><input type="checkbox" checked={autoRefresh} onChange={event => setAutoRefresh(event.target.checked)} />自动刷新</label>
@@ -55,8 +66,9 @@ export default function NovelUsagePage() {
           <Filter label="模型" value={filters.model} onChange={value => setFilter("model", value)} options={data.facets.models.map(model => ({value: model, label: model}))} />
           <Filter label="调用状态" value={filters.status} onChange={value => setFilter("status", value)} options={["completed", "partial", "failed"].map(status => ({value: status, label: usageStatusLabel(status)}))} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground"><p>当前筛选 {data.filteredSummary.recordedCallCount.toLocaleString()} 次调用 · 已报告 {formatUsageTokens(data.filteredSummary.totalTokens)} Tokens</p>{Object.keys(filters).length ? <Button size="sm" variant="ghost" onClick={() => setParams({}, {replace: true})}>清除筛选</Button> : null}</div>
-        {!host || items.some(i => i.invocationId === params.get("invocationId")) ? <UsageLogTable items={host ? items.filter(i => i.invocationId === params.get("invocationId")) : items}/> : <p>选择一条已加载的调用记录查看详情。</p>}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground"><p>当前筛选 {data.filteredSummary.recordedCallCount.toLocaleString()} 次调用 · 已报告 {formatUsageTokens(data.filteredSummary.totalTokens)} Tokens</p>{Object.keys(filters).length ? <Button size="sm" variant="ghost" onClick={clearFilters}>清除筛选</Button> : null}</div>
+        {!host || visibleItems.length > 0 ? <UsageLogTable items={visibleItems} novelId={novelId} focusedId={focusedId} onJump={hasTiming ? jump : undefined} /> :
+          focused.isFetching ? <p>正在读取所选调用…</p> : <p>选择一条调用记录查看详情。</p>}
         {!host && query.hasNextPage ? <Button variant="outline" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>{query.isFetchingNextPage ? "正在读取…" : "查看更多调用"}</Button> : null}
         {autoRefresh ? <p className="text-xs text-muted-foreground">最新记录每 15 秒刷新；展开历史分页后，点击“刷新日志”返回最新记录。</p> : null}
       </section>

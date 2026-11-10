@@ -23,10 +23,12 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [配置项归属与可见性规范](./architecture/configuration-conventions.md)
 - [私有服务器部署与本地访问边界](./architecture/server-deployment.md)
 - [Mac 桌面运行与呈现边界](./architecture/mac-desktop.md)
+- [API 访问令牌边界](./architecture/access-token-boundary.md)
 
 ### Workflows
 
 - [自动导演 Runtime 与恢复边界](./workflows/auto-director-runtime.md)
+- [自动导演外部通知与动作边界](./workflows/auto-director-channels.md)
 - [简易创作模式](./product/simple-creation-mode.md)
 - [章节生产链路](./workflows/chapter-production-chain.md)
 - [章节检查重试策略](./workflows/chapter-review-retry-policy.md)
@@ -64,6 +66,8 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [本地数据与版本控制边界](./debugging/local-data-and-version-control.md)
 
 ### Product
+
+- [手机快捷终端](./product/mobile-quick-terminal.md)
 
 - [新手优先与整本小说完成原则](./product/beginner-first-novel-completion.md)
 - [工作台状态表达与下一步合同](./product/workspace-status-expression.md)

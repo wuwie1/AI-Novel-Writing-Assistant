@@ -55,15 +55,35 @@ class DeploymentTests(unittest.TestCase):
 
     def test_public_health_waits_for_nginx_reload_but_persistent_failure_times_out(self):
         m = module()
+        root = pathlib.Path('/test-deployment')
         with patch.object(m.time, 'sleep') as sleep:
             m.health = Mock(side_effect=[m.Refused('HTTP 503'), None])
-            m.wait_for_health(18080, 30)
-            self.assertEqual([call.args for call in m.health.call_args_list], [(18080,), (18080,)])
+            m.wait_for_health(18080, 30, root)
+            self.assertEqual([call.args for call in m.health.call_args_list], [(18080, root), (18080, root)])
             sleep.assert_called_once_with(2)
             m.health = Mock(side_effect=m.Refused('HTTP 503'))
             with patch.object(m.time, 'monotonic', side_effect=[20, 21, 50]):
                 with self.assertRaisesRegex(m.Refused, '18080.*HTTP 503'):
-                    m.wait_for_health(18080, 30)
+                    m.wait_for_health(18080, 30, root)
+
+    def test_health_reads_the_bookshelf_with_optional_local_credentials(self):
+        m = module()
+        for token in ('', 'fixture-token'):
+            with self.subTest(protected=bool(token)):
+                bodies = [io.BytesIO(value) for value in (
+                    b'{"success":true,"data":{"status":"ok"}}', b'home', b'{"success":true}')]
+                for body in bodies:
+                    body.status = 200
+                opener = Mock()
+                opener.open.side_effect = bodies
+                m.read_env = Mock(return_value={'AI_NOVEL_ACCESS_TOKEN': token})
+                with patch.object(m.urllib.request, 'build_opener', return_value=opener):
+                    m.health(18080, pathlib.Path('/test-deployment'))
+                requests = [call.args[0] for call in opener.open.call_args_list]
+                self.assertEqual([req.get_header('Authorization') for req in requests],
+                                 [None, None, 'Bearer ' + token if token else None])
+                self.assertEqual(requests[-1].full_url, 'http://127.0.0.1:18080/api/novels?page=1&limit=1')
+                self.assertNotIn('Authorization', requests[-1].headers)
 
     def test_drain_waits_for_two_quiet_samples_and_times_out_while_busy(self):
         m = module()

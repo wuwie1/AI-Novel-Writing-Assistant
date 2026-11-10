@@ -143,13 +143,22 @@ function contract(mode = "continuation", bookAnalysisId = "analysis-1", suffix =
   };
 }
 
-test("StrictMode first generation unlocks adoption without refresh and persists the adopted draft", async () => {
+async function generateFromReference(page) {
+  await page.click("查看创作方案");
+  await page.click("生成创作方案");
+  await page.click("返回开书设置");
+}
+
+test("StrictMode first generation requires an explicit request, unlocks adoption and persists the adopted draft", async () => {
   const page = await mount();
   try {
-    assert.equal(page.pending.length, 1, "subscription replay must not duplicate a paid request");
+    assert.equal(page.pending.length, 0, "opening a reference must not start a paid request");
     assert.equal(page.button("采用推荐方案"), undefined);
     await page.click("生成方向");
     assert.equal(globalThis.directionGenerations, 0, "unadopted reference must not start direction generation");
+    assert.equal(page.pending.length, 0, "opening the proposal must only show the generate action");
+    await page.click("生成创作方案");
+    assert.equal(page.pending.length, 1, "one explicit request generates one proposal");
     await page.complete(0, { status: "ready", contract: contract() });
     assert.equal(page.button("采用推荐方案")?.disabled, false);
     assert.equal(page.button("重新生成")?.disabled, false);
@@ -170,6 +179,7 @@ test("StrictMode first generation unlocks adoption without refresh and persists 
 test("regeneration blocks adoption until completion and a failed regeneration keeps the previous proposal usable", async () => {
   const page = await mount({ mode: "adaptation" });
   try {
+    await generateFromReference(page);
     await page.complete(0, { status: "ready", contract: contract("adaptation") });
     assert.equal(page.surface.querySelector('[role="dialog"]'), null, "generation must not interrupt writing with a popup");
     await page.click("查看创作方案");
@@ -194,6 +204,7 @@ test("regeneration blocks adoption until completion and a failed regeneration ke
 test("material failures and mismatched results release the request state without allowing adoption", async () => {
   const page = await mount();
   try {
+    await generateFromReference(page);
     await page.complete(0, { status: "insufficient_material", bookAnalysisId: "analysis-1", analysisTitle: "参考小说", missingSectionTitles: ["人物系统"], sourceVersionReadable: true });
     await page.click("查看创作方案");
     assert.match(page.surface.textContent, /拆书还缺少：人物系统/);
@@ -201,6 +212,7 @@ test("material failures and mismatched results release the request state without
   } finally { await page.cleanup(); }
   const mismatched = await mount();
   try {
+    await generateFromReference(mismatched);
     await mismatched.complete(0, { status: "ready", contract: contract("continuation", "another-analysis") });
     await mismatched.click("查看创作方案");
     assert.match(mismatched.surface.textContent, /与当前参考作品不一致/);
@@ -212,7 +224,10 @@ test("material failures and mismatched results release the request state without
 test("a late response from the previous source cannot replace the newly selected book", async () => {
   const page = await mount();
   try {
+    await generateFromReference(page);
     await page.switchSource("analysis-2");
+    assert.equal(page.pending.length, 1, "switching the source must not generate another proposal");
+    await generateFromReference(page);
     assert.equal(page.pending.length, 2);
     await page.complete(1, { status: "ready", contract: contract("continuation", "analysis-2", "第二本") });
     await page.complete(0, { status: "ready", contract: contract("continuation", "analysis-1", "第一本") });
@@ -226,6 +241,7 @@ test("a late response from the previous source cannot replace the newly selected
 test("adoption waits for the task save, prevents duplicate actions and stays retryable after a save failure", async () => {
   const page = await mount({ taskId: "task-1" });
   try {
+    await generateFromReference(page);
     await page.complete(0, { status: "ready", contract: contract() });
     await page.click("查看创作方案");
     await page.click("采用推荐方案");
@@ -254,6 +270,8 @@ test("the idea-stage entry opens a dismissible dialog and keeps its result acros
     assert.equal(page.surface.querySelector('[role="dialog"]'), null);
     await page.click("查看创作方案");
     assert.ok(page.surface.querySelector('[role="dialog"]'));
+    assert.equal(page.pending.length, 0);
+    await page.click("生成创作方案");
     await page.click("返回开书设置");
     assert.equal(page.surface.querySelector('[role="dialog"]'), null);
     await page.complete(0, { status: "ready", contract: contract() });

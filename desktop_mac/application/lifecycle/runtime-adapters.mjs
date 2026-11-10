@@ -284,7 +284,10 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
       const apiTarget = `http://127.0.0.1:${mode === 'local' ? config.localApiPort : config.tunnelPort}`;
       const deadline = Date.now() + 120_000;
       await waitHttp(`${apiTarget}/api/health`, deadline - Date.now(), { accept: async (response) => { const body = await response.clone().json(); return response.ok && body.success === true && body.data?.status === 'ok'; } });
-      await waitHttp(`${apiTarget}/api/novels?page=1&limit=1`, deadline - Date.now(), { accept: async (response) => response.ok && (await response.clone().json()).success === true });
+      await waitHttp(`${apiTarget}/api/novels?page=1&limit=1`, deadline - Date.now(), { accept: async (response) => {
+        const body = await response.clone().json();
+        return (response.ok && body.success === true) || (response.status === 401 && body.code === 'ACCESS_TOKEN_REQUIRED');
+      } });
       return { backendIdentity, processes, apiTarget };
     },
     async startHelpers({ mode, development, paths, build, connection }) {

@@ -27,6 +27,7 @@ before(async () => {
     Object.defineProperty(globalThis, name, { configurable: true, value });
   }
   window.matchMedia = () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} });
+  dom.window.HTMLElement.prototype.scrollIntoView = () => {};
   const { build } = createRequire(import.meta.resolve('vite'))('esbuild');
   await build({
     stdin: { resolveDir: macRoot, loader: 'tsx', contents: `
@@ -47,6 +48,7 @@ before(async () => {
       import KnowledgePage from '@/pages/knowledge/KnowledgePage';
       import ShortStoryStudioPage from '@/pages/shortStory/ShortStoryStudioPage';
       import NovelPreview from '@/pages/novels/NovelPreview';
+      import NovelUsagePage from '@/pages/novelUsage/NovelUsagePage';
       import NovelChapterEdit from '@/pages/novels/NovelChapterEdit';
       import MacNovelShelf from './renderer/src/features/novels/MacNovelShelf';
       import MacTaskRecords from './renderer/src/features/tasks/MacTaskRecords';
@@ -54,6 +56,9 @@ before(async () => {
       import {apiClient} from '@/api/client';
       export async function mount(initial='/settings/models') {
         const requests=[],messages=[];
+        const usageSummary = {recordedCallCount:1, totalTokens:18, failedCallCount:0, partialCallCount:0};
+        const usageItem = id => ({invocationId:id, stage:'writer', model:id, startedAt:'2026-11-10T01:00:00Z',
+          status:'completed', inputCache:{cacheUsageStatus:'unknown'}, totalTokens:18, attemptNumber:1});
         window.__AI_NOVEL_MAC__={protocolVersion:1,mode:'local',backendIdentity:'test',postMessage:message=>messages.push(message)};
         const novel={id:'book-a',title:'测试作品',narrativeForm:'long_novel',updatedAt:'2026-01-01',_count:{chapters:1,characters:0},chapters:[{id:'chapter-a',title:'测试章节',order:1,content:'原文甲'},{id:'chapter-b',title:'次章',order:2,content:'原文乙'}],characters:[]};
         let releaseDocument,failDocument=true;
@@ -67,6 +72,11 @@ before(async () => {
           else if(config.url==='/novels/book-b') data={...novel,id:'book-b',chapters:[{id:'different',title:'另一作品',order:1,content:'另一正文'}]};
           else if(config.url==='/novels/book-a/short-story') data={novel,production:{status:'completed'},continuousContent:'第一段和第二段',segments:[{id:'s1',content:'第一段',version:1},{id:'s2',content:'第二段',version:1}]};
           else if(config.url==='/novels/book-a') data=novel;
+          else if(config.url==='/director-next/novels/book-a/usage' || config.url==='/director-next/novels/book-b/usage') {
+            data={novel, summary:usageSummary, filteredSummary:usageSummary, chapterBreakdown:[], facets:{chapters:[],stages:[],models:[],providers:[]}, items:[usageItem('first')]};
+            if (config.url.includes('book-a')) data.timing={averageMs:800, slowest:{invocationId:'older',durationMs:2000}, chapters:[]};
+          }
+          else if(config.url.startsWith('/director-next/novels/book-a/usage/')) data={item:usageItem(config.url.split('/').at(-1)),chain:[],payload:null};
           else if(config.url==='/novels/book-a/chapters') data=[{id:'chapter-a',title:'测试章节',order:1}];
           else if(config.url==='/settings/api-keys') data=[{provider:'deepseek',kind:'builtin',name:'测试厂商',models:['test'],defaultModel:'test',isActive:false,isConfigured:false}];
           else if(config.url==='/settings/api-keys/balances') data=[];
@@ -107,6 +117,7 @@ before(async () => {
         }
         const router=createMemoryRouter([{element:<MacDocumentProtection><MacAppLayout/></MacDocumentProtection>,children:[
           {path:'fixture',element:<><EntityList collection="fixture" title="测试目录" selection={null}><button>记录甲</button><button>记录乙</button></EntityList><Editor/></>},
+          {path:'novels/:id/ai-usage',element:<NovelUsagePage/>},
           {path:'settings/models',element:<><Editor/><SettingsPage/></>},{path:'settings/model-routes',element:<ModelRoutesPage/>},
           {path:'comic',element:<ComicWorkspacePage/>},{path:'comic/projects/:id',element:<ComicProjectPage/>},{path:'drama',element:<DramaWorkspacePage/>},{path:'genres',element:<GenreManagementPage/>},{path:'knowledge',element:<KnowledgePage/>},{path:'creative-hub',element:<Threads/>},{path:'lab/director',element:<DirectorRunHistoryPage/>},{path:'novels/:id/story',element:<ShortStoryStudioPage/>},{path:'novels/:id/preview',element:<NovelPreview/>},{path:'novels/:id/chapters/:chapterId',element:<><Editor/><NovelChapterEdit/></>},{path:'novels',element:<MacNovelShelf/>},{path:'tasks',element:<MacTaskRecords/>},{path:'*',element:<Editor/>},
         ]}],{initialEntries:[initial]});
@@ -397,6 +408,9 @@ test('shelf restores page two, opens off-page metadata and keeps overview explic
     assert.match(h.sidebar.textContent, /第二页作品/);
     assert.equal(h.requests.filter(r=>r.url==='/novels')[0].params.page,2);
     assert.match(document.querySelector('.mac-book-summary').textContent,/第二页作品/);
+    await h.click('导出正文');
+    assert.match(h.dialog.textContent,/分章 ZIP/);
+    await h.flush(() => h.dialog.querySelector('[aria-label="关闭测试浮层"]').click());
     await h.go('/novels?selectedNovelId=offpage');
     await h.click('继续写作');
     assert.equal(h.pathname,'/lab/director/offpage');
@@ -407,6 +421,24 @@ test('shelf restores page two, opens off-page metadata and keeps overview explic
     await h.go('/novels?layout=detail&view=workbench&q=无结果');
     assert.match(h.sidebar.textContent,/没有符合条件的小说/);
     assert.ok(!h.requests.some(r=>r.params?.limit===100));
+  } finally { await h.cleanup(); }
+});
+
+test('usage directory restores a bookmark, selects a call outside the page and supports older servers', async () => {
+  const h = await mount('/novels/book-a/ai-usage?invocationId=first');
+  try {
+    assert.match(h.sidebar.querySelector('[aria-current]').textContent, /first/);
+    assert.ok(document.getElementById('usage-first'));
+    await h.click('2.0 秒 · 查看调用');
+    await h.flush();
+    assert.equal(h.router.state.location.search, '?invocation=older');
+    assert.match(h.sidebar.querySelector('[aria-current]').textContent, /older/);
+    assert.ok(document.getElementById('usage-older'));
+    assert.equal(document.getElementById('usage-first'), null);
+    await h.go('/novels/book-b/ai-usage?invocationId=first');
+    assert.ok(document.getElementById('usage-first'));
+    assert.equal(document.querySelector('[aria-label="调用耗时"]'), null);
+    assert.ok(!h.requests.some(request => request.url.startsWith('/director-next/novels/book-b/usage/')));
   } finally { await h.cleanup(); }
 });
 

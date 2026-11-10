@@ -146,9 +146,14 @@ def runtime_paths(root):
     return db, list(dict.fromkeys(paths))
 
 
-def health(port):
+def health(port, root):
+    token = read_env(root).get('AI_NOVEL_ACCESS_TOKEN', '').strip()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     for route in ('/api/health', '/', '/api/novels?page=1&limit=1'):
-        with urllib.request.urlopen('http://127.0.0.1:%s%s' % (port, route), timeout=5) as response:
+        request = urllib.request.Request('http://127.0.0.1:%s%s' % (port, route))
+        if token and route.startswith('/api/novels'):
+            request.add_unredirected_header('Authorization', 'Bearer ' + token)
+        with opener.open(request, timeout=5) as response:
             if response.status != 200:
                 raise Refused('服务健康检查未通过')
             if route == '/api/health':

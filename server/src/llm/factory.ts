@@ -1,3 +1,4 @@
+import { loadCapability } from "./compatibility";
 import {attachLLMCacheRequestPolicy,resolveCacheCapability} from "../platform/llm/cache";
 import {attachExecutionSignal,assertLlmExecutionConfiguration,attachLlmExecutionPolicy,resolveScopedTaskOutputTokens} from "../platform/llm/execution";
 import type { LLMProvider, ProviderAuthMode, ReasoningEffort } from "@ai-novel/shared/types/llm";
@@ -18,7 +19,7 @@ import {
   type StructuredOutputProfile,
   type StructuredOutputStrategy,
 } from "./structuredOutput";
-import { attachLLMUsageTracking } from "./usageTracking";
+import { attachLLMUsageTracking } from "./compatibility";
 import { resolveModel, toStructuredOutputStrategy, type TaskType } from "./modelRouter";
 import {
   getProviderEnvApiKey,
@@ -299,6 +300,8 @@ export async function resolveLLMClientOptions(
   }
   const authMode = normalizeProviderAuthMode(options.authMode ?? dbSecret?.authMode);
 
+  const capability = await loadCapability({ provider: resolvedProvider, model, baseURL });
+  if (capability.maxOutputTokens != null) respectConfiguredMaxTokens = true;
   const temperature = resolveModelTemperature(resolvedProvider, model, resolvedTemperature);
   const timeoutMs = normalizeOptionalTimeoutMs(options.timeoutMs);
   const concurrencyLimit = normalizeLimitValue(dbSecret?.concurrencyLimit);
@@ -322,12 +325,14 @@ export async function resolveLLMClientOptions(
   const requestedReasoningEffort = options.reasoningEffort ?? dbSecret?.reasoningEffort ?? "high";
   const shouldForceDisableReasoning = Boolean(
     structuredProfile
-      && structuredProfile.requiresNonThinkingForStructured
-      && structuredProfile.supportsReasoningToggle,
+      && structuredProfile.requiresNonThinkingForStructured,
   );
   const reasoningEnabled = shouldForceDisableReasoning ? false : requestedReasoningEnabled;
-  let effectiveMaxTokens = resolveScopedTaskOutputTokens(resolvedProvider, model, resolvedModelRoute ?? options.taskType, resolvedMaxTokens);
-  if (structuredProfile && usesNativeStructured && structuredProfile.omitMaxTokensForNativeStructured) {
+  let effectiveMaxTokens = resolveScopedTaskOutputTokens(resolvedProvider, model, resolvedModelRoute ?? options.taskType, capability.maxOutputTokens ?? resolvedMaxTokens);
+  if (capability.maxOutputTokens != null) {
+    effectiveMaxTokens = Math.min(effectiveMaxTokens ?? capability.maxOutputTokens, capability.maxOutputTokens);
+  }
+  if (structuredProfile && usesNativeStructured && structuredProfile.omitMaxTokensForNativeStructured && capability.maxOutputTokens == null) {
     effectiveMaxTokens = undefined;
   } else if (
     structuredProfile
@@ -337,14 +342,7 @@ export async function resolveLLMClientOptions(
   ) {
     effectiveMaxTokens = Math.min(effectiveMaxTokens, structuredProfile.safeStructuredMaxTokens);
   }
-  const usesEnableThinkingFlag = Boolean(
-    shouldForceDisableReasoning
-      && structuredProfile?.family.includes("qwen"),
-  );
-  const baseModelKwargs: Record<string, unknown> = {
-    ...(options.modelKwargs ?? {}),
-    ...(usesEnableThinkingFlag ? { enable_thinking: false } : {}),
-  };
+  const baseModelKwargs = options.modelKwargs ?? {};
   const reasoningBehavior = resolveProviderReasoningBehavior({
     provider: resolvedProvider,
     baseURL,
@@ -435,10 +433,11 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
     routeDegraded: resolved.routeDegraded,
     baseURL: resolved.baseURL,
     requestProtocol: resolved.requestProtocol,
+    structuredMode: resolved.structuredStrategy,
     promptMeta: resolved.promptMeta,
   };
   const cacheAware=attachLLMCacheRequestPolicy(llm,resolveCacheCapability({model:resolved.model,baseURL:resolved.baseURL,protocol:resolved.requestProtocol==="anthropic"?"anthropic":"openai-compatible"}));
-  const decorated = attachLLMDebugLogging(attachLLMUsageTracking(attachLLMRequestGuard(cacheAware, meta), meta), meta);
+  const decorated = attachLLMDebugLogging(attachLLMUsageTracking(attachLLMRequestGuard(cacheAware, meta), meta, [resolved.apiKey ?? ""]), meta);
   const limited = attachLLMRequestLimiter(decorated, {
     provider: resolved.provider,
     model: resolved.model,

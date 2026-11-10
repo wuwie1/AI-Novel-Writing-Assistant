@@ -97,7 +97,7 @@ def inspect_deployment(payload, *, import_bundle=False):
     elif payload['dryRun'] and old != candidate_sha:
         checks.append('正式更新将核对线上产物，只构建受影响的部分，并记录本次验证结果')
     if states['ai-novel-api'] == 'active':
-        health(config['remoteWebPort'])
+        health(config['remoteWebPort'], root)
     return dict(root=root, old=old, branch=branch, branchTip=branch_tip, ref=ref, sha=candidate_sha, differences=differences,
                 checks=checks, states=states, db=db, assets=assets, known=candidate_known)
 

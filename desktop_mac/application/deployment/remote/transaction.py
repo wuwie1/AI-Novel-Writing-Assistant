@@ -19,11 +19,11 @@ def set_nginx(root, text, reload=False):
         command(['systemctl', 'reload', 'ai-novel-web'])
 
 
-def wait_for_health(port, timeout):
+def wait_for_health(port, timeout, root):
     deadline = time.monotonic() + timeout
     while True:
         try:
-            health(port)
+            health(port, root)
             return
         except Exception as error:
             if time.monotonic() >= deadline:
@@ -31,9 +31,9 @@ def wait_for_health(port, timeout):
             time.sleep(2)
 
 
-def start_and_check(port):
+def start_and_check(port, root):
     command(['systemctl', 'start', 'ai-novel-api', 'ai-novel-web'])
-    wait_for_health(port, 120)
+    wait_for_health(port, 120, root)
 
 
 def switch_transaction(payload, info, batch, candidate, manifest, previous, timings):
@@ -91,9 +91,9 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
         with timings.stage('start-health'):
             phase('verifying')
             validate_nginx(root)
-            start_and_check(config['maintenanceProbePort'])
+            start_and_check(config['maintenanceProbePort'], root)
             set_nginx(root, original, reload=True)
-            wait_for_health(config['remoteWebPort'], 30)
+            wait_for_health(config['remoteWebPort'], 30, root)
             for unit in info['states']:
                 if command(['systemctl', 'is-active', unit], check=False).stdout.strip() != 'active':
                     raise Refused(unit + ' 重启后未处于 active 状态')
@@ -138,7 +138,7 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
                         os.rename(record_path, batch / 'uncommitted-deployment.json')
             set_nginx(root, original, reload=not stopped and info['states']['ai-novel-web'] == 'active')
             if stopped and info['states']['ai-novel-api'] == 'active':
-                start_and_check(config['remoteWebPort'])
+                start_and_check(config['remoteWebPort'], root)
             if info['states']['ai-novel-api'] == 'inactive':
                 command(['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'])
             phase('rolled_back' if switched else 'aborted')

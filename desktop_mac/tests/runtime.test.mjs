@@ -15,10 +15,11 @@ test('runtime selection validates the native SQLite ABI without opening a persis
     assert.equal(options.cwd, '/repo/server');
     assert.ok(args[1].includes('new D(":memory:")'));
     assert.ok(!args[1].includes('app.js'));
-    return { status: executable.includes('node@22') ? 0 : 1 };
+    return { status: seen.length === 2 ? 0 : 1 };
   } });
   assert.ok(selected.includes('node@22'));
-  assert.ok(seen.length > 1);
+  assert.equal(seen[0], process.execPath);
+  assert.equal(seen.length, 2);
   assert.throws(() => selectServerNode('/repo', { explicit: '/chosen/node', run: () => ({ status: 1 }) }), { exitCode: 2 });
 });
 

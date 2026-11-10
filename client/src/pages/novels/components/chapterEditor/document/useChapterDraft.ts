@@ -9,15 +9,14 @@ export function useChapterDraft(input: {
   chapter: { id: string; content?: string | null; updatedAt: string } | undefined;
   busy: boolean;
 }) {
-  const platform = useClientPlatform();
-  const storage = platform.draftStorage ?? sessionStorage;
+  const { draftStorage } = useClientPlatform();
   const storageKey = `ai-novel:chapter-draft:v1:${input.novelId}:${input.chapter?.id}`;
   const incoming = { content: normalizeChapterText(input.chapter?.content), updatedAt: input.chapter?.updatedAt ?? "" };
   const [restored, setRestored] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const [draft, setDraft] = useState<ChapterDraft>(() => {
     const saved = { content: incoming.content, savedContent: incoming.content, savedUpdatedAt: incoming.updatedAt };
-    try { return restoreChapterDraft(storage.getItem(storageKey), saved); } catch { return saved; }
+    try { return restoreChapterDraft((draftStorage ?? window.sessionStorage).getItem(storageKey), saved); } catch { return saved; }
   });
   const current = useRef(draft);
   const isDirty = draft.content !== draft.savedContent;
@@ -27,20 +26,21 @@ export function useChapterDraft(input: {
     current.current = next;
     setDraft(next);
     try {
+      const storage = draftStorage ?? window.sessionStorage;
       if (next.content === next.savedContent) storage.removeItem(storageKey);
       else storage.setItem(storageKey, JSON.stringify({ version: 1, ...next }));
       setStorageError(false);
     } catch { setStorageError(true); }
-  }, [storage, storageKey]);
+  }, [draftStorage, storageKey]);
 
   const identityRef = useRef(storageKey);
   useEffect(() => {
     if (identityRef.current === storageKey) return;
     identityRef.current = storageKey;
     const saved = { content: incoming.content, savedContent: incoming.content, savedUpdatedAt: incoming.updatedAt };
-    try { publish(restoreChapterDraft(storage.getItem(storageKey), saved)); }
+    try { publish(restoreChapterDraft((draftStorage ?? window.sessionStorage).getItem(storageKey), saved)); }
     catch { publish(saved); }
-  }, [incoming.content, incoming.updatedAt, publish, storage, storageKey]);
+  }, [incoming.content, incoming.updatedAt, publish, draftStorage, storageKey]);
 
   useEffect(() => { setRestored(current.current.content !== current.current.savedContent); }, []);
   useEffect(() => {
