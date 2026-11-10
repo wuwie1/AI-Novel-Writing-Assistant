@@ -62,6 +62,7 @@
 
 ## 失败模式
 
+- 索引报连接错误时，先看对应文档的索引任务，再查 `GET /api/rag/health` 的 `embedding` 与 `qdrant` 两个结果。模型探针生成测试向量，资料库探针检查 HTTP 连接。模型通过而资料库失败时，从 API 所在主机检查保存的向量库地址、监听端口和 Qdrant 服务。在 SSH 转发部署中，回环地址指 API 主机。连接恢复后在原文档上重建索引，按当前版本核对任务成功和分块写入。[服务器本机向量库](../../../infra/server/README.md#服务器本机向量库)
 - 检索结果不符合当前小说：检查是否有显式文档筛选或小说/世界绑定覆盖了全局默认。
 - 世界观分层生成混入无关小说文档：检查调用方是否只需要 `world` / `world_library_item`，以及 RAG 服务是否错误忽略了显式 `ownerTypes` 范围。
 - Prompt 输入过大：检查 Context Broker 的预算、摘要和 dropped block 记录。

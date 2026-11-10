@@ -56,7 +56,7 @@ IMAGE_STORAGE_DRIVER=local
 API_JSON_LIMIT=20mb
 ```
 
-模型密钥在页面中配置。知识库检索可在配置 Qdrant 和 Embedding 模型后启用。不要复制本地开发机的密钥或数据库来隐式迁移用户数据。
+模型密钥在页面中配置。需要索引上传的资料时，先按[服务器本机向量库](#服务器本机向量库)启动 Qdrant，或使用已有的远程实例。不要复制本地开发机的密钥或数据库来隐式迁移用户数据。
 
 5. 对**全新空库**应用正式迁移。Prisma CLI 的配置不自动读取 `.env`，显式提供同一个数据库 URL：
 
@@ -77,6 +77,19 @@ sudo chown -R ai-novel:ai-novel data server/storage .logs
 ```
 
 安装器只生成本部署的 systemd、Nginx 和 logrotate 配置；不会安装依赖、执行迁移或启动服务。固定服务名只支持每台主机一份此配置，安装器会拒绝覆盖其他部署目录的同名服务。服务自动随系统启动，异常退出后由 systemd 重启；显式停止会保持停止，直到再次启动或服务器重启。
+
+## 服务器本机向量库
+
+私有服务器的 API 在宿主机运行，「向量库 URL」里的 `127.0.0.1` 指这台服务器。在服务器仓库根目录用 Docker Engine 和 Compose 插件启动 Qdrant：
+
+```bash
+docker compose -f infra/docker-compose.qdrant.yml up -d qdrant
+curl --fail --show-error http://127.0.0.1:6333/readyz
+```
+
+Compose 只将 HTTP 和 gRPC 端口发布到回环地址。索引保存在命名卷 `qdrant_storage`，Docker 启动时按 `unless-stopped` 策略恢复容器。后续更新沿用相同的 Compose 项目和数据卷。
+
+在「知识库 → 检索设置」选择 Embedding 模型，将「向量库 URL」填为 `http://127.0.0.1:6333`，启用检索并保存。打开「索引与任务」分别查看模型和资料库的连接状态。两项均正常后，对索引失败的资料点「重建索引」，即可处理已上传的版本。
 
 ## 日常控制
 

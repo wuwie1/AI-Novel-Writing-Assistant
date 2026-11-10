@@ -107,7 +107,10 @@ export class VectorStoreService {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Qdrant 请求超时（>${ragConfig.qdrantTimeoutMs}ms）。`);
       }
-      throw error;
+      throw new Error(
+        "无法连接向量数据库（Qdrant）。请确认 Qdrant 服务已启动，并在「知识库 → 检索设置」核对向量库 URL。",
+        { cause: error },
+      );
     } finally {
       clearTimeout(timer);
     }

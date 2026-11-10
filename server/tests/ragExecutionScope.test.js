@@ -6,6 +6,16 @@ const {HybridRetrievalService}=require('../dist/services/rag/HybridRetrievalServ
 const fields=['tenantId','ownerType','ownerId','novelId','worldId','characterRole','chapterAnchor','genreTags','sellingPointTags'];
 const scope=()=>require('../dist/services/rag/execution');
 const ports=()=>({retrieve:async(_query,_options,run)=>run(),request:async(_input,send)=>send()});
+test('indexing and health identify an unreachable vector database without exposing connection details', async t => {
+  const failure = new TypeError('fetch failed', {cause: new Error('private connection details')});
+  t.mock.method(global, 'fetch', async () => { throw failure; });
+  const store = new VectorStoreService();
+  const health = await store.healthCheck();
+  assert.equal(health.ok, false);
+  assert.match(health.detail, /Qdrant.*检索设置/);
+  assert.doesNotMatch(health.detail, /fetch failed|private connection details/);
+  await assert.rejects(store.ensureCollection(3), error => error.message === health.detail && error.cause === failure);
+});
 test('point cleanup uses the stored collection and tolerates a collection already removed',async t=>{
  const calls=[];
  t.mock.method(global,'fetch',async(url,options)=>{
