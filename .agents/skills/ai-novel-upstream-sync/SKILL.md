@@ -32,7 +32,7 @@ bash .agents/skills/ai-novel-upstream-sync/scripts/check-upstream.sh .
 
 脚本抓取两个远端的引用并报告提交差距。新克隆若只有一个本地分支，缺少的分支按对应的 `origin/<分支>` 报告。开始本地合并时，再从已核实的 fork 跟踪引用建立缺少的本地分支。抓取失败时报告失败。新克隆缺少 upstream 时，按仓库根目录 `skill_tools.md` 核实 origin 并添加原项目。替换已有远端时遵循仓库 wiki 的备份规则。
 
-记录抓取到的上游 SHA、本地和 origin 两个分支头、工作树及 worktree 占用情况。固定本轮上游 SHA，检查完整差集。若 fork 远端领先，先纳入相应分支；遇到分叉或工作区有改动，使用隔离 worktree 做整合，保留已有提交与用户文件。main 通常可快进；若 main 与发布线分叉，按仓库 beta 集成规则审查验证后再晋升。ai 合入更新后的 main。禁止强推、重置本地定制或把 ai 独有提交倒灌到 main。
+记录抓取到的上游 SHA、本地和 origin 两个分支头、工作树及 worktree 占用情况。固定本轮上游 SHA，检查完整差集。若 fork 远端领先，先纳入相应分支；遇到分叉或工作区有改动，使用隔离 worktree 做整合，保留已有提交与用户文件。main 通常可快进；若 main 与发布线分叉，在本次明确请求的同步范围内审查差集和合并结果，再验证双方改动。ai 合入更新后的 main。禁止强推、重置本地定制或把 ai 独有提交倒灌到 main。
 
 同时检查文本冲突和双方都改动过、却被 Git 自动合并的文件。既有交叉点包括拆章预算、角色目录、Prompt 版本、注册器与回归用例。按随仓库提供的发布说明技能核对本次范围。README 仅保留最新日期，完整历史保留 fork 与上游旧条目，有独立长期价值的 wiki 规则两边都保留。[readme-release-updater](../readme-release-updater/SKILL.md)
 

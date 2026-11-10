@@ -2,9 +2,9 @@ name: Server Quality
 
 on:
   pull_request:
-    branches: [beta, main]
+    branches: [ai, main]
   push:
-    branches: [beta]
+    branches: [ai]
 
 permissions:
   contents: read
