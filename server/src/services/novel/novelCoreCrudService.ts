@@ -18,7 +18,8 @@ import {
   serializeContinuationBookAnalysisSections,
   UpdateNovelInput,
 } from "./novelCoreShared";
-import { queueRagDelete, queueRagUpsert } from "./novelCoreSupport";
+import {deleteNovel} from "../../modules/novel/setup/deletion";
+import { queueRagUpsert } from "./novelCoreSupport";
 import { novelEventBus } from "../../events/publisher";
 
 export class NovelCoreCrudService {
@@ -280,67 +281,8 @@ export class NovelCoreCrudService {
     return normalizeNovelOutput(updated);
   }
 
-  async deleteNovel(id: string) {
-    await prisma.$transaction(async (transaction) => {
-      // Remove Restrict dependents before intent versions cascade from tasks or the novel.
-      await transaction.shortStoryRevisionJob.deleteMany({ where: { novelId: id } });
-      await transaction.shortStoryPlan.deleteMany({ where: { novelId: id } });
-
-      const [workflowTasks, agentRuns, pipelineJobs, imageTasks] = await Promise.all([
-        transaction.novelWorkflowTask.findMany({
-          where: { novelId: id },
-          select: { id: true },
-        }),
-        transaction.agentRun.findMany({
-          where: { novelId: id },
-          select: { id: true },
-        }),
-        transaction.generationJob.findMany({
-          where: { novelId: id },
-          select: { id: true },
-        }),
-        transaction.imageGenerationTask.findMany({
-          where: { novelId: id },
-          select: { id: true },
-        }),
-      ]);
-      const workflowTaskIds = workflowTasks.map((task) => task.id);
-      const agentRunIds = agentRuns.map((task) => task.id);
-      const pipelineJobIds = pipelineJobs.map((task) => task.id);
-      const imageTaskIds = imageTasks.map((task) => task.id);
-
-      if (
-        workflowTaskIds.length > 0
-        || agentRunIds.length > 0
-        || pipelineJobIds.length > 0
-        || imageTaskIds.length > 0
-      ) {
-        await transaction.taskCenterArchive.deleteMany({
-          where: {
-            OR: [
-              { taskKind: "novel_workflow", taskId: { in: workflowTaskIds } },
-              { taskKind: "agent_run", taskId: { in: agentRunIds } },
-              { taskKind: "novel_pipeline", taskId: { in: pipelineJobIds } },
-              { taskKind: "image_generation", taskId: { in: imageTaskIds } },
-            ],
-          },
-        });
-      }
-      if (workflowTaskIds.length > 0) {
-        await transaction.novelWorkflowTask.deleteMany({
-          where: { id: { in: workflowTaskIds } },
-        });
-      }
-      if (agentRunIds.length > 0) {
-        await transaction.agentRun.deleteMany({
-          where: { id: { in: agentRunIds } },
-        });
-      }
-
-      await transaction.novel.delete({ where: { id } });
-    });
-    queueRagDelete("novel", id);
-    queueRagDelete("bible", id);
+  deleteNovel(id: string) {
+    return deleteNovel(id);
   }
 
   async listChapters(novelId: string) {

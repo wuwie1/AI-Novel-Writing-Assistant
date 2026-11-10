@@ -21,8 +21,11 @@ const plan = { title: "样例", targetWordCount: 3000, endingPromise: "揭开真
 let sequence = 0;
 
 test.before(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "short-story-recovery-"));
+  tempDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "short-story-recovery-"));
   const url = initializeTemporarySqliteDatabase(tempDir, "fixture.db");
+  process.env.AI_NOVEL_RUNTIME = "desktop";
+  process.env.AI_NOVEL_APP_DATA_DIR = tempDir;
+  process.env.DATABASE_URL = url;
   prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url }) });
 });
 test.after(async () => {
@@ -112,6 +115,7 @@ function harness(generate) {
       if (id.endsWith("/middleware/auth")) return require("../dist/middleware/auth");
       if (id.endsWith("/middleware/validate")) return require("../dist/middleware/validate");
       if (id.endsWith("/creation-studio/application/CreationStudioService") && file.endsWith("shortStoryRoutes.ts")) return { creationStudioService: {} };
+      if (id.endsWith("/platform/runtime/execution")) return require("../dist/platform/runtime/execution");
       if (id.endsWith("/db/prisma")) return { prisma };
       if (id.endsWith("/production/common")) return require("../dist/modules/production/common");
       if (id === "./shortStoryAuditPolicy") return require("../dist/modules/novel/short-story/application/shortStoryAuditPolicy");

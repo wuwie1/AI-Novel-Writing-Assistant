@@ -1,3 +1,6 @@
+import type {StoredAssetCleanup} from "./StoredAssetCleanup";
+import {removeStoredNovelCover} from "../../services/image/imageAssetStorage";
+import {ragServices} from "../../services/rag";
 import { manualChapterSyncService, type ManualChapterSyncPayload } from "../../services/novel/chapterEditor/synchronization";
 import type { NovelSideEffectJob } from "@prisma/client";
 import { getSharedNovelServices } from "../../services/novel/application/sharedNovelServices";
@@ -46,6 +49,12 @@ export class NovelSideEffectJobHandlers {
 
   async execute(job: NovelSideEffectJob): Promise<void | {deferUntil: Date}> {
     switch (job.jobType) {
+      case "novel.removeStoredAsset": {
+        const item = parsePayload<StoredAssetCleanup>(job);
+        if ("cover" in item) await removeStoredNovelCover(item.cover);
+        else await ragServices.vectorStoreService.deletePoints(item.points, item.collection);
+        return;
+      }
       case "chapter.manualSync": {
         const payload = parsePayload<ManualChapterSyncPayload>(job);
         if (payload.novelId !== job.novelId || !payload.chapterId || !payload.contentHash || !payload.revision) {

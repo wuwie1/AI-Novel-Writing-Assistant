@@ -56,8 +56,8 @@ function buildHeaders(): HeadersInit {
   };
 }
 
-function toCollectionUrl(suffix: string): string {
-  return `${ragConfig.qdrantUrl}/collections/${ragConfig.qdrantCollection}${suffix}`;
+function toCollectionUrl(suffix: string, collection = ragConfig.qdrantCollection): string {
+  return `${ragConfig.qdrantUrl}/collections/${encodeURIComponent(collection)}${suffix}`;
 }
 
 function estimateJsonBytes(value: unknown): number {
@@ -68,6 +68,7 @@ import {protectRagRead, ragReadOnlyExecution, RagIndexUnavailableError} from "./
 
 export class VectorStoreService {
   private ensuredDimension = 0;
+  private ensuredCollection?: string;
   private readonly upsertWrapperBytes = estimateJsonBytes({ points: [] });
   private static readonly timeoutPattern = /Qdrant 请求超时/;
   private static readonly logPrefix = "[RAG][Qdrant]";
@@ -127,8 +128,8 @@ export class VectorStoreService {
     return await response.json() as T;
   }
 
-  private async upsertPointBatch(points: QdrantPoint[]): Promise<void> {
-    await this.request(toCollectionUrl("/points?wait=true"), {
+  private async upsertPointBatch(points: QdrantPoint[], collection: string): Promise<void> {
+    await this.request(toCollectionUrl("/points?wait=true", collection), {
       method: "PUT",
       body: JSON.stringify({ points }),
     });
@@ -136,12 +137,12 @@ export class VectorStoreService {
 
   private async upsertPointBatchAdaptive(
     points: QdrantPoint[],
-    context: { batchIndex: number; totalBatches: number; depth: number },
+    context: { batchIndex: number; totalBatches: number; depth: number; collection: string },
   ): Promise<void> {
     const startedAt = Date.now();
     const batchBytes = estimateJsonBytes({ points });
     try {
-      await this.upsertPointBatch(points);
+      await this.upsertPointBatch(points, context.collection);
       this.logInfo("Upsert batch succeeded.", {
         batch: `${context.batchIndex}/${context.totalBatches}`,
         depth: context.depth,
@@ -221,10 +222,10 @@ export class VectorStoreService {
     "characterRole", "chapterAnchor", "genreTags", "sellingPointTags",
   ] as const;
 
-  private async ensurePayloadIndexes(): Promise<void> {
+  private async ensurePayloadIndexes(collection: string): Promise<void> {
     for (const field of this.PAYLOAD_INDEX_FIELDS) {
       try {
-        await this.request(toCollectionUrl("/index"), {
+        await this.request(toCollectionUrl("/index", collection), {
           method: "PUT",
           body: JSON.stringify({ field_name: field, field_schema: "keyword" }),
         });
@@ -235,22 +236,22 @@ export class VectorStoreService {
     this.logInfo("Payload indexes ensured.", { fields: this.PAYLOAD_INDEX_FIELDS });
   }
 
-  async ensureCollection(dimension: number): Promise<void> {
+  async ensureCollection(dimension: number, collection = ragConfig.qdrantCollection): Promise<void> {
     if (ragReadOnlyExecution()) return this.assertReadOnlyCollection(dimension);
     if (dimension <= 0) {
       throw new Error("向量维度无效。");
     }
-    if (this.ensuredDimension === dimension) {
+    if (this.ensuredDimension === dimension && this.ensuredCollection === collection) {
       return;
     }
 
-    const getResponse = await this.fetchWithTimeout(toCollectionUrl(""), { headers: buildHeaders() });
+    const getResponse = await this.fetchWithTimeout(toCollectionUrl("", collection), { headers: buildHeaders() });
     if (getResponse.status === 404) {
       this.logInfo("Collection not found; creating collection.", {
-        collection: ragConfig.qdrantCollection,
+        collection,
         dimension,
       });
-      await this.request(toCollectionUrl(""), {
+      await this.request(toCollectionUrl("", collection), {
         method: "PUT",
         body: JSON.stringify({
           vectors: {
@@ -259,7 +260,8 @@ export class VectorStoreService {
           },
         }),
       });
-      await this.ensurePayloadIndexes();
+      await this.ensurePayloadIndexes(collection);
+      this.ensuredCollection = collection;
       this.ensuredDimension = dimension;
       return;
     }
@@ -281,12 +283,13 @@ export class VectorStoreService {
       throw new Error(`Qdrant 集合维度不匹配：existing=${existingDimension}, expected=${dimension}`);
     }
     this.logInfo("Collection ready.", {
-      collection: ragConfig.qdrantCollection,
+      collection,
       expectedDimension: dimension,
       existingDimension: existingDimension ?? dimension,
     });
     // 已有集合也确保 payload index 存在（幂等操作）
-    await this.ensurePayloadIndexes();
+    await this.ensurePayloadIndexes(collection);
+    this.ensuredCollection = collection;
     this.ensuredDimension = dimension;
   }
 
@@ -307,7 +310,7 @@ export class VectorStoreService {
     });
   }
 
-  async upsertPoints(points: QdrantPoint[]): Promise<void> {
+  async upsertPoints(points: QdrantPoint[], collection = ragConfig.qdrantCollection): Promise<void> {
     if (points.length === 0) {
       return;
     }
@@ -324,6 +327,7 @@ export class VectorStoreService {
         batchIndex: index + 1,
         totalBatches: batches.length,
         depth: 0,
+        collection,
       });
     });
     this.logInfo("Upsert points finished.", {
@@ -333,17 +337,20 @@ export class VectorStoreService {
     });
   }
 
-  async deletePoints(pointIds: string[]): Promise<void> {
+  async deletePoints(pointIds: string[], collection = ragConfig.qdrantCollection): Promise<void> {
     if (pointIds.length === 0) {
       return;
     }
     const startedAt = Date.now();
-    await this.request(toCollectionUrl("/points/delete?wait=true"), {
+    const response = await this.fetchWithTimeout(toCollectionUrl("/points/delete?wait=true", collection), {
       method: "POST",
+      headers: buildHeaders(),
       body: JSON.stringify({
         points: pointIds,
       }),
     });
+    if (response.status === 404) return;
+    if (!response.ok) throw new Error(`Qdrant 请求失败(${response.status})：${await response.text()}`);
     this.logInfo("Delete points finished.", {
       points: pointIds.length,
       elapsedMs: Date.now() - startedAt,

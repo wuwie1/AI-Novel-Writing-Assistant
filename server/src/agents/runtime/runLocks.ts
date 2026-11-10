@@ -1,3 +1,5 @@
+import {withTaskExecution} from "../../platform/runtime/execution";
+
 const runLocks = new Map<string, Promise<void>>();
 
 export async function withSharedRunLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
@@ -10,7 +12,7 @@ export async function withSharedRunLock<T>(runId: string, fn: () => Promise<T>):
   runLocks.set(runId, chained);
   await previous;
   try {
-    return await fn();
+    return await withTaskExecution(`agent:${runId}`, fn);
   } finally {
     release();
     if (runLocks.get(runId) === chained) {

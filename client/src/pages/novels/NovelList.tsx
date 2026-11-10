@@ -181,7 +181,14 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
   const deleteNovelMutation = useMutation({
     mutationFn: (id: string) => deleteNovel(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.novels.all });
+      await Promise.all([
+        queryKeys.novels.all,
+        ["tasks"],
+        ["director-next", "runs"],
+        ["legacyDirectorHistory"],
+        ["auto-director-follow-ups"],
+        ["agent-runs"],
+      ].map(queryKey => queryClient.invalidateQueries({ queryKey })));
       toast.success("小说已删除。");
     },
     onError: (error) => {
@@ -269,7 +276,7 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
 
   const handleDelete = (novelId: string, title: string, options?: { confirmed?: boolean }) => {
     if (!options?.confirmed) {
-      const confirmed = window.confirm(`确认删除《${title}》吗？该操作会直接删除当前小说。`);
+      const confirmed = window.confirm(`确认删除《${title}》吗？本书的导演任务会停止，章节、时间线、知识索引和封面也会删除。`);
       if (!confirmed) {
         return;
       }

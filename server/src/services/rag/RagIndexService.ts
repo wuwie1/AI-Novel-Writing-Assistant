@@ -1,3 +1,7 @@
+import {withNovelExecution} from "../../platform/runtime/execution";
+import {groupStoredPoints, lockIndexSource} from "./ownership";
+import {lockNovelRow} from "../../db/novelRowLock";
+import {reserveStoredAsset, publishStoredAssets, queueStoredAssetCleanup} from "../../events/sideEffects/StoredAssetCleanup";
 import type { RagIndexJob } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { ragConfig } from "../../config/rag";
@@ -133,7 +137,7 @@ export class RagIndexService {
       select: { status: true },
     });
     if (!job) {
-      throw new Error("RAG job not found.");
+      throw new RagJobCancelledError();
     }
     if (job.status === "cancelled") {
       throw new RagJobCancelledError();
@@ -541,7 +545,7 @@ export class RagIndexService {
     documents: RagSourceDocument[],
     embedProvider: string,
     embedModel: string,
-    options?: { maxTokens?: number | null; knownCharacterNames?: string[] },
+    options?: { maxTokens?: number | null; knownCharacterNames?: string[]; collection?: string },
   ): RagChunkCandidate[] {
     const candidateNames = options?.knownCharacterNames ?? [];
     const candidates: RagChunkCandidate[] = [];
@@ -591,6 +595,7 @@ export class RagIndexService {
           ...(piece.metadata ?? {}),
           ...(piece.facets && Object.keys(piece.facets).length > 0 ? { facets: piece.facets } : {}),
           ...(piece.anchor ? { anchor: piece.anchor } : {}),
+          ...(options?.collection ? {vectorCollection: options.collection} : {}),
         };
         const facetKeys = encodeFacetKeys(piece.facets);
         const chapterAnchor = piece.anchor?.chapterIndex !== undefined
@@ -650,7 +655,7 @@ export class RagIndexService {
     }
     const existing = await prisma.knowledgeChunk.findMany({
       where: { tenantId, ownerType, ownerId },
-      select: { id: true },
+      select: { id: true, metadataJson: true },
     });
     if (existing.length === 0) {
       return { deleted: 0 };
@@ -667,11 +672,10 @@ export class RagIndexService {
         percent: 0.8,
       });
     }
-    const ids = existing.map((item) => item.id);
-    await this.vectorStoreService.deletePoints(ids);
-    await prisma.knowledgeChunk.deleteMany({
-      where: { tenantId, ownerType, ownerId },
-    });
+    for (const {points, collection} of groupStoredPoints(existing)) {
+      await this.vectorStoreService.deletePoints(points, collection);
+      await prisma.knowledgeChunk.deleteMany({where: {id: {in: points}}});
+    }
     return { deleted: existing.length };
   }
 
@@ -718,6 +722,7 @@ export class RagIndexService {
     }
 
     const embeddingSettings = await getRagEmbeddingSettings();
+    const collection = embeddingSettings.collectionName ?? ragConfig.qdrantCollection;
     const embeddingTokenBudget = resolveEmbeddingChunkTokenBudget(
       embeddingSettings.embeddingProvider,
       embeddingSettings.embeddingModel,
@@ -736,6 +741,7 @@ export class RagIndexService {
     }
 
     const candidates = this.buildChunkCandidates(docs, embeddingSettings.embeddingProvider, embeddingSettings.embeddingModel, {
+      collection,
       maxTokens: embeddingTokenBudget,
       knownCharacterNames,
     });
@@ -749,24 +755,29 @@ export class RagIndexService {
       chunks: candidates.length,
       percent: 0.15,
     });
-    await this.contextualChunkService.applyToCandidates({
-      candidates,
-      documentsByOwner: this.buildContextualDocumentMap(docs),
-    });
-    const splitTexts = candidates.map((item) => item.searchText ?? item.chunkText);
-    await this.assertJobNotCancelled(jobId);
-    const embedding = await this.embedTextsInBatches(splitTexts, async ({ processed, total }) => {
-      await this.updateJobProgress(jobId, {
-        stage: "embedding",
-        label: "生成向量",
-        detail: `已生成 ${processed}/${total} 个向量（${ragConfig.embeddingConcurrency} 并发）。`,
-        current: processed,
-        total,
-        documents: docs.length,
-        chunks: total,
-        percent: 0.15 + (total > 0 ? (processed / total) * 0.5 : 0),
+    const novelId = docs[0]?.novelId;
+    const embed = async () => {
+      await this.assertJobNotCancelled(jobId);
+      await this.contextualChunkService.applyToCandidates({
+        candidates,
+        documentsByOwner: this.buildContextualDocumentMap(docs),
       });
-    });
+      const splitTexts = candidates.map((item) => item.searchText ?? item.chunkText);
+      await this.assertJobNotCancelled(jobId);
+      return this.embedTextsInBatches(splitTexts, async ({ processed, total }) => {
+        await this.updateJobProgress(jobId, {
+          stage: "embedding",
+          label: "生成向量",
+          detail: `已生成 ${processed}/${total} 个向量（${ragConfig.embeddingConcurrency} 并发）。`,
+          current: processed,
+          total,
+          documents: docs.length,
+          chunks: total,
+          percent: 0.15 + (total > 0 ? (processed / total) * 0.5 : 0),
+        });
+      });
+    };
+    const embedding = novelId ? await withNovelExecution(novelId, embed) : await embed();
     await this.assertJobNotCancelled(jobId);
     for (const candidate of candidates) {
       candidate.embedProvider = embedding.provider;
@@ -808,14 +819,13 @@ export class RagIndexService {
       percent: 0.7,
     });
     await this.assertJobNotCancelled(jobId);
-    await this.vectorStoreService.ensureCollection(vectorSize);
+    await this.vectorStoreService.ensureCollection(vectorSize, collection);
 
     // 读取旧 chunk id，但先不删除 — 保持旧数据可检索直到新数据写入完成
     const oldChunks = await prisma.knowledgeChunk.findMany({
       where: { tenantId, ownerType, ownerId },
-      select: { id: true },
+      select: { id: true, metadataJson: true },
     });
-    const oldIds = oldChunks.map((item) => item.id);
     await this.assertJobNotCancelled(jobId);
 
     await this.updateJobProgress(jobId, {
@@ -855,16 +865,10 @@ export class RagIndexService {
       },
     }));
 
-    // 1. Qdrant 写入新分块
+    const points = candidates.map(item => item.id);
+    const reservation = novelId ? await reserveStoredAsset(prisma, novelId, {points, collection}) : null;
     try {
-      await this.vectorStoreService.upsertPoints(newPoints);
-    } catch (error) {
-      // 新分块写入失败，旧分块仍在，直接抛出
-      throw error;
-    }
-
-    // 2. DB 写入新分块元数据
-    try {
+      await this.vectorStoreService.upsertPoints(newPoints, collection);
       await this.updateJobProgress(jobId, {
         stage: "writing_metadata",
         label: "写入索引元数据",
@@ -875,49 +879,66 @@ export class RagIndexService {
         chunks: candidates.length,
         percent: 0.92,
       });
-      await prisma.knowledgeChunk.createMany({
-        data: candidates.map((item) => ({
-          id: item.id,
-          tenantId: item.tenantId,
-          ownerType: item.ownerType,
-          ownerId: item.ownerId,
-          novelId: item.novelId ?? null,
-          worldId: item.worldId ?? null,
-          title: item.title ?? null,
-          chunkText: item.chunkText,
-          chunkHash: item.chunkHash,
-          chunkOrder: item.chunkOrder,
-          tokenEstimate: item.tokenEstimate,
-          language: item.language,
-          metadataJson: item.metadataJson ?? null,
-          facetKeys: item.facetKeys ?? null,
-          chapterAnchor: item.chapterAnchor ?? null,
-          embedProvider: item.embedProvider,
-          embedModel: item.embedModel,
-          embedVersion: item.embedVersion,
-          indexedAt: new Date(),
-        })),
+      const data = candidates.map((item) => ({
+        id: item.id,
+        tenantId: item.tenantId,
+        ownerType: item.ownerType,
+        ownerId: item.ownerId,
+        novelId: item.novelId ?? null,
+        worldId: item.worldId ?? null,
+        title: item.title ?? null,
+        chunkText: item.chunkText,
+        chunkHash: item.chunkHash,
+        chunkOrder: item.chunkOrder,
+        tokenEstimate: item.tokenEstimate,
+        language: item.language,
+        metadataJson: item.metadataJson ?? null,
+        facetKeys: item.facetKeys ?? null,
+        chapterAnchor: item.chapterAnchor ?? null,
+        embedProvider: item.embedProvider,
+        embedModel: item.embedModel,
+        embedVersion: item.embedVersion,
+        indexedAt: new Date(),
+      }));
+      await prisma.$transaction(async tx => {
+        if (novelId) {
+          await lockNovelRow(tx, novelId);
+        }
+        await publishStoredAssets(tx, reservation ? [reservation] : []);
+        await tx.knowledgeChunk.createMany({data});
       });
     } catch (error) {
-      // DB 写入失败，回滚：删除刚写的新 Qdrant 分块
-      await this.vectorStoreService.deletePoints(candidates.map((item) => item.id)).catch(() => {});
+      // The remote write can complete after a delete worker already removed the points.
+      // Keep a retryable manifest whenever immediate compensation cannot reach storage.
+      try {
+        await this.vectorStoreService.deletePoints(points, collection);
+      } catch {
+        await queueStoredAssetCleanup(prisma, [{points, collection}]);
+      }
+      if (reservation) await prisma.novelSideEffectJob.deleteMany({where: {id: reservation, status: "reserved"}});
       throw error;
     }
 
     // 3. 新分块全部就位，安全删除旧分块
-    if (oldIds.length > 0) {
+    if (oldChunks.length > 0) {
       await this.updateJobProgress(jobId, {
         stage: "deleting_existing",
         label: "清理旧索引",
-        detail: `正在删除 ${oldIds.length} 条旧分块。`,
-        current: oldIds.length,
-        total: oldIds.length,
+        detail: `正在删除 ${oldChunks.length} 条旧分块。`,
+        current: oldChunks.length,
+        total: oldChunks.length,
         documents: docs.length,
         chunks: candidates.length,
         percent: 0.97,
       });
-      await this.vectorStoreService.deletePoints(oldIds).catch(() => {});
-      await prisma.knowledgeChunk.deleteMany({ where: { id: { in: oldIds } } }).catch(() => {});
+      for (const batch of groupStoredPoints(oldChunks)) {
+        try {
+          await this.vectorStoreService.deletePoints(batch.points, batch.collection);
+        } catch {
+          await queueStoredAssetCleanup(prisma, [batch]);
+        }
+        await prisma.knowledgeChunk.deleteMany({where: {id: {in: batch.points}}});
+      }
     }
 
     await this.updateJobProgress(jobId, {
@@ -944,55 +965,58 @@ export class RagIndexService {
       maxAttempts?: number;
     },
   ) {
-    const tenantId = options?.tenantId ?? ragConfig.defaultTenantId;
-    const existing = await prisma.ragIndexJob.findFirst({
-      where: {
-        tenantId,
-        jobType,
-        ownerType,
-        ownerId,
-        status: { in: ["queued", "running"] as RagJobStatus[] },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    if (existing) {
-      if (options?.payload && existing.status === "queued") {
-        const currentPayload = this.parseJobPayload(existing.payloadJson);
-        await prisma.ragIndexJob.update({
-          where: { id: existing.id },
-          data: {
-            payloadJson: JSON.stringify({
-              ...currentPayload,
-              ...options.payload,
-              progress: currentPayload.progress,
-            } satisfies RagJobPayloadRecord),
-          },
-        });
+    return prisma.$transaction(async tx => {
+      if (jobType !== "delete") await lockIndexSource(tx, ownerType, ownerId);
+      const tenantId = options?.tenantId ?? ragConfig.defaultTenantId;
+      const existing = await tx.ragIndexJob.findFirst({
+        where: {
+          tenantId,
+          jobType,
+          ownerType,
+          ownerId,
+          status: { in: ["queued", "running"] as RagJobStatus[] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (existing) {
+        if (options?.payload && existing.status === "queued") {
+          const currentPayload = this.parseJobPayload(existing.payloadJson);
+          await tx.ragIndexJob.update({
+            where: { id: existing.id },
+            data: {
+              payloadJson: JSON.stringify({
+                ...currentPayload,
+                ...options.payload,
+                progress: currentPayload.progress,
+              } satisfies RagJobPayloadRecord),
+            },
+          });
+        }
+        return existing;
       }
-      return existing;
-    }
-    const created = await prisma.ragIndexJob.create({
-      data: {
-        tenantId,
-        jobType,
-        ownerType,
-        ownerId,
-        status: "queued",
-        attempts: 0,
-        maxAttempts: options?.maxAttempts ?? ragConfig.workerMaxAttempts,
-        runAfter: options?.runAfter ?? new Date(),
-        payloadJson: JSON.stringify({
-          ...(options?.payload ?? {}),
-          progress: this.createProgressSnapshot({
-            stage: "queued",
-            label: "等待执行",
-            detail: "索引任务已进入队列。",
-            percent: 0,
-          }),
-        } satisfies RagJobPayloadRecord),
-      },
+      const created = await tx.ragIndexJob.create({
+        data: {
+          tenantId,
+          jobType,
+          ownerType,
+          ownerId,
+          status: "queued",
+          attempts: 0,
+          maxAttempts: options?.maxAttempts ?? ragConfig.workerMaxAttempts,
+          runAfter: options?.runAfter ?? new Date(),
+          payloadJson: JSON.stringify({
+            ...(options?.payload ?? {}),
+            progress: this.createProgressSnapshot({
+              stage: "queued",
+              label: "等待执行",
+              detail: "索引任务已进入队列。",
+              percent: 0,
+            }),
+          } satisfies RagJobPayloadRecord),
+        },
+      });
+      return created;
     });
-    return created;
   }
 
   async enqueueUpsert(ownerType: RagOwnerType, ownerId: string, tenantId?: string) {
@@ -1106,7 +1130,7 @@ export class RagIndexService {
       select: { status: true, payloadJson: true },
     });
     if (!current) {
-      throw new Error("RAG job not found.");
+      throw new RagJobCancelledError();
     }
     if (current.status === "cancelled" && payload.status !== "cancelled") {
       return prisma.ragIndexJob.findUnique({

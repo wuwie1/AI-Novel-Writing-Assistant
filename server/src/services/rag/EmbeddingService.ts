@@ -1,3 +1,4 @@
+import {assertExecutionActive, executionSignal} from "../../platform/runtime/execution";
 import { prisma } from "../../db/prisma";
 import { ragConfig } from "../../config/rag";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
@@ -73,7 +74,7 @@ export class EmbeddingService {
     try {
       return await fetch(url, {
         ...init,
-        signal: controller.signal,
+        signal: executionSignal(controller.signal),
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -211,6 +212,7 @@ export class EmbeddingService {
 
         return vectors;
       } catch (error) {
+        assertExecutionActive();
         const normalized = this.normalizeRequestError(error);
         if (normalized.retryable && attempt < ragConfig.embeddingMaxRetries) {
           await this.waitBeforeRetry(attempt);
@@ -227,6 +229,7 @@ export class EmbeddingService {
     try {
       return await this.requestEmbeddingBatch(texts, target);
     } catch (error) {
+      assertExecutionActive();
       const normalized = this.normalizeRequestError(error);
       if (texts.length <= 1 || !normalized.shouldSplitBatch) {
         throw normalized;

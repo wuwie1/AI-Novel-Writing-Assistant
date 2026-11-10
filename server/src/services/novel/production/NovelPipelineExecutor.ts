@@ -1,5 +1,6 @@
 import { manualChapterSyncService, MANUAL_CHAPTER_SYNC_TYPE } from "../chapterEditor/synchronization";
 import { buildChapterArtifactContentHash } from "../runtime/artifactSync/ChapterArtifactContentVersion";
+import {withNovelExecution} from "../../../platform/runtime/execution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   DIRECTOR_ISSUE_GOVERNANCE_VERSION,
@@ -228,7 +229,7 @@ export class NovelPipelineExecutor {
   execute(jobId: string, novelId: string, options: PipelineRunOptions, executionOwner?: string): Promise<void> {
     return this.executionOwnerStore.run(
       executionOwner?.trim() || null,
-      () => this.executeWithOwnership(jobId, novelId, options),
+      () => withNovelExecution(novelId, () => this.executeWithOwnership(jobId, novelId, options)),
     );
   }
 
@@ -245,7 +246,8 @@ export class NovelPipelineExecutor {
         payload: true,
       },
     });
-    const persistedPayload = this.parsePipelinePayload(existingJob?.payload);
+    if (!existingJob) return;
+    const persistedPayload = this.parsePipelinePayload(existingJob.payload);
     const runtimePayload: PipelinePayload = {
       provider: persistedPayload.provider ?? options.provider,
       model: persistedPayload.model ?? (options.model?.trim() || undefined),

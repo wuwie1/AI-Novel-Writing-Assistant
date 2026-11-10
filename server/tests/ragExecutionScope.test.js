@@ -6,6 +6,15 @@ const {HybridRetrievalService}=require('../dist/services/rag/HybridRetrievalServ
 const fields=['tenantId','ownerType','ownerId','novelId','worldId','characterRole','chapterAnchor','genreTags','sellingPointTags'];
 const scope=()=>require('../dist/services/rag/execution');
 const ports=()=>({retrieve:async(_query,_options,run)=>run(),request:async(_input,send)=>send()});
+test('point cleanup uses the stored collection and tolerates a collection already removed',async t=>{
+ const calls=[];
+ t.mock.method(global,'fetch',async(url,options)=>{
+   calls.push([new URL(url).pathname, JSON.parse(options.body)]);
+   return new Response('{}',{status:404});
+ });
+ await new VectorStoreService().deletePoints(['book-point'],'original-collection');
+ assert.deepEqual(calls,[['/collections/original-collection/points/delete',{points:['book-point']}]]);
+});
 function embedding(){const service=new EmbeddingService();
  service.resolveRuntimeSettings=async()=>({provider:'test',model:'embedding'});service.resolveApiKey=async()=> 'secret-never-persist';
  service.resolveBaseUrl=async()=> 'https://private.test/v1';return service;}

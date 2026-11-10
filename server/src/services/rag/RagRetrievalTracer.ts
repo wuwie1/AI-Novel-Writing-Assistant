@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../../db/prisma";
+import {lockNovelRow} from "../../db/novelRowLock";
+import {AppError} from "../../middleware/errorHandler";
 import { ragConfig } from "../../config/rag";
 import type { RagSearchOptions, RetrievedChunk } from "./types";
 
@@ -188,21 +190,26 @@ export class RagRetrievalTracer {
       ...this.extraScope,
     });
 
-    void prisma.ragRetrievalTrace.create({
-      data: {
-        tenantId: this.context.tenantId,
-        novelId: this.context.novelId,
-        worldId: this.context.worldId,
-        queryDigest: digestQuery(this.context.query),
-        queryPreview: buildQueryPreview(this.context.query),
-        scopeJson,
-        candidateCounts: JSON.stringify(this.candidateCounts),
-        hitsJson: JSON.stringify(this.hits),
-        timingsJson: JSON.stringify(this.timings),
-        fallbackTriggered: this.fallbackTriggered,
-        rerankerUsed: this.rerankerUsed,
-      },
-    }).catch((error) => {
+    const data = {
+      tenantId: this.context.tenantId,
+      novelId: this.context.novelId,
+      worldId: this.context.worldId,
+      queryDigest: digestQuery(this.context.query),
+      queryPreview: buildQueryPreview(this.context.query),
+      scopeJson,
+      candidateCounts: JSON.stringify(this.candidateCounts),
+      hitsJson: JSON.stringify(this.hits),
+      timingsJson: JSON.stringify(this.timings),
+      fallbackTriggered: this.fallbackTriggered,
+      rerankerUsed: this.rerankerUsed,
+    };
+    const novelId = data.novelId;
+    const write = novelId ? prisma.$transaction(async tx => {
+      await lockNovelRow(tx, novelId);
+      await tx.ragRetrievalTrace.create({data});
+    }) : prisma.ragRetrievalTrace.create({data});
+    void write.catch((error) => {
+      if (error instanceof AppError && error.statusCode === 404) return;
       console.warn("[rag] failed to write retrieval trace", error);
     });
   }

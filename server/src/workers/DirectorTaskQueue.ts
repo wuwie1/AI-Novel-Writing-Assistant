@@ -114,9 +114,9 @@ export class DirectorTaskQueue {
     this.gates.get(key)?.release();
   }
 
-  startLeaseRenewal(commandId: string, slotId: string): () => void {
+  startLeaseRenewal(commandId: string, slotId: string, onLost?: () => void): () => void {
     const renew = () => {
-      void this.commandService.renewLease(commandId, `${this.workerId}:${slotId}`, this.leaseMs).catch((error) => {
+      void this.commandService.renewLease(commandId, `${this.workerId}:${slotId}`, this.leaseMs).then(owned => { if (!owned) onLost?.(); }).catch((error) => {
         console.warn(`[task-queue] failed to renew command lease commandId=${commandId}`, error);
       });
     };

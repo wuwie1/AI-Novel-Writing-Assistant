@@ -1,4 +1,5 @@
 import type { ManualChapterSyncPayload } from "../../services/novel/chapterEditor/synchronization";
+import type {StoredAssetCleanup} from "./StoredAssetCleanup";
 export const NOVEL_SIDE_EFFECT_PAYLOAD_VERSION = 1;
 
 export const NOVEL_SIDE_EFFECT_JOB_TYPES = [
@@ -6,6 +7,7 @@ export const NOVEL_SIDE_EFFECT_JOB_TYPES = [
   "character.postDraftEnrichment",
   "character.v2DeferredEnrichment",
   "novel.pipelineSnapshot",
+  "novel.removeStoredAsset",
   "payoff.bookContractSync",
   "chapter.manualSync",
   "chapter.timelineFinalization",
@@ -13,7 +15,7 @@ export const NOVEL_SIDE_EFFECT_JOB_TYPES = [
 
 export type NovelSideEffectJobType = (typeof NOVEL_SIDE_EFFECT_JOB_TYPES)[number];
 
-export type NovelSideEffectJobStatus = "pending" | "running" | "succeeded" | "failed" | "dead";
+export type NovelSideEffectJobStatus = "reserved" | "pending" | "running" | "succeeded" | "failed" | "dead";
 
 export interface CharacterVolumeRebuildPayload {
   novelId: string;
@@ -50,6 +52,7 @@ export interface ChapterTimelineFinalizationPayload {
 }
 
 export type NovelSideEffectPayload =
+  | StoredAssetCleanup
   | CharacterVolumeRebuildPayload
   | CharacterPostDraftEnrichmentPayload
   | DirectorV2CharacterEnrichmentPayload

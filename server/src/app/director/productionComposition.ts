@@ -136,7 +136,7 @@ export function createDirectorProductionOptions(): DirectorNextServiceOptions {
       },
       canRun: async runId => {
         try {await assertV2RunExecution(runId); return true;} catch (error) {
-          if (error instanceof AppError && error.statusCode === 409) return false;
+          if (error instanceof AppError && (error.statusCode === 404 || error.statusCode === 409)) return false;
           throw error;
         }
       },

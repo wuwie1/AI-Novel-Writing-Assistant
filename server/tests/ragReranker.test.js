@@ -8,6 +8,7 @@ const {
 const {
   HybridRetrievalService,
 } = require("../dist/services/rag/HybridRetrievalService.js");
+const {prisma} = require("../dist/db/prisma");
 const { ragConfig } = require("../dist/config/rag.js");
 
 function withRagConfig(patch, run) {
@@ -93,11 +94,14 @@ test("RagRerankerService.rerank fail-opens on endpoint errors", () => withRagCon
   }
 }));
 
-test("HybridRetrievalService runs vector/RRF before reranker and returns reranked topK", () => withRagConfig({
+test("HybridRetrievalService runs vector/RRF before reranker and returns reranked topK", t => withRagConfig({
   enabled: true,
   rerankerEnabled: true,
   rerankerCandidateLimit: 3,
 }, async () => {
+  const findMany = prisma.knowledgeChunk.findMany;
+  prisma.knowledgeChunk.findMany = async ({where}) => where.id ? ["a", "b", "c"].map(id => ({id})) : [];
+  t.after(() => { prisma.knowledgeChunk.findMany = findMany; });
   const embeddingService = {
     embedTexts: async () => ({ vectors: [[1, 2, 3]], provider: "test", model: "test-embed" }),
   };

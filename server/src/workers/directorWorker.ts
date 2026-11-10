@@ -1,4 +1,5 @@
 import "dotenv/config";
+import {withExecutionSignal, registerTaskCancellation} from "../platform/runtime/execution";
 import { ensureRuntimeDatabaseReady } from "../db/runtimeMigrations";
 import { loadProviderApiKeys } from "../llm/factory";
 import { initializeRagSettingsCompatibility } from "../services/settings/RagCompatibilityBootstrapService";
@@ -94,7 +95,11 @@ export class DirectorWorker {
     if (!leased) return false;
 
     const { command } = leased;
-    const stopRenewal = this.queue.startLeaseRenewal(command.id, slotId);
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    const releaseNovel = command.novelId ? registerTaskCancellation(`novel:${command.novelId}`, cancel) : undefined;
+    const releaseWorkflow = registerTaskCancellation(`workflow:${command.taskId}`, cancel);
+    const stopRenewal = this.queue.startLeaseRenewal(command.id, slotId, cancel);
 
     try {
       await this.queue.acquireResourceGate(command.novelId, command.commandType);
@@ -105,7 +110,8 @@ export class DirectorWorker {
           `[director.worker] executing commandId=${command.id} type=${command.commandType} taskId=${command.taskId} novelId=${command.novelId} slot=${slotId}`,
         );
 
-        const outcome = await this.commandExecutor.execute(command.id);
+        controller.signal.throwIfAborted();
+        const outcome = await withExecutionSignal(controller.signal, () => this.commandExecutor.execute(command.id));
 
         if (outcome === "cancelled") {
           await this.queue.cancelTask(command.id, slotId);
@@ -118,9 +124,12 @@ export class DirectorWorker {
         this.queue.releaseResourceGate(command.novelId, command.commandType);
       }
     } catch (error) {
+      if (controller.signal.aborted) return false;
       console.error(`[director.worker] command failed commandId=${command.id}`, error);
       await this.queue.failTask(command.id, slotId, error);
     } finally {
+      releaseNovel?.();
+      releaseWorkflow();
       stopRenewal();
     }
 

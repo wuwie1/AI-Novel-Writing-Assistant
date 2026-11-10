@@ -103,7 +103,7 @@ function Shelf({ model }: { model: NovelListPresentation }) {
       <DialogContent aria-describedby="mac-delete-novel-description">
         <DialogTitle>删除这本小说？</DialogTitle>
         <DialogDescription id="mac-delete-novel-description">
-          {pendingDelete ? `《${pendingDelete.title}》删除后不能从回收站恢复。请确认你不再需要这本书。` : null}
+          {pendingDelete ? `删除《${pendingDelete.title}》会停止本书的导演任务，并永久删除章节、时间线、知识索引和封面。` : null}
         </DialogDescription>
         <div className="flex flex-wrap justify-end gap-2">
           <Button autoFocus onClick={() => setPendingDelete(null)}>取消</Button>

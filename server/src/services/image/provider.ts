@@ -1,3 +1,4 @@
+import {executionSignal} from "../../platform/runtime/execution";
 import fs from "fs/promises";
 import path from "path";
 
@@ -251,7 +252,7 @@ async function generateWithFileRef(
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: form,
-    signal: controller.signal,
+    signal: executionSignal(controller.signal),
   });
 
   if (!response.ok) {
@@ -303,7 +304,7 @@ export async function generateImagesByProvider(input: ImageProviderGenerateInput
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify(requestBody),
-      signal: controller.signal,
+      signal: executionSignal(controller.signal),
     });
 
     if (!response.ok) {

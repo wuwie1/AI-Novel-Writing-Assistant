@@ -114,11 +114,12 @@ export class NovelSideEffectJobService {
 
   async leaseNext(options: NovelSideEffectLeaseOptions): Promise<NovelSideEffectJob | null> {
     const now = options.now ?? this.now();
+    const runnable: Prisma.NovelSideEffectJobWhereInput = {OR: [
+      {status: {in: RUNNABLE_STATUSES}, runAfter: {lte: now}},
+      {jobType: "novel.removeStoredAsset", status: "running", leaseExpiresAt: {lt: now}},
+    ]};
     const candidate = await this.db.novelSideEffectJob.findFirst({
-      where: {
-        status: { in: RUNNABLE_STATUSES },
-        runAfter: { lte: now },
-      },
+      where: runnable,
       orderBy: [{ runAfter: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     if (!candidate) {
@@ -129,8 +130,7 @@ export class NovelSideEffectJobService {
     const claimed = await this.db.novelSideEffectJob.updateMany({
       where: {
         id: candidate.id,
-        status: { in: RUNNABLE_STATUSES },
-        runAfter: { lte: now },
+        ...runnable,
       },
       data: {
         status: "running",
@@ -147,6 +147,10 @@ export class NovelSideEffectJobService {
   }
 
   async markSucceeded(job: NovelSideEffectJob): Promise<void> {
+    if (job.jobType === "novel.removeStoredAsset") {
+      await this.db.novelSideEffectJob.deleteMany({where: {id: job.id, status: "running", leaseOwner: job.leaseOwner}});
+      return;
+    }
     const updated = await this.db.novelSideEffectJob.updateMany({
       where: {
         id: job.id,
@@ -162,7 +166,7 @@ export class NovelSideEffectJobService {
       },
     });
     if (updated.count !== 1) {
-      throw new Error(`Novel side effect job ${job.id} was not running for this worker.`);
+      throw new NovelSideEffectLeaseLostError(`Novel side effect job ${job.id} was not running for this worker.`);
     }
   }
 
@@ -171,7 +175,7 @@ export class NovelSideEffectJobService {
       id: job.id, status: "running", leaseOwner: job.leaseOwner,
     }, data: {status: "pending", runAfter, attempts: Math.max(0, job.attempts - 1),
       leaseOwner: null, leaseExpiresAt: null, lastError: null, finishedAt: null}});
-    if (updated.count !== 1) throw new Error(`Novel side effect job ${job.id} deferral lost its lease.`);
+    if (updated.count !== 1) throw new NovelSideEffectLeaseLostError(`Novel side effect job ${job.id} deferral lost its lease.`);
   }
 
   async renewLease(job: NovelSideEffectJob, leaseMs: number): Promise<boolean> {
@@ -183,7 +187,8 @@ export class NovelSideEffectJobService {
   }
 
   async markFailedOrDead(job: NovelSideEffectJob, error: unknown, options?: { forceDead?: boolean }): Promise<NovelSideEffectJobStatus> {
-    const nextStatus: NovelSideEffectJobStatus = options?.forceDead || job.attempts >= job.maxAttempts ? "dead" : "failed";
+    const exhausted = job.jobType !== "novel.removeStoredAsset" && job.attempts >= job.maxAttempts;
+    const nextStatus: NovelSideEffectJobStatus = options?.forceDead || exhausted ? "dead" : "failed";
     const retryDelayMs = nextStatus === "failed"
       ? computeNovelSideEffectRetryDelayMs({
           attempt: job.attempts,
@@ -209,7 +214,7 @@ export class NovelSideEffectJobService {
       },
     });
     if (updated.count !== 1) {
-      throw new Error(`Novel side effect job ${job.id} failed state update was rejected.`);
+      throw new NovelSideEffectLeaseLostError(`Novel side effect job ${job.id} failed state update was rejected.`);
     }
     return nextStatus;
   }

@@ -1,3 +1,4 @@
+import {withTaskExecution} from "../../../../platform/runtime/execution";
 import { referenceContract, parseShortStoryReference } from "../../creation-studio/reference";
 import type {
   CreationDirection,
@@ -92,7 +93,11 @@ export class ShortStoryProductionService {
     }
   }
 
-  async run(taskId: string): Promise<void> {
+  run(taskId: string): Promise<void> {
+    return withTaskExecution(`workflow:${taskId}`, () => this.execute(taskId));
+  }
+
+  private async execute(taskId: string): Promise<void> {
     if (this.running.has(taskId)) return;
     this.running.add(taskId);
     try {

@@ -1,3 +1,6 @@
+import {withNovelExecution} from "../../platform/runtime/execution";
+import {lockNovelRow} from "../../db/novelRowLock";
+import {reserveStoredAsset, publishStoredAssets, queueStoredAssetCleanup, type StoredAssetCleanup} from "../../events/sideEffects/StoredAssetCleanup";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
@@ -275,6 +278,8 @@ export async function executeImageGenerationTask(
     },
   });
 
+  const reservations: string[] = [];
+  const storedCovers: StoredAssetCleanup[] = [];
   try {
     await ensureNotCancelled(task.id);
     await prisma.imageGenerationTask.update({
@@ -288,7 +293,7 @@ export async function executeImageGenerationTask(
     });
 
     const referenceImages = await resolveReferenceImagesForTask(task);
-    const result = await generateImagesByProvider({
+    const generate = () => generateImagesByProvider({
       sceneType,
       provider: task.provider as LLMProvider,
       model: task.model,
@@ -301,6 +306,10 @@ export async function executeImageGenerationTask(
       ...(referenceImages.refImages.length > 0 ? { refImages: referenceImages.refImages } : {}),
     });
 
+    const result = task.novelId ? await withNovelExecution(task.novelId, async () => {
+      await ensureNotCancelled(task.id);
+      return generate();
+    }) : await generate();
     await ensureNotCancelled(task.id);
     await prisma.imageGenerationTask.update({
       where: { id: task.id },
@@ -325,6 +334,10 @@ export async function executeImageGenerationTask(
         novelId: task.novelId,
         bookAnalysisCharacterId: task.bookAnalysisCharacterId,
         sortOrder: index,
+        beforeCoverWrite: async cover => {
+          reservations.push(await reserveStoredAsset(prisma, cover.novelId, {cover}));
+          storedCovers.push({cover});
+        },
         url: image.url,
         mimeType: image.mimeType ?? null,
       });
@@ -340,6 +353,10 @@ export async function executeImageGenerationTask(
 
     await ensureNotCancelled(task.id);
     await prisma.$transaction(async (tx) => {
+      if (task.novelId && sceneType === "novel_cover") {
+        await lockNovelRow(tx, task.novelId);
+      }
+      await publishStoredAssets(tx, reservations);
       const hasPrimary = await tx.imageAsset.findFirst({
         where: {
           ...ownerWhere,
@@ -410,6 +427,11 @@ export async function executeImageGenerationTask(
       });
     });
   } catch (error) {
+    if (!await prisma.imageGenerationTask.findUnique({where: {id: task.id}, select: {id: true}})) {
+      // A delete worker may have finished its first cleanup while storage was still writing.
+      if (storedCovers.length) await queueStoredAssetCleanup(prisma, storedCovers);
+      return;
+    }
     if (error instanceof AppError && error.message === "IMAGE_TASK_CANCELLED") {
       await markCancelled(task.id, task.progress);
       return;

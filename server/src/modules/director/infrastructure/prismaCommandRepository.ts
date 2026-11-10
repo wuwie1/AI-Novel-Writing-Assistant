@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type {RunOpenBoundary} from "./prismaRunRepository";
 import { prisma } from "../../../db/prisma";
 import {
   applyEvent,
@@ -87,7 +88,7 @@ function fromRow(row: {
 }
 
 export class PrismaCommandRepository implements CommandRepository {
-  constructor(private readonly db: PrismaClient = prisma, private readonly options: {readEditedArtifact?: ArtifactEditReader; resumeBusiness?: BusinessResume; cancelBusiness?: BusinessResume;
+  constructor(private readonly db: PrismaClient = prisma, private readonly options: {beforeOpen?: RunOpenBoundary; readEditedArtifact?: ArtifactEditReader; resumeBusiness?: BusinessResume; cancelBusiness?: BusinessResume;
     beforeRetry?: (contract: RunContract, tx: Prisma.TransactionClient) => Promise<void>} = {}) {}
 
   async find(idempotencyKey: string): Promise<DirectorCommandRecord | null> {
@@ -103,13 +104,17 @@ export class PrismaCommandRepository implements CommandRepository {
         if (!controlRow) throw new Error(`director command run not found: ${existing.runId}`);
         return { runId: existing.runId, control: controlFromRow(controlRow), commandId: existing.id, replayed: true };
       }
+      const epoch = await this.options.beforeOpen?.(input.contract.novelId, tx);
+      if (input.contract.executionEpoch !== undefined && epoch !== undefined && input.contract.executionEpoch !== epoch) {
+        throw new InvalidDirectorCommandError("本书导演设置已变化，请重新开始创作。");
+      }
       await tx.directorNextRun.create({
         data: {
           id: input.contract.runId,
           novelId: input.contract.novelId,
           driver: input.contract.driver,
           planVersion: input.contract.planVersion,
-          contractJson: JSON.stringify(input.contract),
+          contractJson: JSON.stringify(epoch === undefined ? input.contract : {...input.contract, executionEpoch: epoch}),
         },
       });
       const control = initialControl();
@@ -205,6 +210,7 @@ export class PrismaCommandRepository implements CommandRepository {
     return this.db.$transaction(async (tx) => {
       const existing = await tx.directorNextCommand.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
       if (existing) return this.replay(tx, existing);
+      await this.options.beforeOpen?.(input.newContract.novelId, tx);
       const oldRow = await tx.directorNextRunControl.findUnique({ where: { runId: input.oldRunId } });
       if (!oldRow) throw new Error(`director next run control not found: ${input.oldRunId}`);
       const oldControl = controlFromRow(oldRow);

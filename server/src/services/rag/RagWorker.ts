@@ -43,7 +43,7 @@ export class RagWorker {
       maxAttempts: ragConfig.workerMaxAttempts,
       retryBaseMs: ragConfig.workerRetryBaseMs,
     });
-    void this.requeueInterruptedJobs();
+    void this.requeueInterruptedJobs().catch(error => console.warn("[RAG] recovery deferred", error));
     this.timer = setInterval(() => {
       void this.tick();
     }, ragConfig.workerPollMs);
@@ -157,6 +157,11 @@ export class RagWorker {
           elapsedMs: Date.now() - startedAt,
           error: message,
         });
+      }
+    } catch (error) {
+      if (!(error instanceof RagJobCancelledError)
+        && !(error && typeof error === "object" && "code" in error && error.code === "P2025")) {
+        console.warn("[RAG] worker tick deferred", error);
       }
     } finally {
       this.isTicking = false;

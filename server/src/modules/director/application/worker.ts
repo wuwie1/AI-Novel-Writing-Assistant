@@ -22,6 +22,7 @@ export interface DirectorWorkerDeps {
   recoveryPolicy?: DirectorRecoveryPolicy;
   pollMs?: number;
   heartbeatMs?: number;
+  registerCancellation?: (runId: string, cancel: () => void) => () => void;
   canExecute?: (runId: string) => Promise<boolean>;
   onError?: (error: unknown) => void;
   executionScope?: <T>(signal: AbortSignal, work: () => Promise<T>) => Promise<T>;
@@ -92,12 +93,14 @@ export class DirectorWorker {
         const session = this.session = new RunLeaseSession({runId, owner, runtime: this.deps.runtime,
           repository: this.deps.runRepository, expiresAt,
           heartbeatMs: this.deps.heartbeatMs ?? 10_000, onError: error => this.report(error)});
+        const unregister = this.deps.registerCancellation?.(runId, () => session.cancel());
         if (this.stopped) session.cancel();
         try {
           await this.inScope(session.signal, async () => {
             if (this.deps.runRepository.getControl && this.deps.runRepository.transition) {
               const control = await this.deps.runRepository.getControl(runId);
-              if (control?.status === "queued") {
+              if (!control) { session.cancel(); return; }
+              if (control.status === "queued") {
                 await this.deps.runRepository.transition(runId, { type: "start" }, control.version);
               }
             }
@@ -111,6 +114,7 @@ export class DirectorWorker {
             await this.inScope(session.signal, () => this.handleExecutionFailure(runId, error));
           }
         } finally {
+          unregister?.();
           await session.close();
           this.session = undefined;
           this.health.activeRunId = null;

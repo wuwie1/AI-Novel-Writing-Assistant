@@ -1,3 +1,4 @@
+import {registerTaskCancellation} from "../../platform/runtime/execution";
 import {
   CommandService,
   FactsLoader,
@@ -96,7 +97,7 @@ export function createDirectorNextServices(options: DirectorNextServiceOptions =
   const artifactLedger = new PrismaArtifactLedger();
   const qualityDebtRepository = new PrismaQualityDebtRepository();
   const eventLog = new PrismaEventLog();
-  const commandRepository = new PrismaCommandRepository(undefined, {readEditedArtifact: options.readEditedArtifact, resumeBusiness: options.resumeBusiness, cancelBusiness: options.cancelBusiness,
+  const commandRepository = new PrismaCommandRepository(undefined, {beforeOpen: options.executionBoundary?.beforeOpen, readEditedArtifact: options.readEditedArtifact, resumeBusiness: options.resumeBusiness, cancelBusiness: options.cancelBusiness,
     beforeRetry: options.executionBoundary?.beforeRetry});
   const runtime = createDirectorRuntime();
   const factsLoader = new FactsLoader({ runRepository, artifactLedger, qualityDebtRepository, eventLog });
@@ -122,6 +123,7 @@ export function createDirectorNextServices(options: DirectorNextServiceOptions =
   });
   const worker = new DirectorWorker({
     executionScope: withDirectorExecution,
+    registerCancellation: (runId, cancel) => registerTaskCancellation(`director:${runId}`, cancel),
     runRepository,
     executor: options.executionBoundary ? {runOnce: async (runId, execution) => {
       await options.executionBoundary!.assertRun(runId);

@@ -30,6 +30,7 @@ interface PersistGeneratedImageInput {
   url: string;
   mimeType?: string | null;
   storageRoot?: string;
+  beforeCoverWrite?: (cover: StoredNovelCover) => Promise<void>;
   fetchImpl?: typeof fetch;
   s3Client?: Pick<S3Client, "send">;
 }
@@ -191,7 +192,12 @@ export async function persistGeneratedImageAsset(input: PersistGeneratedImageInp
   const extension = inferredExtension || getExtensionFromMimeType(image.mimeType);
   const { localPath, relativePath } = buildStorageSegments(input, extension);
 
-  if (isS3ImageStorageEnabled()) {
+  const s3 = isS3ImageStorageEnabled();
+  if (input.sceneType === "novel_cover" && input.novelId) {
+    await input.beforeCoverWrite?.({novelId: input.novelId, taskId: input.taskId,
+      fileName: path.basename(localPath), driver: s3 ? "s3" : "local"});
+  }
+  if (s3) {
     const storageKey = normalizeStorageKey(relativePath);
     if (!storageKey) {
       throw new AppError("Image object storage key is invalid.", 500);
@@ -324,3 +330,50 @@ export async function removeLocalImageAssetFile(input: {
 }
 
 export { imageStorageConfig };
+
+export interface StoredNovelCover {
+  novelId: string;
+  taskId: string;
+  fileName: string;
+  driver: "local" | "s3";
+}
+
+function coverTaskDirectory(novelId: string, taskId: string): string {
+  return `novel-covers/${sanitizeSegment(novelId)}/${sanitizeSegment(taskId)}`;
+}
+
+export function locateStoredNovelCover(novelId: string, asset: {taskId: string; url: string; metadata: string | null}): StoredNovelCover | null {
+  const meta = parseImageAssetMetadata(asset.metadata);
+  const driver = meta.storageDriver === "s3" || meta.storageKey ? "s3" : "local";
+  if (/^(https?:|data:)/i.test(asset.url) && !meta.storageKey && !meta.localPath && !meta.relativePath) return null;
+  const local = meta.localPath ?? asset.url;
+  const key = driver === "s3" ? meta.storageKey ?? asset.url
+    : meta.relativePath ?? (path.isAbsolute(local) ? path.relative(resolveGeneratedImagesRoot(), local) : local);
+  const normalized = key.replace(/\\/g, "/");
+  if (path.posix.dirname(normalized) !== coverTaskDirectory(novelId, asset.taskId)) {
+    throw new Error("封面存储位置与所属小说、图片任务不一致。");
+  }
+  return {novelId, taskId: asset.taskId, fileName: path.posix.basename(normalized), driver};
+}
+
+export async function removeStoredNovelCover(cover: StoredNovelCover): Promise<void> {
+  if (!cover.fileName || cover.fileName === "." || cover.fileName === ".." || /[\\/]/.test(cover.fileName)) {
+    throw new Error("封面文件名无效。");
+  }
+  const directory = coverTaskDirectory(cover.novelId, cover.taskId);
+  const key = `${directory}/${cover.fileName}`;
+  if (cover.driver === "s3") {
+    await deleteImageObject({key});
+    return;
+  }
+  const root = resolveGeneratedImagesRoot();
+  // Do not follow a redirected book/task directory outside managed storage.
+  try {
+    const [realRoot, realDirectory] = await Promise.all([fs.realpath(root), fs.realpath(path.join(root, directory))]);
+    if (realDirectory !== path.join(realRoot, directory)) throw new Error("封面目录归属无法确认。");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await removeLocalImageAssetFile({url: path.join(root, key), storageRoot: root});
+}

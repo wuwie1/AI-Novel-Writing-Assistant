@@ -1,3 +1,4 @@
+import {lockNovelRow} from "../../db/novelRowLock";
 import type {
   ChapterTimeAnchor,
   StoryTimelineEvent,
@@ -454,6 +455,12 @@ export class PrismaTimelineRepository implements TimelineRepository {
   }
 
   async saveCheckReport(report: Omit<TimelineCheckReport, "id" | "createdAt">): Promise<TimelineCheckReport> {
+    if (this.db === prisma) {
+      return prisma.$transaction(async tx => {
+        await lockNovelRow(tx, report.novelId);
+        return new PrismaTimelineRepository(tx).saveCheckReport(report);
+      });
+    }
     const row = await this.db.timelineCheckReport.create({
       data: {
         novelId: report.novelId,

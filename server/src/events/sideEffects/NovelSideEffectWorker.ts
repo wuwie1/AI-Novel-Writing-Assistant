@@ -1,3 +1,4 @@
+import {registerTaskCancellation, withExecutionSignal} from "../../platform/runtime/execution";
 import os from "node:os";
 import { NovelSideEffectJobService, novelSideEffectJobService, NovelSideEffectLeaseLostError } from "./NovelSideEffectJobService";
 import {
@@ -70,24 +71,29 @@ export class NovelSideEffectWorker {
       if (!job) {
         return;
       }
-      let leaseLost = false;
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      const unregister = job.novelId ? registerTaskCancellation(`novel:${job.novelId}`, cancel) : undefined;
       // Model-backed synchronization retains one owner for the whole job.
       const heartbeat = ["character.v2DeferredEnrichment", "chapter.manualSync", "chapter.timelineFinalization"].includes(job.jobType) ? setInterval(() => {
         void this.jobService.renewLease(job, this.leaseMs).then(owned => {
-          if (!owned) leaseLost = true;
-        }).catch(() => {leaseLost = true;});
+          if (!owned) cancel();
+        }).catch(cancel);
       }, Math.max(250, Math.floor(this.leaseMs / 3))) : undefined;
       heartbeat?.unref();
       try {
-        const result = await this.handlers.execute(job);
-        if (leaseLost) return;
+        const result = await withExecutionSignal(controller.signal, () => this.handlers.execute(job));
+        if (controller.signal.aborted) return;
         if (result?.deferUntil) await this.jobService.deferJob(job, result.deferUntil);
         else await this.jobService.markSucceeded(job);
       } catch (error) {
-        if (leaseLost || error instanceof NovelSideEffectLeaseLostError) return;
+        if (controller.signal.aborted || error instanceof NovelSideEffectLeaseLostError) return;
         const forceDead = error instanceof UnsupportedNovelSideEffectPayloadError;
-        await this.jobService.markFailedOrDead(job, error, { forceDead });
+        await this.jobService.markFailedOrDead(job, error, { forceDead }).catch(updateError => {
+          if (!(updateError instanceof NovelSideEffectLeaseLostError)) throw updateError;
+        });
       } finally {
+        unregister?.();
         if (heartbeat) clearInterval(heartbeat);
       }
     } finally {

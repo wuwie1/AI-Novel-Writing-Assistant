@@ -1,3 +1,4 @@
+import {withTaskExecution} from "../../../../platform/runtime/execution";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type {
@@ -140,7 +141,11 @@ export class ShortStoryRevisionService {
     }
   }
 
-  async run(jobId: string): Promise<void> {
+  run(jobId: string): Promise<void> {
+    return withTaskExecution(`revision:${jobId}`, () => this.execute(jobId));
+  }
+
+  private async execute(jobId: string): Promise<void> {
     if (this.running.has(jobId)) return;
     this.running.add(jobId);
     const token = randomUUID();

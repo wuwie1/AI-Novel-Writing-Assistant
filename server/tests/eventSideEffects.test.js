@@ -38,7 +38,8 @@ function createFakeJobDb() {
   }
 
   function matchesWhere(job, where = {}) {
-    return Object.entries(where).every(([key, condition]) => matchesValue(job[key], condition));
+    return Object.entries(where).every(([key, condition]) => key === "OR"
+      ? condition.some(clause => matchesWhere(job, clause)) : matchesValue(job[key], condition));
   }
 
   function applyData(job, data) {

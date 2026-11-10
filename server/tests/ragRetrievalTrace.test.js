@@ -19,9 +19,11 @@ async function waitFor(predicate, timeoutMs = 500) {
 
 test("RagRetrievalTracer writes sampled trace summaries without chunk text", async () => {
   const originalCreate = prisma.ragRetrievalTrace.create;
+  const originalTransaction = prisma.$transaction;
   const originalSampleRate = ragConfig.retrievalTraceSampleRate;
   const originalMode = ragConfig.retrievalTraceQueryPersistMode;
   let captured = null;
+  prisma.$transaction = callback => callback({$executeRaw: async () => 1, ragRetrievalTrace: prisma.ragRetrievalTrace});
 
   prisma.ragRetrievalTrace.create = async ({ data }) => {
     captured = data;
@@ -87,6 +89,7 @@ test("RagRetrievalTracer writes sampled trace summaries without chunk text", asy
     assert.deepEqual(Object.keys(hits[0]).sort(), ["chunkId", "ownerId", "ownerType", "rank", "score", "source"]);
   } finally {
     prisma.ragRetrievalTrace.create = originalCreate;
+    prisma.$transaction = originalTransaction;
     ragConfig.retrievalTraceSampleRate = originalSampleRate;
     ragConfig.retrievalTraceQueryPersistMode = originalMode;
   }

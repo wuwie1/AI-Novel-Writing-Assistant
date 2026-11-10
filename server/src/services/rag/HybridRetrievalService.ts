@@ -200,7 +200,13 @@ export class HybridRetrievalService {
         ownerIds: toOwnerIds(options.ownerIds),
         facets: options.facets,
       });
-      return searchRows.map((row) => ({
+      if (!searchRows.length) return [];
+      // External deletion can retry after a book is gone. Only published metadata authorizes a hit.
+      const published = await prisma.knowledgeChunk.findMany({
+        where: {tenantId: options.tenantId, id: {in: searchRows.map(row => row.id)}}, select: {id: true},
+      });
+      const publishedIds = new Set(published.map(row => row.id));
+      return searchRows.filter(row => publishedIds.has(row.id)).map((row) => ({
         id: row.id,
         ownerType: row.payload.ownerType,
         ownerId: row.payload.ownerId,
