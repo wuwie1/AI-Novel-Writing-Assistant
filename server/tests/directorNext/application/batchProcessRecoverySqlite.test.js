@@ -74,6 +74,14 @@ const protectedState=async()=>({legacy:await prisma.novelWorkflowTask.findMany({
  assert.equal(firstChapter.content,'已保存的c1正文');
  assert.equal((await prisma.generationJob.findUniqueOrThrow({where:{id:'job'}})).status,'running');
  assert.equal(await services.worker.tick(),false,'director lease must remain exclusive');
+ const control = await prisma.directorNextRunControl.findUniqueOrThrow({where:{runId}});
+ const paused = await services.http.commandService.execute({type:'pause', runId, expectedVersion:control.version, idempotencyKey:'pause-batch'});
+ const savedJob = await prisma.generationJob.findUniqueOrThrow({where:{id:'job'}});
+ assert.equal(await services.worker.tick(),false,'a paused director must not schedule the next chapter');
+ await assert.rejects(pipeline.pipelineExecutor.execute('job','book',{startOrder:1,endOrder:2}),
+   error=>error.name==='PipelineExecutionLeaseLostError','a detached pipeline must observe the same pause');
+ assert.deepEqual(await prisma.generationJob.findUniqueOrThrow({where:{id:'job'}}),savedJob);
+ await services.http.commandService.execute({type:'resume', runId, expectedVersion:paused.controlVersion, idempotencyKey:'resume-batch'});
  await prisma.directorNextRunControl.update({where:{runId},data:{leaseExpiresAt:new Date(Date.now()-1000)}});
  jobBefore=await prisma.generationJob.findUniqueOrThrow({where:{id:'job'}});
  assert.ok(jobBefore.executionOwner);assert.ok(jobBefore.executionLeaseExpiresAt>new Date());

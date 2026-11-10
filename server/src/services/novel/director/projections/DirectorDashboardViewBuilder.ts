@@ -97,6 +97,9 @@ function buildMode(input: {
   if (input.task.status === "failed" || input.task.status === "cancelled") {
     return "failed";
   }
+  if (input.task.status === "queued" && input.task.pendingManualRecovery) {
+    return "recovering";
+  }
   if (workerState === "queued_waiting_worker") {
     return "queued";
   }
@@ -331,7 +334,7 @@ function buildDiagnostics(input: {
   liveRunning: boolean;
 }): DirectorDashboardDiagnostic[] {
   const diagnostics: DirectorDashboardDiagnostic[] = [];
-  if (input.task.pendingManualRecovery && input.liveRunning) {
+  if (input.task.pendingManualRecovery && input.liveRunning && input.mode !== "recovering") {
     diagnostics.push({
       code: "stale_recovery_flag_ignored",
       label: "恢复标记已被实时进度覆盖",

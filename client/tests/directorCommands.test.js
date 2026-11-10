@@ -8,7 +8,7 @@ import { webcrypto } from 'node:crypto';
 
 const clientDir = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(clientDir, 'tests', `.director-commands-${process.pid}.mjs`);
-let exercise, exerciseContinuation;
+let exercise, exerciseContinuation, exerciseLiveControl;
 
 before(async () => {
   const { build } = createRequire(import.meta.resolve('vite'))('esbuild');
@@ -26,8 +26,33 @@ import DirectorGate from './src/components/directorNext/DirectorGate';
 import DirectorDriveSwitch from './src/components/directorNext/DirectorDriveSwitch';
 import DirectorBadge from './src/components/directorNext/DirectorBadge';
 import DirectorNovelPage from './src/pages/directorNext/DirectorNovelPage';
+import {LiveDirectorControl} from './src/components/liveExecution/director/LiveDirectorControl';
 import {previewBook} from './src/pages/directorNext/workspace/previewBook';
 import {queryKeys} from './src/api/queryKeys';
+export async function exerciseLiveControl(pathname, paused) {
+  const client = new QueryClient();
+  const book = {id:'book',title:'当前书',directorVersion:'v2',workspaceSourceRoute:'/lab/director/book'};
+  client.setQueryData(queryKeys.novels.detail('book'),{data:book});
+  client.setQueryData(queryKeys.novels.detail('other'),{data:{...book,id:'other',title:'其他书',workspaceSourceRoute:'/lab/director/other'}});
+  client.setQueryData(queryKeys.directorNext.summary('book'),{data:{novelId:'book',runId:'current-run',
+    mode:paused?'paused':'running',headline:'章节创作',availableActions:paused?[{command:'resume'}]:[],
+    sourceTrace:{controlVersion:paused?8:7,userPaused:paused,pauseKind:paused?'manual_recovery':null}}});
+  client.setQueryData(['director-character-candidates','current-run'],{data:{reviews:[]}});
+  let post;
+  apiClient.defaults.adapter=async config=>{
+    if(config.method!=='post' || config.url!=='/director-next/commands') throw Error('Unexpected request');
+    post=JSON.parse(config.data);
+    return {status:200,statusText:'OK',headers:{},config,data:{success:true}};
+  };
+  try {
+    captured.length=0;
+    const markup=renderToStaticMarkup(<QueryClientProvider client={client}><MemoryRouter initialEntries={[pathname]}>
+      <LiveDirectorControl sessionNovelId="other" onOpenSource={()=>{}}/>
+    </MemoryRouter></QueryClientProvider>);
+    if(captured.length) await captured.at(-1).mutationFn(paused?'resume':'pause');
+    return {markup,post};
+  } finally {client.clear();}
+}
 export async function exerciseContinuation(driver) {
   useLLMStore.getState().setSelection({provider:'deepseek',model:'deepseek-flash',temperature:0.7});
   Object.assign(useLLMStore.getInitialState(),useLLMStore.getState());
@@ -45,7 +70,7 @@ export async function exerciseContinuation(driver) {
   client.setQueryData(queryKeys.directorNext.summary('book'),{success:true,data:view});
   client.setQueryData(queryKeys.directorNext.detail('book'),{success:true,data:{view,timeline:[]}});
   client.setQueryData(['directorBookWorkspace','book'],{success:true,data:{...previewBook,novel:{...previewBook.novel,id:'book',estimatedChapterCount:30},chapters:[]}});
-  client.setQueryData(['directorNovelMetadata','book'],{success:true,data:{description:'故事方向'}});
+  client.setQueryData(queryKeys.novels.detail('book'),{success:true,data:{description:'故事方向'}});
   try {
     captured.length=0;
     renderToStaticMarkup(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/lab/director/book']}><Routes><Route path='/lab/director/:novelId' element={<DirectorNovelPage/>}/></Routes></MemoryRouter></QueryClientProvider>);
@@ -92,7 +117,7 @@ export async function exercise() {
       build.onResolve({filter:/\.css$/},()=>({path:'styles',namespace:'command-test-style'}));
       build.onLoad({filter:/.*/,namespace:'command-test-style'},()=>({loader:'js',contents:''}));
       build.onResolve({filter:/^(@tanstack\/react-query|test-command-hooks)$/},args=>{
-        if(args.path==='test-command-hooks' || /Director(?:Start|Gate|DriveSwitch|Badge)\.tsx$/.test(args.importer)) {
+        if(args.path==='test-command-hooks' || /Director(?:Start|Gate|DriveSwitch|Badge|Control)\.tsx$/.test(args.importer)) {
           return {path:'test-command-hooks',namespace:'command-test'};
         }
       });
@@ -104,7 +129,7 @@ export function useMutation(options) {captured.push(options);return realUseMutat
 `}));
     }}],
   });
-  ({exercise,exerciseContinuation}=await import(pathToFileURL(output).href));
+  ({exercise,exerciseContinuation,exerciseLiveControl}=await import(pathToFileURL(output).href));
 });
 
 after(() => {if(fs.existsSync(output)) fs.unlinkSync(output);});
@@ -140,6 +165,21 @@ function assertCommands(posts) {
 test('LAN HTTP can submit production, every gate decision, mode switch, resume and cancel without randomUUID',async()=>{
   const posts=await withCrypto({getRandomValues:bytes=>webcrypto.getRandomValues(bytes)},exercise);
   assertCommands(posts);
+});
+
+test('live controls address the source book across pause and resume, and records only link back', async () => {
+  for (const paused of [false, true]) {
+    const {markup, post} = await exerciseLiveControl('/lab/director/book', paused);
+    assert.match(markup, /当前书/);
+    assert.ok(markup.includes(paused ? '继续生成' : '暂停生成'));
+    assert.equal(post.type, paused ? 'resume' : 'pause');
+    assert.equal(post.runId, 'current-run');
+    assert.equal(post.expectedVersion, paused ? 8 : 7);
+  }
+  const {markup, post} = await exerciseLiveControl('/tasks', false);
+  assert.match(markup, /href="\/lab\/director\/other"/);
+  assert.doesNotMatch(markup, /暂停生成|继续生成/);
+  assert.equal(post, undefined);
 });
 
 test('secure contexts retain working native UUID command submissions',async()=>{

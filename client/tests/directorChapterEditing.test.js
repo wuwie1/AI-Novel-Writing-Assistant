@@ -77,7 +77,6 @@ export async function run(scenario) {
   client.setQueryData(queryKeys.directorNext.summary('book'),{success:true,data:view});
   client.setQueryData(queryKeys.directorNext.detail('book'),{success:true,data:{view,timeline:[]}});
   client.setQueryData(['directorBookWorkspace','book'],{success:true,data:book});
-  client.setQueryData(['directorNovelMetadata','book'],{success:true,data:metadata});
   client.setQueryData(queryKeys.novels.detail('book'),{success:true,data:metadata});
   client.setQueryData(queryKeys.novels.chapterEditorWorkspace('book','c1'),{success:true,data:workspace});
   useLLMStore.getState().setSelection({provider:'deepseek',model:'deepseek-flash',temperature:0.7});

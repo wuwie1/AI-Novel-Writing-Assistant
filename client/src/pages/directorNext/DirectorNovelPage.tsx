@@ -42,7 +42,7 @@ export default function DirectorNovelPage({ previewOnly = false }: { previewOnly
   const book = preview ? previewBook : bookQuery.data?.data;
   const savedReview=book ? resolveSavedReview(book,params) : null;
   const detail = detailQuery.data?.data;
-  const novelQuery = useQuery({queryKey: ["directorNovelMetadata",novelId],queryFn:()=>getNovelDetail(novelId),enabled:!preview && !!novelId,retry:false});
+  const novelQuery = useQuery({queryKey: queryKeys.novels.detail(novelId),queryFn:()=>getNovelDetail(novelId),enabled:!preview && !!novelId,retry:false});
   const view = preview ? previewView(params.get("state") ?? "running") : detail?.view ?? summaryQuery.data?.data;
   useWorkspaceActivity(novelId, preview, view?.workspaceActivity, detail ? detailQuery.dataUpdatedAt : summaryQuery.dataUpdatedAt);
   const error = detailQuery.error ?? summaryQuery.error;

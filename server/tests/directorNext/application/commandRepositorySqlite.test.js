@@ -87,11 +87,15 @@ const { contract } = require(path.join(serverRoot, "tests/directorNext/fixtures"
   await runRepository.transition(back.runId, {type: 'start'}, 0);
   await runRepository.transition(back.runId, {type: 'step_started', stepId: 'story_macro'}, 1);
   const savedBeforePause = await prisma.directorNextArtifact.findMany();
+  const now = new Date(), expiry = new Date(now.getTime() + 60000);
+  assert.equal(await runRepository.acquireLease(back.runId, 'planning-worker', expiry, now), true);
   const pauseCommand = {type: 'pause', runId: back.runId, expectedVersion: 2, idempotencyKey: 'user-pause'};
   const paused = await service.execute(pauseCommand);
   assert.equal((await service.execute(pauseCommand)).replayed, true);
   assert.equal((await runRepository.getControl(back.runId)).status, 'paused');
   assert.equal((await runRepository.getControl(back.runId)).pause.reason, 'user_requested_pause');
+  assert.equal(await runRepository.heartbeat(back.runId, 'planning-worker', expiry, now), false);
+  assert.equal(await runRepository.acquireLease(back.runId, 'planning-worker', expiry, now), false);
   await assert.rejects(runRepository.transition(back.runId, {type: 'step_finished'}, 2), /version conflict/);
   assert.deepEqual(await prisma.directorNextArtifact.findMany(), savedBeforePause);
   await service.execute({type: 'resume', runId: back.runId, expectedVersion: paused.controlVersion, idempotencyKey: 'user-resume'});

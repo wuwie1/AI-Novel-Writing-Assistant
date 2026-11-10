@@ -70,6 +70,7 @@ export interface DashboardView {
     controlStatus: DirectorMode;
     controlVersion: number;
     pauseKind: "manual_recovery" | "replan" | "safety" | null;
+    userPaused?: boolean;
     planVersion: string;
   };
 }

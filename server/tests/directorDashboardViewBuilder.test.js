@@ -65,6 +65,7 @@ function buildView(patch = {}) {
       ...patch.displayState,
     },
     factSummary: patch.factSummary ?? null,
+    workerHealth: patch.workerHealth,
     chapterProgress: patch.chapterProgress ?? null,
     activeStep: Object.prototype.hasOwnProperty.call(patch, "activeStep") ? patch.activeStep : {
       status: "running",
@@ -101,6 +102,14 @@ test("dashboard keeps running mode when task is running despite stale approval p
   assert.equal(view.progressSource, "task_live");
   assert.equal(view.currentAction, "正在细化第 9/10 章 · 任务单");
   assert.ok(view.diagnostics.some((item) => item.code === "stale_action_projection_ignored"));
+});
+
+test("a queued manual pause remains recoverable while the previous worker winds down", () => {
+  for (const derivedState of ["running_step", "leased_starting", "queued_waiting_worker"]) {
+    const view = buildView({task: {status: "queued", pendingManualRecovery: true}, workerHealth: {derivedState}});
+    assert.equal(view.mode, "recovering");
+    assert.ok(!view.diagnostics.some(item => item.code === "stale_recovery_flag_ignored"));
+  }
 });
 
 test("dashboard uses waiting mode only for explicit approval task checkpoints", () => {

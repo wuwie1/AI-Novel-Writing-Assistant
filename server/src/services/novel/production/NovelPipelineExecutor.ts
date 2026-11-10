@@ -87,6 +87,17 @@ class PipelineExecutionLeaseLostError extends Error {
   }
 }
 
+async function assertRunnablePipelineOwner(novelId: string, payload: PipelinePayload): Promise<void> {
+  await assertDirectorPipelineOwner(novelId, payload);
+  if (!payload.directorNext) return;
+  // A batch can outlive its director worker, including the window before the job binding is saved.
+  const control = await prisma.directorNextRunControl.findUnique({
+    where: { runId: payload.directorNext.runId },
+    select: { status: true },
+  });
+  if (control?.status !== "running") throw new PipelineExecutionLeaseLostError();
+}
+
 function clampPipelineMaxRetries(value: number | null | undefined): number {
   return Math.max(0, Math.min(value ?? 1, 1));
 }
@@ -101,7 +112,7 @@ export class NovelPipelineExecutor {
   constructor(
     private readonly chapterRuntimeCoordinator = new ChapterRuntimeCoordinator(),
     private readonly automaticAttempts = new ChapterAutomaticAttemptService(),
-    private readonly assertOwner = assertDirectorPipelineOwner,
+    private readonly assertOwner = assertRunnablePipelineOwner,
   ) {}
 
   private async ensurePipelineNotCancelled(jobId: string): Promise<void> {

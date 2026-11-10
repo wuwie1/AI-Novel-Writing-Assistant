@@ -148,7 +148,7 @@ export class PrismaRunRepository implements RunRepository {
     const result = await this.db.directorNextRunControl.updateMany({
       where: {
         runId,
-        status: { in: [...ACTIVE_STATUSES] },
+        status: { in: ["queued", "running"] },
         OR: [
           { leaseOwner: null },
           { leaseOwner: owner },
@@ -171,7 +171,7 @@ export class PrismaRunRepository implements RunRepository {
       where: {
         runId,
         leaseOwner: owner,
-        status: { in: [...ACTIVE_STATUSES] },
+        status: { in: ["queued", "running"] },
         OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { gt: now } }],
       },
       data: { leaseExpiresAt, heartbeatAt: now },

@@ -1,4 +1,5 @@
 import {formatCacheTokens} from "./usage/presentation";
+import { LiveDirectorControl } from "./director/LiveDirectorControl";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronDown, ChevronRight, Clipboard, Eraser, Expand, GripHorizontal, Maximize2, Minimize2, Radio, Shrink, X } from "lucide-react";
@@ -405,6 +406,7 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
               </DialogPrimitive.Close>
             </header>
 
+            <LiveDirectorControl sessionNovelId={latestSession?.context.novelId} taskId={props.taskId} onOpenSource={() => setOpen(false)} />
             <div
               ref={logRef}
               className={cn(

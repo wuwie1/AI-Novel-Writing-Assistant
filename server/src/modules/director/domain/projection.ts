@@ -56,6 +56,7 @@ export interface DashboardView {
     controlStatus: RunStatus;
     controlVersion: number;
     pauseKind: PauseKind | null;
+    userPaused?: boolean;
     planVersion: string;
   };
 }
@@ -187,6 +188,7 @@ export function project(input: ProjectionInput): DashboardView {
     case "paused": {
       const pauseKind = control.pause?.kind ?? "manual_recovery";
       detail = control.pause?.reason ?? null;
+      if (detail === "user_requested_pause") detail = "你已暂停本次创作，可以从保存进度继续。";
       const retryEmptyDraft = detail === "generation_output_unusable";
       if (detail === "execution_retry_budget_exhausted") {
         detail = input.executionFailure?.trim()
@@ -319,6 +321,7 @@ export function project(input: ProjectionInput): DashboardView {
       controlStatus: control.status,
       controlVersion: control.version,
       pauseKind: control.pause?.kind ?? null,
+      ...(control.status === "paused" && control.pause?.reason === "user_requested_pause" ? {userPaused: true} : {}),
       planVersion: contract.planVersion,
     },
   };

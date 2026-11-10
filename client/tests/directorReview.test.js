@@ -69,7 +69,7 @@ const cache=new QueryClient();
 cache.setQueryData(['directorBookWorkspace','book'],{success:true,data:book});
 cache.setQueryData(queryKeys.directorNext.summary('book'),{success:true,data:view});
 cache.setQueryData(queryKeys.directorNext.detail('book'),{success:true,data:{view,timeline:[]}});
-cache.setQueryData(['directorNovelMetadata','book'],{success:true,data:{description:'故事'}});
+cache.setQueryData(queryKeys.novels.detail('book'),{success:true,data:{description:'故事'}});
 export const page=renderToStaticMarkup(<MemoryRouter initialEntries={[target]}><QueryClientProvider client={cache}><Routes><Route path='/lab/director/:novelId' element={<DirectorNovelPage/>}/></Routes></QueryClientProvider></MemoryRouter>);
 cache.setQueryData(queryKeys.directorNext.summary('book'),{success:true,data:{...view,driver:'assisted'}});
 cache.setQueryData(queryKeys.directorNext.detail('book'),{success:true,data:{view:{...view,driver:'assisted'},timeline:[]}});

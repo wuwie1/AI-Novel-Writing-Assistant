@@ -36,6 +36,13 @@ test('known empty-generation failures expose same-run resume, safety failures ke
   assert.ok(paused.availableActions.some(action => action.command === 'resume'));
 });
 
+test('a user pause keeps its explicit resume action and a readable reason', () => {
+  const result = view({control: runningControl({status: 'paused', pause: {kind: 'manual_recovery', reason: 'user_requested_pause'}})});
+  assert.equal(result.sourceTrace.userPaused, true);
+  assert.match(result.detail, /暂停本次创作/);
+  assert.ok(result.availableActions.some(action => action.command === 'resume'));
+});
+
 test('a retry-budget pause shows the actual generation failure instead of an internal error code', () => {
   const result=view({control:runningControl({status:'paused',pause:{kind:'manual_recovery',reason:'execution_retry_budget_exhausted'}}),executionFailure:'章节场景解析失败'});
   assert.match(result.detail,/章节场景解析失败/);
