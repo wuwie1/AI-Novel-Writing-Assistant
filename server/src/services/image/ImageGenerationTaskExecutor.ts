@@ -1,5 +1,5 @@
 import {withNovelExecution} from "../../platform/runtime/execution";
-import {lockNovelRow} from "../../db/novelRowLock";
+import {lockNovelRow} from "../../modules/novel/persistence";
 import {reserveStoredAsset, publishStoredAssets, queueStoredAssetCleanup, type StoredAssetCleanup} from "../../events/sideEffects/StoredAssetCleanup";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";

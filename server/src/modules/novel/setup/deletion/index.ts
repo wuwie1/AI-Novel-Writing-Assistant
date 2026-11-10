@@ -1,4 +1,4 @@
-import {lockNovelRow} from "../../../../db/novelRowLock";
+import {lockNovelRow} from "../../persistence";
 import type {Prisma} from "@prisma/client";
 import {prisma} from "../../../../db/prisma";
 import {cancelTaskExecutions} from "../../../../platform/runtime/execution";

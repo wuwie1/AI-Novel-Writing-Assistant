@@ -1,5 +1,5 @@
 import type {Prisma} from "@prisma/client";
-import {AppError} from "../middleware/errorHandler";
+import {AppError} from "../../../middleware/errorHandler";
 
 /** Serialize book deletion and publishers on SQLite/Postgres without touching the editor timestamp. */
 export async function lockNovelRow(tx: Prisma.TransactionClient, novelId: string): Promise<void> {

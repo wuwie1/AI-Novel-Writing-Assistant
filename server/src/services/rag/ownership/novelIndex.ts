@@ -1,4 +1,4 @@
-import {lockNovelRow} from "../../../db/novelRowLock";
+import {lockNovelRow} from "../../../modules/novel/persistence";
 import type {Prisma, RagOwnerType} from "@prisma/client";
 import {groupStoredPoints} from "./storedPoints";
 

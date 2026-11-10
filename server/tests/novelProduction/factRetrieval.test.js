@@ -31,7 +31,7 @@ function fixture() {
     '../../../db/prisma':{prisma},'../../novel/runtime/artifactSync/facts':{...projection,buildChapterArtifactContentHash:hash},
   }) : {};
   const {RagIndexService} = loadRuntimeSource('../../rag/RagIndexService.ts', {
-    '../../platform/runtime/execution':{}, '../../db/novelRowLock':{}, './ownership':{}, '../../events/sideEffects/StoredAssetCleanup':{},
+    '../../platform/runtime/execution':{}, '../../modules/novel/persistence':{}, './ownership':{}, '../../events/sideEffects/StoredAssetCleanup':{},
     '../../db/prisma':{prisma},'../../config/rag':{ragConfig:{}},'../settings/RagSettingsService':{},
     './EmbeddingService':{},'./VectorStoreService':{},'./RagContextualChunkService':{RagContextualChunkService:class{}},
     './embeddingModelLimits':{},'./utils':ragUtils,'./chunkFacets':facets,'./facts':{...documents,buildChapterArtifactContentHash:hash},

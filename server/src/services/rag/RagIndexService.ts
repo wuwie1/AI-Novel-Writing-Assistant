@@ -1,6 +1,6 @@
 import {withNovelExecution} from "../../platform/runtime/execution";
 import {groupStoredPoints, lockIndexSource} from "./ownership";
-import {lockNovelRow} from "../../db/novelRowLock";
+import {lockNovelRow} from "../../modules/novel/persistence";
 import {reserveStoredAsset, publishStoredAssets, queueStoredAssetCleanup} from "../../events/sideEffects/StoredAssetCleanup";
 import type { RagIndexJob } from "@prisma/client";
 import { prisma } from "../../db/prisma";

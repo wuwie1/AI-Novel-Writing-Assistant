@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { prisma } from "../../db/prisma";
-import {lockNovelRow} from "../../db/novelRowLock";
+import {lockNovelRow} from "../../modules/novel/persistence";
 import {AppError} from "../../middleware/errorHandler";
 import { ragConfig } from "../../config/rag";
 import type { RagSearchOptions, RetrievedChunk } from "./types";

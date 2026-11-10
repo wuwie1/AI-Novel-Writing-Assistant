@@ -1,4 +1,4 @@
-import {lockNovelRow} from "../../db/novelRowLock";
+import {lockNovelRow} from "../novel/persistence";
 import type {
   ChapterTimeAnchor,
   StoryTimelineEvent,
