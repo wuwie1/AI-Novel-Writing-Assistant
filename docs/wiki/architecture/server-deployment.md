@@ -34,6 +34,7 @@
 2. 仅创建 SQLite 文件而未执行 Web 迁移，健康检查可能无法代表完整业务就绪。部署验收同时检查数据库读取接口。
 3. 后台进程能启动但专用账户无数据库目录写权限，会导致 SQLite WAL 或资产写入失败。数据文件与其目录都必须归运行账户所有。
 4. 不应把系统日志放入应用自动清理的目录，否则长期未更新的固定日志可能被当作历史文件删除。
+5. 若生产 API 启动时报 `DATABASE_URL is required in production.`，以服务账户在 `server/` 目录运行 `../.runtime/node/bin/node --require dotenv/config -p 'Boolean(process.env.DATABASE_URL)'`。返回 `true` 说明服务账户能读取配置，应检查入口是否在加载 `dotenv/config` 前间接导入了 Prisma。systemd 可在 API 的 Node 启动命令中将 `--require dotenv/config` 放在脚本路径前，使配置在业务模块加载前生效。
 
 ## 相关模块
 

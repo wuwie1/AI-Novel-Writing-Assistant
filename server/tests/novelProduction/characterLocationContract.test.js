@@ -18,3 +18,49 @@ test('older extraction checkpoints remain reusable without fabricated location c
   const parsed = chapterArtifactDeltaOutputSchema.parse({summary:'旧正文',stateDeltas:{},syncPlan:{reason:'无位置记录'},confidence:0.9});
   assert.deepEqual(parsed.characterLocationDeltas, []);
 });
+
+function extractionWithLocation(location) {
+  return {
+    summary: '方荃首次出现在出租屋。',
+    stateDeltas: {},
+    syncPlan: {reason: '按最终正文回填'},
+    confidence: 0.95,
+    characterLocationDeltas: [{
+      characterId: 'doctor',
+      characterName: '方荃',
+      locationName: '出租屋',
+      movementType: 'stay',
+      timeContext: 'present',
+      continuityStatus: 'consistent',
+      evidence: '方荃坐在出租屋的床沿上。',
+      ...location,
+    }],
+  };
+}
+
+test('blank prior locations become unknown without discarding the location or its evidence', () => {
+  for (const fromLocation of ['', '  ', '\t\n', null]) {
+    const input = extractionWithLocation({fromLocation});
+    const parsed = chapterArtifactDeltaOutputSchema.parse(input);
+    assert.deepEqual(parsed.characterLocationDeltas, [{...input.characterLocationDeltas[0], fromLocation: null}]);
+    assert.deepEqual(chapterArtifactDeltaOutputSchema.parse(parsed), parsed, 'saved extraction remains reusable');
+  }
+});
+
+test('omitted and known prior locations retain their existing meaning', () => {
+  const omitted = chapterArtifactDeltaOutputSchema.parse(extractionWithLocation({}));
+  assert.equal(omitted.characterLocationDeltas[0].fromLocation, undefined);
+  const known = chapterArtifactDeltaOutputSchema.parse(extractionWithLocation({fromLocation: '  站台  '}));
+  assert.equal(known.characterLocationDeltas[0].fromLocation, '站台');
+});
+
+test('unknown prior locations do not weaken identity, destination, evidence or movement validation', () => {
+  for (const invalid of [
+    {fromLocation: 0}, {fromLocation: false}, {fromLocation: {}}, {fromLocation: []},
+    {characterName: ''}, {locationName: ''}, {evidence: ''},
+    {movementType: 'teleport'}, {timeContext: 'unknown'}, {continuityStatus: 'unknown'},
+  ]) {
+    const result = chapterArtifactDeltaOutputSchema.safeParse(extractionWithLocation(invalid));
+    assert.equal(result.success, false, JSON.stringify(invalid));
+  }
+});

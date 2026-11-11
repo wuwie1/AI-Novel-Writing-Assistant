@@ -129,7 +129,8 @@ test('real unified consumer forwards final output and provenance without any loc
   const {chapterArtifactDeltaOutputSchema}=require(path.join(server,'dist/prompting/prompts/novel/chapterArtifactDelta.prompts'));
   const f=await fixture(), c=await f.chapter(10,'甲被押进牢房。');
   const output=chapterArtifactDeltaOutputSchema.parse({summary:'甲在牢房。',stateDeltas:{},syncPlan:{reason:'回填定稿位置'},confidence:0.95,
-    characterLocationDeltas:[f.delta(f.a,'牢房',c.content)]});
+    characterLocationDeltas:[f.delta(f.a,'牢房',c.content,{fromLocation:'  '})]});
+  assert.equal(output.characterLocationDeltas[0].fromLocation,null);
   const delta=new ChapterArtifactDeltaService();
   await delta.applyChapterArtifactConsumer({novelId:f.n,chapterId:c.id,content:c.content,contentHash:hash(c.content),
     consumer:'character_locations',artifactSyncPolicy:'director_v2',contentProvenance:'confirmed',output});

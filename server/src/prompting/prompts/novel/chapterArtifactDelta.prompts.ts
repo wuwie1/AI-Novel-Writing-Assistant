@@ -471,6 +471,11 @@ export const chapterArtifactDeltaOutputSchema = z.preprocess(normalizeArtifactDe
   characterLocationDeltas: z.array(characterLocationDeltaSchema.extend({
     // Newly discovered identities receive the real ID only after candidate confirmation.
     characterId: z.string().trim().nullish().transform(value => value ?? ""),
+    // An empty prior location conveys the same unknown state as null.
+    fromLocation: z.preprocess(
+      value => typeof value === "string" && !value.trim() ? null : value,
+      characterLocationDeltaSchema.shape.fromLocation,
+    ),
   })).default([]),
   factionUpdates: z.array(chapterArtifactFactionUpdateSchema).default([]),
   characterCandidates: z.array(chapterArtifactCharacterCandidateSchema).default([]),
@@ -605,7 +610,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
   ChapterArtifactDeltaOutput
 > = {
   id: "novel.chapter.artifact_delta.extract",
-  version: "v10",
+  version: "v11",
   cacheBoundary: {messageIndex:1,contentBlockIndex:0},
   taskType: "fact_extraction",
   mode: "structured",
@@ -677,7 +682,7 @@ export const chapterArtifactDeltaPrompt: PromptAsset<
       "28. characterMindDeltas 描述人物主观理解和意图，不重复客观资源台账；relationStates 描述章末关系，relationDynamics 只描述有证据的关系阶段转变。必要的不同维度可以引用同一事件，但不得各自复述整段剧情。",
       "29. 角色状态、关系状态和资源的 summary 会供后续章节读取，有有效变化时保留一句短摘要。资源风险等级、未来使用窗口等会改变后续行动边界的字段须按证据保留，不能将关键字段当作冗余省略。",
       "30. 每条 characterResourceDeltas 给出 reviewDecision：commit 表示正文摘录清楚支持且与现有资源一致的变化；hold 表示归属、消耗、信息可见性或证据有疑问，需要暂缓核对。普通丢失、消耗或损坏不必仅因事件类型就 hold；不能凭推测批准，高风险或低置信度必须 hold。evidence 使用可在正文找到的原文短摘录。",
-      "31. 位置连续性回填开启时，characterLocationDeltas 只记录本章实际有空间行动或位置证据的角色，每角色最多一条章末记录；未出场角色不输出，继承最后确认位置。角色未移动或首次确认位置用 stay，实际移动用 move，不确定用 uncertain，转述用 reported。使用名单真实 characterId/characterName，locationName 写章末地点；fromLocation 按章前记录填写，不能将当前视角场景套给其他人。关闭时返回 []。",
+      "31. 位置连续性回填开启时，characterLocationDeltas 只记录本章实际有空间行动或位置证据的角色，每角色最多一条章末记录；未出场角色不输出，继承最后确认位置。角色未移动或首次确认位置用 stay，实际移动用 move，不确定用 uncertain，转述用 reported。使用名单真实 characterId/characterName，locationName 写章末地点；fromLocation 按章前记录填写，未知时返回 null 或省略，禁止空字符串，也不能用章末地点补造此前位置。不能将当前视角场景套给其他人。关闭时返回 []。",
       "32. timeContext 必须区分 present、flashback、dream、plan、hearsay：present 指当前故事时间线，不能按句子过去时认作回忆；回忆、梦、准备去或他人口述不更新现实位置。结合前后时间、囚禁/伤势/行动限制和地点上下级判断 continuityStatus 为 consistent、unexplained 或 conflicting；有可信移动过程或合理时空衔接才能 consistent。未交代的瞬移、不可能的同场出现或时间倒置不批准，explanation 一句简述疑点，evidence 只用最终正文足以定位的一条短原句，不超过350字。不能通过抽取擅自补写移动经过或替正文修错。",
       "33. 角色出场记录开启时，必须输出 characterAppearances 数组（无人时 []）：复用本次阅读，每个人每类最多一条 {characterId,characterName,kind,summary,evidence}；present 为本章当前故事时刻实际行动或对话，mention 为仅被提及、传闻或未来计划，flashback 为回忆，dream 为梦境。区分名字被提到与实际出场，同人可以同时有当前出场和回忆记录。只记录名单人物及 characterCandidates 中需处理的人物；已知人物使用名单真实 ID/名字，新增候选 ID 留空、名字用 proposedName。summary 一句不超过160字，evidence 为足够证明出场类型的最终正文短原句（不超过350字）；不得复述整章，不输出未涉及的人物。关闭时省略此字段。",
     ].join("\n")),
