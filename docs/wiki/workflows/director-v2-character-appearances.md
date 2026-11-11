@@ -74,3 +74,9 @@
 - `server/src/services/novel/runtime/artifactSync/`：最终正文提取、消费者和恢复。
 - `client/src/pages/directorNext/workspace/characters/`：阅读范围、统计和展示。
 - [正文人物候选与运行模式](./director-v2-character-candidates.md)
+
+## 动态总览与规划读取
+
+V2 动态总览复用出场模块的按正文哈希隔离的记录，不从 V1 `CharacterTimeline` 推断出场。统计仅包含当前卷、当前章边界内的 `present`；提及、回忆和梦境不算现场出场，同章重复事件只计一次。
+
+不完整提取中的有效出场可以计数，但上次确认出场后的未覆盖章节不能证明缺席。这类窗口不产生缺席催促，防止章节规划为填补错误警报安排重复场景。查询不得为修复统计而触发生成或写库。

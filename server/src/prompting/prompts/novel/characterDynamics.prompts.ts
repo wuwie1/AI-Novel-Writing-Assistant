@@ -71,7 +71,7 @@ export const volumeDynamicsProjectionPrompt: PromptAsset<
   z.infer<typeof volumeDynamicsProjectionSchema>
 > = {
   id: "novel.characterDynamics.volumeProjection",
-  version: "v3",
+  version: "v4",
   taskType: "planner",
   mode: "structured",
   language: "zh",
@@ -90,6 +90,7 @@ export const volumeDynamicsProjectionPrompt: PromptAsset<
   outputSchema: volumeDynamicsProjectionSchema,
   render: (input) => [
     new SystemMessage([
+      "区分角色当前事实与未来卷级规划。旧阵容与当前书级事实冲突时，保留最新有效事实，不恢复旧身份；未知关系不写成已发生。",
       "你是长篇中文网文的角色动态规划器。",
       "你的任务是基于小说定位、卖点、前 30 章承诺、角色名单、关系结构和分卷规划，生成可执行的“分卷角色动态投射”。",
       "",
@@ -154,7 +155,7 @@ export const chapterDynamicsExtractionPrompt: PromptAsset<
   z.infer<typeof chapterDynamicExtractionSchema>
 > = {
   id: "novel.characterDynamics.chapterExtract",
-  version: "v1",
+  version: "v2",
   taskType: "fact_extraction",
   mode: "structured",
   language: "zh",

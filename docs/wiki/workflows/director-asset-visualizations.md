@@ -36,3 +36,7 @@ V2 在小说目录提供“世界地图”和“角色关系图”。两者按�
 - `client/src/pages/novels/components/characterWorkspace/relationshipGraph/`：角色关系图纯展示门面。
 - `server/src/app/director/workspace/`：本书保存资料投影。
 - `server/src/services/novel/dynamics/CharacterDynamicsQueryService.ts`：已保存动态查询。
+
+## 总纲与分卷兼容入口
+
+导演 V2 已有活动分卷版本时，旧故事线纯文本转换入口不得按已有章节反推替换全书结构，否则未拆章的远期卷、策略与节拍会丢失。纯文本总纲使用故事设定，结构调整使用分卷工作区；版本查看保留兼容，覆盖式转换明确拒绝。

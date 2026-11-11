@@ -45,6 +45,7 @@ const PAYOFF_LEDGER_SYNC_EXAMPLE = {
 
 export interface PayoffLedgerSyncPromptInput {
   novelTitle: string;
+  latestWrittenChapterOrder?: number;
   bookContractPayoffs?: Array<{
     refId: string;
     refLabel: string;
@@ -67,7 +68,7 @@ export const payoffLedgerSyncPrompt: PromptAsset<
   z.infer<typeof payoffLedgerSyncOutputSchema>
 > = {
   id: "novel.payoff_ledger.sync",
-  version: "v8",
+  version: "v9",
   cacheBoundary: {messageIndex:1,contentBlockIndex:0},
   taskType: "planner",
   mode: "structured",
@@ -109,6 +110,9 @@ export const payoffLedgerSyncPrompt: PromptAsset<
       "1. 把 major payoffs、open payoffs、chapter payoff refs、foreshadow states、open conflicts 和 payoff audit issues 归并成唯一账本项。",
       "2. 避免把同义重复项拆成多个 ledger item，也不要把明显不同的伏笔强行合并。",
       "3. 账本项必须保守、稳定，不能编造输入中不存在的新剧情。",
+      "4. 相同 Book Contract refId 只归属一个 canonical item；语义相同的旧项复用稳定 ledgerKey，不因标题重述创建新项。",
+      "5. 把作者规划、已写事实、废弃版本严格区分。未来章纲只能证明计划，不能充当兑现证据；paid_off 必须引用已写章节中的实际结果。",
+      "6. 书级固定承诺合并后保持 scopeType=book，并保留全部固定 refId；局部兑现不能把尚未完成的整条长线标成已完成。",
       "",
       "状态定义：",
       "- setup：刚建立，还未形成明确兑现窗口。",
@@ -188,6 +192,10 @@ export const payoffLedgerSyncPrompt: PromptAsset<
         throw new Error(`重复的 ledgerKey：${item.ledgerKey}`);
       }
       ledgerKeySet.add(item.ledgerKey);
+      if (item.currentStatus === "paid_off" && input.latestWrittenChapterOrder != null
+        && [item.payoffChapterOrder, ...item.evidence.map(e => e.chapterOrder)].some(order => order != null && order > input.latestWrittenChapterOrder!)) {
+        throw new Error(`伏笔 ${item.ledgerKey} 不能使用未写章节作为兑现证据。`);
+      }
       if (
         item.targetStartChapterOrder
         && item.targetEndChapterOrder
@@ -200,9 +208,11 @@ export const payoffLedgerSyncPrompt: PromptAsset<
       }
     }
     for (const requiredSource of input?.bookContractPayoffs ?? []) {
-      const coveringItem = output.items.find((item) => item.sourceRefs.some((source) => (
+      const coveringItems = output.items.filter((item) => item.sourceRefs.some((source) => (
         source.kind === "major_payoff" && source.refId === requiredSource.refId
       )));
+      if (coveringItems.length > 1) throw new Error(`同一书级承诺被重复拆分：${requiredSource.refId}`);
+      const coveringItem = coveringItems[0];
       if (!coveringItem) {
         throw new Error(`缺少 Book Contract 承诺来源：${requiredSource.refId}`);
       }

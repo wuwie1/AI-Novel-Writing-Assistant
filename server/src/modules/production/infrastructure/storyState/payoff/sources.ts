@@ -29,7 +29,7 @@ export function createPayoffSourceReader(db: Pick<PrismaClient, "novel" | "chapt
     const active = volumes.find(volume => volume.chapters.some(item => item.chapterOrder === order));
     const macro: { major_payoffs?: unknown } = novel.storyMacroPlan?.decompositionJson ? JSON.parse(novel.storyMacroPlan.decompositionJson) : {};
     const major = Array.isArray(macro.major_payoffs) ? macro.major_payoffs.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
-    return { novelTitle: novel.title, bookContractPayoffs: buildBookContractPayoffSources(novel.bookContract),
+    return { novelTitle: novel.title, latestWrittenChapterOrder: order, bookContractPayoffs: buildBookContractPayoffSources(novel.bookContract),
       activeVolumeSummary: active ? [`当前卷：第${active.sortOrder}卷《${active.title}》`, `卷摘要：${compact(active.summary)}`,
         `卷 open payoffs：${strings(active.openPayoffsJson).join("；") || "无"}`,
         active.chapters.length ? `卷章节范围：${active.chapters[0].chapterOrder}-${active.chapters.at(-1)!.chapterOrder}` : "卷章节范围：无"].join("\n")

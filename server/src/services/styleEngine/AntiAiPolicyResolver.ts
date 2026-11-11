@@ -60,7 +60,13 @@ export class AntiAiPolicyResolver {
     effectiveStyleProfileId?: string | null;
   }): Promise<AntiAiEffectiveRulesResult> {
     const baselineRules = await this.listGlobalBaselineRules();
-    const globalBaselineRules = baselineRules.map((rule): AntiAiEffectiveRuleItem => ({
+    // A disabled binding is an explicit exception for the selected style, never a global edit.
+    const disabled = input.effectiveStyleProfileId
+      ? await prisma.styleProfileAntiAiRule.findMany({
+          where: {styleProfileId: input.effectiveStyleProfileId, enabled: false}, select: {antiAiRuleId: true},
+        }) : [];
+    const excluded = new Set(disabled.map(item => item.antiAiRuleId));
+    const globalBaselineRules = baselineRules.filter(rule => !excluded.has(rule.id)).map((rule): AntiAiEffectiveRuleItem => ({
       rule,
       source: "global_baseline",
       sourceLabel: "全局默认",
@@ -77,7 +83,7 @@ export class AntiAiPolicyResolver {
       if (!profile) {
         continue;
       }
-      for (const rule of selectEnabledRules(profile.antiAiRules)) {
+      for (const rule of selectEnabledRules(profile.antiAiRules).filter(rule => !excluded.has(rule.id))) {
         const existing = styleRulesById.get(rule.id);
         if (existing && existing.weight >= binding.weight) {
           continue;

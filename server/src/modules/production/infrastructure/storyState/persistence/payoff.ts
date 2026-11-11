@@ -48,7 +48,7 @@ export function createFullPayoffConsumer(deps: { checkpoints: Pick<PrismaArtifac
       const output = payoffLedgerSyncOutputSchema.parse(input.output);
       const bookContract = await tx.bookContract.findUnique({ where: { novelId } });
       const bookContractPayoffs = buildBookContractPayoffSources(bookContract);
-      await payoffLedgerSyncPrompt.postValidate?.(output, { bookContractPayoffs } as Parameters<NonNullable<typeof payoffLedgerSyncPrompt.postValidate>>[1],
+      await payoffLedgerSyncPrompt.postValidate?.(output, { bookContractPayoffs, latestWrittenChapterOrder: order } as Parameters<NonNullable<typeof payoffLedgerSyncPrompt.postValidate>>[1],
         { blocks: [], selectedBlockIds: [], droppedBlockIds: [], summarizedBlockIds: [], estimatedInputTokens: 0 });
       const existing = (await tx.payoffLedgerItem.findMany({ where: { novelId } })).map(mapPayoffLedgerRow);
       const lookup = createNovelChapterReferenceLookup(await tx.chapter.findMany({ where: { novelId }, select: { id: true, order: true } }));

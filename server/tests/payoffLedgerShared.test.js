@@ -327,3 +327,9 @@ test("book contract payoff change detection ignores formatting-only edits", () =
     chapter30Payoff: "",
   }), false);
 });
+
+test('fixed book source retains identity across AI title and key changes even after payoff', () => {
+ const sourceRefs=[{kind:'major_payoff',refId:'book_contract.chapter3Payoff'}];
+ const existing={ledgerKey:'stable',title:'old title',scopeType:'book',currentStatus:'paid_off',targetEndChapterOrder:3,lastTouchedChapterOrder:3,updatedAt:new Date(),sourceRefsJson:JSON.stringify(sourceRefs)};
+ assert.equal(resolvePayoffLedgerSyncLedgerKey({ledgerKey:'new',title:'new title',scopeType:'book',currentStatus:'paid_off',sourceRefs},[existing]),'stable');
+});

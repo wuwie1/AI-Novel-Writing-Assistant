@@ -2,6 +2,7 @@ import type {
   CharacterCandidate,
   DynamicCharacterOverview,
 } from "@ai-novel/shared/types/characterDynamics";
+import { characterAppearanceService, summarizeAppearanceCoverage } from "../characters/appearances";
 import { prisma } from "../../../db/prisma";
 import { compareDynamicRows, PROJECTION_SOURCE_TYPES } from "./characterDynamicsShared";
 import {
@@ -24,6 +25,7 @@ export class CharacterDynamicsQueryService {
       where: { id: novelId },
       select: {
         id: true,
+        directorVersion: true,
         chapters: {
           orderBy: { order: "asc" },
           select: {
@@ -70,6 +72,9 @@ export class CharacterDynamicsQueryService {
     const currentVolumeChapterOrders = new Set(
       novel.volumePlans.find((volume) => volume.id === currentVolume?.id)?.chapters.map((chapter) => chapter.chapterOrder) ?? [],
     );
+
+    const v2Appearances = novel.directorVersion === "v2"
+      ? await characterAppearanceService.readNovel(novelId) : null;
 
     const [candidateRows, assignmentRows, factionRows, relationStageRows, timelineRows] = await Promise.all([
       prisma.characterCandidate.findMany({
@@ -127,7 +132,7 @@ export class CharacterDynamicsQueryService {
         },
         orderBy: [{ chapterOrder: "desc" }, { updatedAt: "desc" }],
       }),
-      currentVolumeChapterOrders.size > 0
+      !v2Appearances && currentVolumeChapterOrders.size > 0
         ? prisma.characterTimeline.findMany({
             where: {
               novelId,
@@ -168,13 +173,20 @@ export class CharacterDynamicsQueryService {
     }
 
     const characters = novel.characters
-      .map((character) => buildOverviewItem({
-        character,
-        assignment: assignmentByCharacterId.get(character.id) ?? null,
-        factionTrack: factionTrackByCharacterId.get(character.id) ?? null,
-        appearanceOrders: appearanceOrdersByCharacterId.get(character.id) ?? [],
-        currentChapterOrder,
-      }))
+      .map((character) => {
+        const coverage = v2Appearances ? summarizeAppearanceCoverage(v2Appearances.chapters,
+          character.id, currentVolumeChapterOrders, currentChapterOrder) : null;
+        const item = buildOverviewItem({
+          character,
+          assignment: assignmentByCharacterId.get(character.id) ?? null,
+          factionTrack: factionTrackByCharacterId.get(character.id) ?? null,
+          appearanceOrders: coverage?.orders ?? appearanceOrdersByCharacterId.get(character.id) ?? [],
+          currentChapterOrder,
+        });
+        // Incomplete extraction cannot prove absence; positive appearances remain usable.
+        if (coverage?.hasUnverifiedAbsence) item.absenceRisk = "none";
+        return item;
+      })
       .sort((left, right) => {
         if (left.isCoreInVolume !== right.isCoreInVolume) {
           return left.isCoreInVolume ? -1 : 1;

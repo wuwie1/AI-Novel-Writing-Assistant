@@ -75,3 +75,9 @@ Book Contract 的 `chapter3Payoff / chapter10Payoff / chapter30Payoff` 是 Payof
 - `docs/plans/payoff-ledger-safety-phase-three.md`
 - `docs/wiki/workflows/reader-experience-contract.md`
 - `docs/wiki/workflows/novel-fact-ledger.md`
+
+## 重复承诺与未来证据
+
+同一固定书级来源只能属于一个归并后的账项。结构化验证须拒绝同一个来源被拆到多个账项，并保留书级范围和截止窗口。未来卷纲是计划来源，不能成为已兑现证据；已知写作章边界时，兑现章次与证据章次不得越界。语义归并由 AI 完成，固定 ID、范围和章次边界属于确定性校验。
+
+固定书级来源同时作为持久化身份依据。AI 改写标题或生成新 key 时，仍复用该来源已拥有的账项，包括已兑现记录，避免每次同步再生一条首案承诺。

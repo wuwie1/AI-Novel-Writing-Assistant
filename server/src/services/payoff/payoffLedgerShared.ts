@@ -33,6 +33,7 @@ type PayoffLedgerRowLike = {
 };
 
 type PayoffLedgerSyncCandidate = {
+  sourceRefs?: PayoffLedgerSourceRef[];
   ledgerKey: string;
   title: string;
   scopeType: "book" | "volume" | "chapter";
@@ -46,6 +47,8 @@ type PayoffLedgerSyncCandidate = {
 };
 
 type ExistingLedgerIdentityRow = {
+  sourceRefs?: PayoffLedgerSourceRef[];
+  sourceRefsJson?: string | null;
   ledgerKey: string;
   title: string;
   scopeType: "book" | "volume" | "chapter";
@@ -162,6 +165,15 @@ export function resolvePayoffLedgerSyncLedgerKey(
   item: PayoffLedgerSyncCandidate,
   existingRows: ExistingLedgerIdentityRow[],
 ): string {
+  const fixedRefs = new Set((item.sourceRefs ?? []).filter(ref => ref.kind === "major_payoff" && ref.refId?.startsWith("book_contract.")).map(ref => ref.refId));
+  if (fixedRefs.size) {
+    const owners = existingRows.filter(row => {
+      let refs = row.sourceRefs ?? [];
+      if (!row.sourceRefs && row.sourceRefsJson) {try {refs = JSON.parse(row.sourceRefsJson);} catch {return false;}}
+      return Array.isArray(refs) && refs.some(ref => ref.kind === "major_payoff" && fixedRefs.has(ref.refId));
+    }).sort((a,b) => compareExistingLedgerIdentityRows(item,a,b));
+    if (owners.length) return owners[0].ledgerKey;
+  }
   if (existingRows.some((row) => row.ledgerKey === item.ledgerKey)) {
     return item.ledgerKey;
   }

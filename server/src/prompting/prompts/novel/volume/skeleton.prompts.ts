@@ -48,7 +48,7 @@ export function createVolumeSkeletonPrompt(
 > {
   return {
     id: "novel.volume.skeleton",
-    version: "v3",
+    version: "v4",
     taskType: "planner",
     mode: "structured",
     language: "zh",
@@ -80,6 +80,10 @@ export function createVolumeSkeletonPrompt(
         "4. 输出时必须体现：硬推进连续，软体验变化。",
         "",
         "【分卷质量要求】",
+        "每卷主角变化只写本卷开始与结束的能力、责任或关系差异，不复制整书成长路线。",
+        "primaryPressureSource 写有目标和资源的具体对手；midVolumeRisk 写该卷方案如何失效；payoffType 写可保留的收益；resetPoint 写下一卷继承的事实。",
+        "成长题材每卷须呈现至少一种新解法或能力组合及其代价；人物自主权不能被能力奖励取消。",
+        "对照相邻卷检查：若只换地名或敌人级别仍是同一任务，改写行动目标与胜负条件。软规划也必须有独立阶段职责。",
         "1. 每卷都要有独立成立的阅读承诺，不能只是过渡卷。",
         "2. 相邻两卷的 coreSellingPoint 不应重复，必须体现卖点差异。",
         "3. 相邻两卷的 primaryPressureSource 或 escalationMode 应尽量变化，避免同质化升级。",

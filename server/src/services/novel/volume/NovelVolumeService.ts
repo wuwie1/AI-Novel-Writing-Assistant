@@ -1,3 +1,4 @@
+import {AppError} from "../../../middleware/errorHandler";
 import type {
   StorylineDiff,
   StorylineVersion,
@@ -824,6 +825,10 @@ export class NovelVolumeService {
   }
 
   async createStorylineDraftCompat(novelId: string, input: { content: string; diffSummary?: string; baseVersion?: number }) {
+    const owner = await prisma.novel.findUnique({where: {id: novelId}, select: {directorVersion: true}});
+    if (owner?.directorVersion === "v2" && await getActiveVersionRow(novelId)) {
+      throw new AppError("请从分卷与章节规划修改已有结构；故事总纲请在故事设定中保存，避免覆盖后续卷。", 409);
+    }
     return createStorylineDraftCompat(
       {
         novelId,

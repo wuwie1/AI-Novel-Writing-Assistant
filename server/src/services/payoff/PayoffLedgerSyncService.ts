@@ -284,6 +284,7 @@ export class PayoffLedgerSyncService {
       latestSnapshotId: snapshot?.id ?? null,
       promptInput: {
         novelTitle: novel.title,
+        latestWrittenChapterOrder: chapterOrder ?? undefined,
         bookContractPayoffs: buildBookContractPayoffSources(novel.bookContract),
         activeVolumeSummary,
         latestChapterContext,
