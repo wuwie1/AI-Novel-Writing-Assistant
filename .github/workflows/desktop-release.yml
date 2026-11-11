@@ -2,6 +2,15 @@ name: Desktop Release
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "选择要生成的安装包或验证平台"
+        type: choice
+        required: true
+        default: mac
+        options:
+          - mac
+          - windows
   push:
     tags:
       - "v*"
@@ -128,8 +137,60 @@ jobs:
       - name: Publish AppImage
         run: node desktop/scripts/run-electron-builder.cjs --linux AppImage --x64 --publish always
 
+  package-mac:
+    name: Mac DMG (${{ matrix.arch }})
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'mac' }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    env:
+      AI_NOVEL_RELEASE_CHANNEL: release
+      AI_NOVEL_DATABASE_MODE: sqlite
+      DATABASE_URL: file:./dev.db
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.6.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Read desktop version
+        id: version
+        run: node -e "const fs = require('node:fs'); const { readVersion } = require('./scripts/desktop-release/guard.cjs'); fs.appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + readVersion(process.cwd()) + '\n');"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm stage:desktop
+      - name: Verify packaging and release boundaries
+        run: node --test desktop/tests/*.test.cjs scripts/tests/desktop-release.test.cjs
+      - name: Build unsigned DMG
+        run: node desktop/scripts/run-electron-builder.cjs --mac dmg --${{ matrix.arch }} --publish never
+      - name: Record installer checksums
+        working-directory: desktop/build/dist
+        run: shasum -a 256 ./*.dmg > SHA256SUMS.txt
+      - name: Upload downloadable installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-dmg-${{ steps.version.outputs.version }}-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            desktop/build/dist/*.dmg
+            desktop/build/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
   verify-only:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'windows' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6

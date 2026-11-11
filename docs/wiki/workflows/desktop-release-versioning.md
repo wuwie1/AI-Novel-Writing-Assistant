@@ -34,7 +34,7 @@
 
 `run-electron-builder.cjs` 默认添加 `--publish never`，避免 CI 环境隐式上传。显式 `--publish`、`--publish=...` 与 `-p` 共用同一验证入口，失败不调用上传；重复 publish 参数被拒绝。两种既有发布脚本都经过此入口，不能另建绕过守卫的上传路径。
 
-发布 workflow 仅允许 push 的版本 tag 进入上传任务。手动 workflow_dispatch 只执行检查与目录打包，不上传 GitHub Release。构建使用已提交的图标；品牌图标应在开发时生成、审核并提交，避免发布检查期间改写受版本控制的素材。发布说明更新脚本也必须拒绝与 package 版本不符的 tag。
+发布 workflow 仅允许 push 的版本 tag 进入上传任务。手动 workflow_dispatch 的 `target=mac` 从所选分支构建 x64/arm64 DMG，以 Actions artifact 提供下载，名称绑定桌面版本、架构和完整提交 SHA，保留 14 天并附带 SHA-256 校验文件；`target=windows` 执行既有检查与目录打包。手动 Mac 任务只有 `contents: read`，不注入发布凭据，始终显式使用 `--publish never`。这是分支产物验证与安装试用入口，不能把它当作正式 GitHub Release 或绕过 main／版本 tag 守卫。构建使用已提交的图标；品牌图标应在开发时生成、审核并提交，避免发布检查期间改写受版本控制的素材。发布说明更新脚本也必须拒绝与 package 版本不符的 tag。
 
 ## 平台与原生运行时
 

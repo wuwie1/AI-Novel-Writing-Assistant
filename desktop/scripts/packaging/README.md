@@ -8,4 +8,6 @@ electron-builder 为每个目标架构重编译 better-sqlite3，所有 `.node` 
 
 Mac 以独立 x64/arm64 job 构建 DMG，不合并成 universal 包；暂不签名、不公证、关闭客户端自动更新。Linux 以 x64 构建 AppImage。pnpm 同时安装当前 OS 的 x64/arm64 可选依赖，让 sharp 等按运行架构选择本地二进制。Windows 保留 NSIS/portable、签名规则和 NSIS 模板补丁；跨平台构建不使用 NSIS 模板。
 
+需要指定分支的 Mac 安装包时，在 GitHub Actions 的 `Desktop Release` 选择目标分支，手动运行并将 `target` 设为 `mac`（默认）。构建完成后从该运行的 Artifacts 下载 `mac-dmg-<版本>-<架构>-<提交>`，解压取得 DMG 与 SHA-256 校验文件；产物保存 14 天。版本来自 `desktop/package.json`，Apple Silicon 使用 arm64，Intel 使用 x64。手动打包只使用仓库读取权限和 `--publish never`，不会创建 GitHub Release 或触发自动更新。选择 `windows` 则运行既有 Windows 目录打包验证。
+
 增加平台时同时更新 builder 目标、窗口图标、workflow 和原生架构验证。Windows 本机目录打包不能替代 Mac/Linux runner 的实际构建与启动验收。
