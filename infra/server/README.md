@@ -37,7 +37,7 @@ pnpm --filter @ai-novel/server build
 pnpm --filter @ai-novel/client build
 ```
 
-若原生 SQLite 模块没有适配的预编译包，安装编译工具和 Python 后再构建依赖。完整服务端类型编译需要超过 2 GB 的 Node 堆；小内存服务器须预留交换空间、串行构建，或在足够内存的构建机生成产物。构建可重定向到 `.logs/deploy-build.log`，不需要启动开发服务器。
+若原生 SQLite 模块没有适配的预编译包，安装编译工具和 Python 后再构建依赖。完整服务端类型编译需要超过 2 GB 的 Node 堆；小内存服务器须为在线服务和系统另留内存，仅增加交换空间不能保证构建期间可用。已有完整检查时，使用 [`DEPLOY_VALIDATION_FILE`](../../desktop_mac/README.md#更新服务器) 复用候选提交的验证，服务器生成实际产物并运行 Linux 冒烟测试。否则应在足够内存的环境执行完整构建。构建可重定向到 `.logs/deploy-build.log`，不需要启动开发服务器。
 
 4. 首次创建 `server/.env`（将绝对路径替换为实际部署根目录）：
 

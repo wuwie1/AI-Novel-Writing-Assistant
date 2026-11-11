@@ -120,18 +120,24 @@ class DeploymentTests(unittest.TestCase):
             def attempt(name, **change):
                 batch = root / name
                 batch.mkdir()
-                return m.prepare_candidate(dict(info, **change.get('info', {})), batch, None, plan,
+                return m.prepare_candidate(dict(info, **change.get('info', {})), batch, change.get('validation'), plan,
                                            change.get('inputs', baseline), change.get('tools', 'v1'), m.DeploymentTimings())
             staged, record = attempt('matching')
             self.assertEqual(m.artifact_digest(staged / slot), digest)
             self.assertEqual(json.loads(pathlib.Path(record['validation']).read_text()), proof)
             m.build_candidate.assert_not_called()
+            external = dict(proof, evidence='same-commit CI checks')
+            m.write_json(prior / 'validation.json', dict(proof, externalValidation=external))
+            staged, record = attempt('matching-external', validation=external)
+            self.assertEqual(m.artifact_digest(staged / slot), digest)
+            m.build_candidate.assert_not_called()
+            attempt('different-external', validation=dict(external, evidence='different checks'))
             for name, override in [('different-tip', {'info': {'sha':'C'}}), ('different-tools', {'tools':'v2'}),
                                    ('different-inputs', {'inputs': {slot:'changed'}})]:
                 attempt(name, **override)
             asset.write_text('damaged')
             attempt('damaged-output')
-            self.assertEqual(m.build_candidate.call_count, 4)
+            self.assertEqual(m.build_candidate.call_count, 5)
 
     def test_retry_requires_matching_rollback_manifest_branch_and_ancestry(self):
         m = module()
@@ -263,7 +269,8 @@ class DeploymentTests(unittest.TestCase):
 
     def test_validation_precedes_backup_and_service_switch(self):
         for failure, external in ((None, False), ('server-build', False), ('client-build', False),
-                                  ('targeted-tests', False), ('invalid-link', False), (None, True)):
+                                  ('targeted-tests', False), ('invalid-link', False), (None, True),
+                                  ('server-emit', True), ('targeted-tests', True)):
             with self.subTest(failure=failure, external=external), tempfile.TemporaryDirectory() as temporary:
                 m = module()
                 root = pathlib.Path(temporary).resolve()
@@ -292,9 +299,14 @@ class DeploymentTests(unittest.TestCase):
                         with m.tarfile.open(args[args.index('-o') + 1], 'w') as archive:
                             archive.add(package, 'shared/package.json')
                     elif cwd is not None:
-                        name = 'targeted-tests' if args[0] == 'node' else args[2].split('/')[-1] + '-' + args[-1]
+                        name = ('targeted-tests' if args[0] == 'node' else 'server-emit' if '--noCheck' in args
+                                else args[2].split('/')[-1] + '-' + args[-1])
                         steps.append(name)
                         self.assertEqual(env['DATABASE_URL'], 'file:' + str(cwd.parent / 'build-only.sqlite'))
+                        self.assertEqual(env['NODE_OPTIONS'], '--max-old-space-size=' + ('2048' if external else '3072'))
+                        if name == 'server-emit':
+                            self.assertTrue(external)
+                            self.assertEqual(args, ['pnpm', '--filter', '@ai-novel/server', 'build', '--noCheck'])
                         if name == failure:
                             raise m.Refused('injected failure')
                         for slot in m.ARTIFACTS:
@@ -319,11 +331,12 @@ class DeploymentTests(unittest.TestCase):
                     m.switch_transaction.assert_called_once()
                     record = json.loads(next(root.rglob('validation.json')).read_text())
                     m.require_validation_record(record, info['sha'], info['ref'])
-                    self.assertEqual('targeted-tests' in steps, not external)
+                    self.assertIn('targeted-tests', steps)
                     if external:
-                        self.assertEqual(record, supplied)
-                    else:
-                        self.assertIn('node --test', pathlib.Path(record['evidence']).read_text())
+                        self.assertEqual(record['externalValidation'], supplied)
+                        self.assertIn('server-emit', record['executed'])
+                        self.assertNotIn('server-build', record['executed'])
+                    self.assertIn('node --test', pathlib.Path(record['evidence']).read_text())
 
     def test_selective_build_inputs_and_drift(self):
         m = module()

@@ -36,6 +36,7 @@
 3. 后台进程能启动但专用账户无数据库目录写权限，会导致 SQLite WAL 或资产写入失败。数据文件与其目录都必须归运行账户所有。
 4. 不应把系统日志放入应用自动清理的目录，否则长期未更新的固定日志可能被当作历史文件删除。
 5. 若生产 API 启动时报 `DATABASE_URL is required in production.`，以服务账户在 `server/` 目录运行 `../.runtime/node/bin/node --require dotenv/config -p 'Boolean(process.env.DATABASE_URL)'`。返回 `true` 说明服务账户能读取配置，应检查入口是否在加载 `dotenv/config` 前间接导入了 Prisma。systemd 可在 API 的 Node 启动命令中将 `--require dotenv/config` 放在脚本路径前，使配置在业务模块加载前生效。
+6. 构建时 SSH 和 API 同时超时、日志最后停在 `tsc`，应先检查内核 OOM 日志和可用内存。约 4 GB 主机即使有交换空间，3 GiB 的编译堆加上在线服务仍可能耗尽内存，连带终止 API；构建尚未进入切换事务并不代表在线服务不受资源竞争影响。不要原样反复重试。可在开发机完成完整检查，向 `DEPLOY_VALIDATION_FILE` 提供绑定候选 SHA 的真实证据：远端只对后端执行 `--noCheck` 产物生成，保留 Linux 依赖、Prisma 生成、前端构建及隔离数据库的冒烟测试。外部检查不能替代目标主机运行验证；任何生成或冒烟失败仍须在备份和切换前终止。复用旧检查时必须证明全部相关输入和工具链未变，记录来源提交和日志，禁止仅替换记录中的 SHA。
 
 ## 相关模块
 

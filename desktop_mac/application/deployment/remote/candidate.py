@@ -45,6 +45,8 @@ def validate_portable_slots(work, slots, workspace_links):
 
 
 def build_candidate(info, batch, validation, plan, installed, timings):
+    if validation is not None:
+        require_validation_record(validation, info['sha'], info['ref'])
     slots = plan['slots']
     root = info['root']
     candidate = batch / 'candidate'
@@ -52,14 +54,16 @@ def build_candidate(info, batch, validation, plan, installed, timings):
     logfile = batch / 'build.log'
     hashes = dict(installed)
     built = []
-    needs_tests = plan['tests'] and validation is None
+    # External type-check evidence cannot cover native dependencies on this host.
+    needs_tests = plan['tests']
     with open(logfile, 'w') as log, tempfile.TemporaryDirectory(dir=batch, prefix='build-') as scratch_name:
         logfile.chmod(0o600)
         scratch = pathlib.Path(scratch_name)
         work = scratch / 'workspace'
         work.mkdir()
         environment = {'PATH': str(root / '.runtime/node/bin') + ':' + str(root / '.runtime/pnpm/node_modules/.bin') + ':/usr/local/bin:/usr/bin:/bin',
-                       'XDG_CACHE_HOME': str(scratch / 'cache'), 'npm_config_userconfig': '/dev/null', 'CI': 'true', 'NODE_OPTIONS': '--max-old-space-size=3072',
+                       'XDG_CACHE_HOME': str(scratch / 'cache'), 'npm_config_userconfig': '/dev/null', 'CI': 'true',
+                       'NODE_OPTIONS': '--max-old-space-size=' + ('2048' if validation is not None else '3072'),
                        'AI_NOVEL_DATABASE_MODE': 'sqlite', 'DATABASE_URL': 'file:' + str(scratch / 'build-only.sqlite')}
         def run(name, args):
             emit('candidate_build', name=name, log=str(logfile))
@@ -94,7 +98,13 @@ def build_candidate(info, batch, validation, plan, installed, timings):
                 run('prisma-generate', ['pnpm', '--filter', '@ai-novel/server', 'prisma:generate'])
             for package in ('server', 'client'):
                 if package + '/dist' in slots:
-                    run(package + '-build', ['pnpm', '--filter', '@ai-novel/' + package, 'build'])
+                    args = ['pnpm', '--filter', '@ai-novel/' + package, 'build']
+                    if package == 'server' and validation is not None:
+                        # Same-commit full checks already passed. Emit with the Linux
+                        # dependencies, without repeating the memory-heavy type check.
+                        run('server-emit', [*args, '--noCheck'])
+                    else:
+                        run(package + '-build', args)
             if needs_tests:
                 run('targeted-tests', ['node', '--test', '--test-concurrency=1', 'server/tests/novelProductionStatus.test.js', 'client/tests/directorPollingErrors.test.js'])
             with timings.stage('verify-candidate'):
@@ -114,7 +124,9 @@ def build_candidate(info, batch, validation, plan, installed, timings):
         passed = [check for check in VALIDATION_CHECKS if check in built or check in reused]
         fingerprint = digest((work if slots or needs_tests else root) / 'pnpm-lock.yaml')
         print('completed:', built, 'reused from verified baseline:', reused, file=log)
-    record = validation if validation is not None else dict(sha=info['sha'], ref=info['ref'], passed=passed, evidence=str(logfile), executed=built, reusedFrom=info['old'], reused=reused)
+    record = dict(sha=info['sha'], ref=info['ref'], passed=passed, evidence=str(logfile), executed=built, reusedFrom=info['old'], reused=reused)
+    if validation is not None:
+        record.update(passed=validation['passed'], externalValidation=validation)
     require_validation_record(record, info['sha'], info['ref'])
     record_path = batch / 'validation.json'
     write_json(record_path, record)
@@ -141,7 +153,7 @@ def prepare_candidate(info, batch, validation, plan, installed, toolchain, timin
             continue
         proof = json.loads((path.parent / 'validation.json').read_text())
         require_validation_record(proof, info['sha'], info['ref'])
-        if validation is not None and proof != validation:
+        if validation is not None and proof.get('externalValidation', proof) != validation:
             continue
         with timings.stage('reuse-candidate'), tempfile.TemporaryDirectory(dir=batch) as scratch:
             copied = pathlib.Path(scratch) / 'candidate'
