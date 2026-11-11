@@ -282,6 +282,9 @@ export async function generateImagesByProvider(input: ImageProviderGenerateInput
 
   const { apiKey, baseURL } = await resolveProviderSecret(input.provider);
   const controller = new AbortController();
+  const onAbort = () => controller.abort(input.signal?.reason);
+  input.signal?.addEventListener("abort", onAbort, { once: true });
+  if (input.signal?.aborted) onAbort();
   const timeoutMs = imageGenerationConfig.httpTimeoutMs;
   const timeout = setTimeout(
     () => controller.abort(new Error(`Image generation request timed out after ${timeoutMs}ms.`)),
@@ -328,5 +331,6 @@ export async function generateImagesByProvider(input: ImageProviderGenerateInput
     };
   } finally {
     clearTimeout(timeout);
+    input.signal?.removeEventListener("abort", onAbort);
   }
 }

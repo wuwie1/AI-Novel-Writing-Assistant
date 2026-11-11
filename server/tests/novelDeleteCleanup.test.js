@@ -258,3 +258,35 @@ test("a cover returning from storage after the book is deleted is cleaned on ret
   await worker.tick();
   assert.equal(fs.existsSync(file), false);
 });
+
+test("stopping an in-flight cover request cancels it without requeueing or deleting the book", {timeout: 8000}, async t => {
+  const provider = require("../dist/services/image/provider");
+  const {executeImageGenerationTask} = require("../dist/services/image/ImageGenerationTaskExecutor");
+  const novelId = "cover-stop", taskId = "stopping-cover";
+  await prisma.novel.create({data: {id: novelId, title: "Cover stop"}});
+  await prisma.imageGenerationTask.create({data: {id: taskId, novelId, sceneType: "novel_cover", provider: "test", model: "test", prompt: "Test"}});
+  const started = Promise.withResolvers();
+  let calls = 0;
+  t.mock.method(provider, "generateImagesByProvider", async ({signal}) => {
+    calls++;
+    assert.ok(signal);
+    started.resolve();
+    await new Promise((_, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Cancellation timed out")), 3000);
+      signal.addEventListener("abort", () => {
+        clearTimeout(timeout);
+        reject(signal.reason);
+      }, {once: true});
+    });
+  });
+  const executing = executeImageGenerationTask(taskId, {requeueTask: () => assert.fail("stopped task was requeued")});
+  await started.promise;
+  await prisma.imageGenerationTask.update({where: {id: taskId}, data: {cancelRequestedAt: new Date()}});
+  await executing;
+  const task = await prisma.imageGenerationTask.findUniqueOrThrow({where: {id: taskId}});
+  assert.equal(task.status, "cancelled");
+  assert.equal(task.retryCount, 0);
+  assert.equal(calls, 1);
+  assert.equal(await prisma.imageAsset.count({where: {taskId}}), 0);
+  assert.equal(await prisma.novel.count({where: {id: novelId}}), 1);
+});

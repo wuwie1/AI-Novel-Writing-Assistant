@@ -36,7 +36,7 @@ test("both probes use the saved OpenAI endpoint and serialize reasoning-model pa
   assert.equal(result.plain.ok, true, result.plain.error);
   assert.equal(result.structured.ok, true, result.structured.error);
   assert.equal(result.structured.strategy, "json_schema");
-  assert.deepEqual(requests.map(({ body }) => body.stream), [false, true]);
+  assert.deepEqual(requests.map(({ body }) => body.stream), [true, true]);
   for (const { url, body } of requests) {
     assert.equal(url, "https://api.openai.com/v1/chat/completions");
     assert.equal(body.model, "gpt-6.1-sol");
@@ -65,7 +65,9 @@ test("an OpenAI provider with a saved gateway can still discover the Anthropic p
     const path = new URL(url).pathname;
     paths.push(path);
     return path === "/v1/messages"
-      ? Response.json({ content: [{ type: "text", text: "ok" }] })
+      ? new Response('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n', {
+        headers: { "content-type": "text/event-stream" },
+      })
       : new Response("Not Found", { status: 404 });
   });
   const result = await llmConnectivityService.testConnection({ provider: "openai", probeMode: "plain" });

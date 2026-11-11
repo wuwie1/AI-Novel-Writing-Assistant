@@ -5,6 +5,7 @@ import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { generateImagesByProvider } from "./provider";
+import { watchImageCancellation } from "./generation/cancellation";
 import {
   persistGeneratedImageAsset,
   resolveImageAssetFile,
@@ -195,6 +196,7 @@ async function markCancelled(taskId: string, progress: number): Promise<void> {
     where: { id: taskId },
     data: {
       status: "cancelled",
+      pendingManualRecovery: false,
       progress,
       error: null,
       heartbeatAt: null,
@@ -280,6 +282,7 @@ export async function executeImageGenerationTask(
 
   const reservations: string[] = [];
   const storedCovers: StoredAssetCleanup[] = [];
+  const cancellation = watchImageCancellation(task.id);
   try {
     await ensureNotCancelled(task.id);
     await prisma.imageGenerationTask.update({
@@ -294,6 +297,7 @@ export async function executeImageGenerationTask(
 
     const referenceImages = await resolveReferenceImagesForTask(task);
     const generate = () => generateImagesByProvider({
+      signal: cancellation.signal,
       sceneType,
       provider: task.provider as LLMProvider,
       model: task.model,
@@ -427,12 +431,16 @@ export async function executeImageGenerationTask(
       });
     });
   } catch (error) {
-    if (!await prisma.imageGenerationTask.findUnique({where: {id: task.id}, select: {id: true}})) {
+    // Cancellation wins over a simultaneous provider failure; never requeue a stop request.
+    const persisted = await prisma.imageGenerationTask.findUnique({
+      where: { id: task.id }, select: { status: true, cancelRequestedAt: true },
+    });
+    if (!persisted) {
       // A delete worker may have finished its first cleanup while storage was still writing.
       if (storedCovers.length) await queueStoredAssetCleanup(prisma, storedCovers);
       return;
     }
-    if (error instanceof AppError && error.message === "IMAGE_TASK_CANCELLED") {
+    if (cancellation.signal.aborted || persisted.cancelRequestedAt || persisted.status === "cancelled" || (error instanceof AppError && error.message === "IMAGE_TASK_CANCELLED")) {
       await markCancelled(task.id, task.progress);
       return;
     }
@@ -472,5 +480,7 @@ export async function executeImageGenerationTask(
       },
     });
     await cleanupOrphanAppearanceImages(task.id);
+  } finally {
+    cancellation.dispose();
   }
 }
