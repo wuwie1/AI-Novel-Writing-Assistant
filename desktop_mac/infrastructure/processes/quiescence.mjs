@@ -51,6 +51,8 @@ active={'queued','running','processing','retrying','leased','waiting_worker','wa
 manual={'waiting_approval','waiting_gate','paused','pending_manual_recovery','needs_approval','awaiting_user','waiting_review','blocked','interrupted','cancelled_by_user','failed_hard','stale','pending'}
 pending_queues={'NovelSideEffectJob','ComicExportJob','DramaBatchJob','ComicBatchJob'}
 terminal={'succeeded','success','completed','complete','done','failed','cancelled','canceled','rejected','expired','archived','published','skipped','confirmed','failed_hard','delivered','sent','idle','ready'}
+# A completed creation handoff leaves the successor workflow/director responsible for active work.
+table_terminal={'CreationStudioConfirmation': {'handed_off'}}
 status_known=active|manual|terminal|{'draft','attached','not_started','open','closed','enabled','disabled'}
 now=datetime.datetime.now(datetime.timezone.utc)
 def parse_time(value):
@@ -104,7 +106,7 @@ def main():
             for status_key in ('status','latestIndexStatus'):
                 if status_key not in values: continue
                 status=values[status_key]
-                if not isinstance(status,str) or status not in status_known:
+                if not isinstance(status,str) or (status not in status_known and status not in table_terminal.get(table,set())):
                     blockers.append({'kind':'unknown_status','table':table,'count':1}); break
                 if status in active or status=='pending' and table in pending_queues:
                     if table=='NovelWorkflowTask' and values.get('pendingManualRecovery') in (1,True) and status=='waiting_approval': continue

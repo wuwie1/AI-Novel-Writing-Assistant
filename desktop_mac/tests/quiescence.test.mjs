@@ -54,6 +54,41 @@ test('quiescence scan accepts a complete read-only schema with only manual appro
   assert.equal(result.checkedTables.length, Object.keys(QUIESCENCE_TABLE_SCHEMA).length);
 });
 
+test('completed creation handoffs are quiescent without changing the confirmation record', async (t) => {
+  const { dbPath } = await fixture(t);
+  const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO CreationStudioConfirmation(status) VALUES ('handed_off')"); c.commit(); c.close()`, dbPath]);
+  assert.equal(seeded.status, 0);
+  const before = await readFile(dbPath);
+  const result = await inspectSqliteQuiescence({ dbPath });
+  assert.equal(result.safeToStop, true, JSON.stringify(result));
+  assert.deepEqual(await readFile(dbPath), before);
+});
+
+test('a completed creation handoff does not hide active successor work', async (t) => {
+  const { dbPath } = await fixture(t);
+  const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO CreationStudioConfirmation(status) VALUES ('handed_off')"); c.execute("INSERT INTO NovelWorkflowTask(status,pendingManualRecovery,attemptCount,maxAttempts,heartbeatAt) VALUES ('running',0,1,3,NULL)"); c.commit(); c.close()`, dbPath]);
+  assert.equal(seeded.status, 0);
+  const result = await inspectSqliteQuiescence({ dbPath });
+  assert.equal(result.safeToStop, false);
+  assert.ok(result.blockers.some(item => item.table === 'NovelWorkflowTask' && item.kind === 'active_task'));
+  assert.equal(result.blockers.some(item => item.table === 'CreationStudioConfirmation'), false);
+});
+
+test('claimed confirmations and unknown or misplaced handoff statuses still block shutdown', async (t) => {
+  for (const [table, status, kind] of [
+    ['CreationStudioConfirmation', 'claimed', 'active_task'],
+    ['CreationStudioConfirmation', 'future_status', 'unknown_status'],
+    ['AgentRun', 'handed_off', 'unknown_status'],
+  ]) {
+    const { dbPath } = await fixture(t);
+    const seeded = spawnSync('python3', ['-c', 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO "+sys.argv[2]+"(status) VALUES (?)", (sys.argv[3],)); c.commit(); c.close()', dbPath, table, status]);
+    assert.equal(seeded.status, 0);
+    const result = await inspectSqliteQuiescence({ dbPath });
+    assert.equal(result.safeToStop, false, `${table}:${status}`);
+    assert.ok(result.blockers.some(item => item.table === table && item.kind === kind), JSON.stringify(result));
+  }
+});
+
 test('quiescence scan rejects active work, leases, automatic retries and incomplete coverage', async (t) => {
   const { dbPath } = await fixture(t);
   let insert = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO NovelWorkflowTask(status,pendingManualRecovery,attemptCount,maxAttempts,heartbeatAt) VALUES ('running',0,1,3,NULL)"); c.commit(); c.close()`, dbPath]);
