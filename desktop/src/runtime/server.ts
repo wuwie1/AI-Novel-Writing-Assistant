@@ -27,7 +27,7 @@ interface ManagedDesktopProcess {
   stop: () => Promise<void>;
 }
 
-function resolveServerMode(isPackaged: boolean): DesktopServerMode {
+export function resolveServerMode(isPackaged: boolean): DesktopServerMode {
   const rawMode = process.env.AI_NOVEL_DESKTOP_SERVER_MODE?.trim().toLowerCase();
   if (rawMode === "external" || rawMode === "managed") {
     return rawMode;
@@ -86,7 +86,9 @@ async function waitForServerHealth(port: number, timeoutMs = 30_000): Promise<vo
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(healthUrl);
+      const response = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(5_000, deadline - Date.now()))),
+      });
       if (response.ok) {
         return;
       }
@@ -97,7 +99,7 @@ async function waitForServerHealth(port: number, timeoutMs = 30_000): Promise<vo
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  throw new Error(`Timed out waiting for server health at ${healthUrl}.`);
+  throw new Error(`无法连接写作服务（http://127.0.0.1:${port}）。请先启动该地址的 Web 服务或 SSH 通道，再重新打开应用。`);
 }
 
 async function waitForServerHealthOrExit(

@@ -32,6 +32,26 @@ test("builder schema accepts DMG/AppImage and preserves Windows targets", async 
   assert.equal(normalizeBuildEnvironment({ AI_NOVEL_RELEASE_CHANNEL: "release" }, ["--linux"]).AI_NOVEL_RELEASE_CHANNEL, "release");
 });
 
+test("Mac bundle embeds the external Web connection defaults before signing", async () => {
+  const config = require("../electron-builder.config.cjs");
+  const { MacPackager } = builderRequire("app-builder-lib");
+  const plist = { LSEnvironment: { MallocNanoZone: "0" } };
+  await MacPackager.prototype.applyCommonInfo.call({
+    appInfo: { productFilename: "Fixture", productName: "Fixture", version: "1.0.0", buildVersion: "1.0.0" },
+    platformSpecificBuildOptions: config.mac,
+    config,
+    getIconPath: async () => null,
+  }, plist, path.join(os.tmpdir(), "unused-fixture-contents"));
+  assert.deepEqual(plist.LSEnvironment, {
+    MallocNanoZone: "0",
+    AI_NOVEL_DESKTOP_SERVER_MODE: "external",
+    AI_NOVEL_SERVER_PORT: "15173",
+    AI_NOVEL_DESKTOP_RENDERER_URL: "http://127.0.0.1:15173",
+  });
+  assert.equal(config.win.extendInfo, undefined);
+  assert.equal(config.linux.extendInfo, undefined);
+});
+
 test("Mac signature verification rejects unsealed and modified bundles", { skip: process.platform !== "darwin" }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "anw-mac-signature-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

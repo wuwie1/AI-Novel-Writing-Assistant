@@ -11,7 +11,7 @@ import {
   resolveSuggestedLegacyDatabasePath,
 } from "./runtime/dataImport";
 import { appendDesktopLog, cleanupDesktopLogs, logDesktopError } from "./runtime/logging";
-import { resolveDesktopServerPort, startDesktopServer } from "./runtime/server";
+import { resolveDesktopServerPort, resolveServerMode, startDesktopServer } from "./runtime/server";
 import { configureDesktopAccessToken } from "./runtime/access";
 import {
   isPortableDesktopRuntime,
@@ -116,10 +116,10 @@ function updateBootstrapProgress(): void {
     setBootstrapSnapshot(createBootstrapSnapshot({
       state: "starting-server",
       stage: "server-starting",
-      title: "正在启动本地写作引擎",
-      detail: rendererReady
-        ? "桌面启动壳已经显示，正在等待打包后的本地服务进入可用状态。"
-        : "正在拉起桌面本地服务，并准备用户数据目录。",
+      title: resolveServerMode(app.isPackaged) === "external" ? "正在连接写作服务" : "正在启动本地写作引擎",
+      detail: resolveServerMode(app.isPackaged) === "external"
+        ? "正在连接配置的服务地址，请保持 Web 服务或 SSH 通道运行。"
+        : "正在启动本地服务，并准备用户数据目录。",
     }));
     return;
   }
@@ -129,7 +129,7 @@ function updateBootstrapProgress(): void {
       state: "loading-ui",
       stage: "server-healthy",
       title: "正在加载桌面工作区",
-      detail: "本地服务已经可用，正在渲染桌面端首屏工作区。",
+      detail: "写作服务连接成功，正在加载工作区。",
     }));
     return;
   }
@@ -138,7 +138,7 @@ function updateBootstrapProgress(): void {
     state: "ready",
     stage: "main-window-shown",
     title: "桌面工作区已就绪",
-    detail: "启动壳、本地服务和工作区界面都已准备完成。",
+    detail: "写作服务与工作区已就绪，可以开始创作。",
     canRetry: false,
   }));
   maybeScheduleUpdateCheck();
@@ -156,7 +156,7 @@ function showMainWindowIfReady(): void {
     "main-window-shown",
     serverHealthy
       ? "主窗口已经显示。"
-      : "主窗口已经显示，本地服务仍在继续启动中。",
+      : "主窗口已经显示，仍在等待写作服务连接。",
   );
   closeSplashWindow();
   updateBootstrapProgress();
@@ -200,13 +200,14 @@ function createMainWindow(port: number): BrowserWindow {
     publishUpdaterSnapshot();
   });
 
-  if (process.env.AI_NOVEL_DESKTOP_RENDERER_URL?.trim()) {
-    void window.loadURL(resolveRendererDevUrl());
-  } else if (!app.isPackaged) {
-    void window.loadURL(resolveRendererDevUrl());
-  } else {
-    void window.loadFile(resolveRendererIndexHtml());
-  }
+  const rendererUrl = process.env.AI_NOVEL_DESKTOP_RENDERER_URL?.trim() || (!app.isPackaged ? resolveRendererDevUrl() : undefined);
+  const loading = rendererUrl ? window.loadURL(rendererUrl) : window.loadFile(resolveRendererIndexHtml());
+  void loading.catch(async (error: unknown) => {
+    logDesktopError("desktop.renderer.load", error);
+    await handleBootstrapFailure(new Error(rendererUrl
+      ? `无法加载写作页面（${rendererUrl}）。请确认该地址可在浏览器中打开，再重新启动应用。`
+      : "无法加载桌面工作区，请重新安装应用后再试。"));
+  });
 
   return window;
 }
@@ -313,7 +314,7 @@ function createSplashHtml(): string {
       <main class="panel">
         ${brandMark}
         <div class="title">AI 小说创作工作台</div>
-        <p class="subtitle">Biz Novel Studio 正在准备本地写作引擎。</p>
+        <p class="subtitle">${resolveServerMode(app.isPackaged) === "external" ? "正在连接写作服务，请保持 Web 服务或 SSH 通道运行。" : "Biz Novel Studio 正在准备本地写作引擎。"}</p>
         <div class="meter"><span></span></div>
       </main>
     </body>
@@ -349,7 +350,7 @@ async function bootstrapDesktopApp(): Promise<void> {
     state: "launching",
     stage: "app-ready",
     title: "正在启动桌面工作区",
-    detail: "Electron 已就绪，正在打开桌面启动壳。",
+    detail: "正在打开写作窗口。",
     canRetry: false,
   }));
 
@@ -358,8 +359,8 @@ async function bootstrapDesktopApp(): Promise<void> {
   setBootstrapSnapshot(createBootstrapSnapshot({
     state: "launching",
     stage: "splash-shown",
-    title: "桌面启动壳已显示",
-    detail: "正在准备桌面运行时环境和随包资源。",
+    title: "正在准备工作区",
+    detail: "正在准备写作窗口与服务连接。",
     canRetry: false,
   }));
   initializeDesktopUpdaterController();
@@ -379,19 +380,25 @@ async function bootstrapDesktopApp(): Promise<void> {
   }
 
   const port = await resolveDesktopServerPort({ isPackaged: app.isPackaged });
-  mainWindow = createMainWindow(port);
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-    mainWindowShown = false;
-  });
+  const externalServer = resolveServerMode(app.isPackaged) === "external";
+  const openMainWindow = () => {
+    mainWindow = createMainWindow(port);
+    mainWindow.on("closed", () => {
+      mainWindow = null;
+      mainWindowShown = false;
+    });
+  };
+  // A remote renderer cannot show the bootstrap shell until its Web server is available.
+  if (!externalServer) openMainWindow();
 
-  appendBootstrapStage("server-starting", `Starting desktop server on 127.0.0.1:${port}.`);
+  appendBootstrapStage("server-starting", `${externalServer ? "Connecting to" : "Starting"} desktop server on 127.0.0.1:${port}.`);
   updateBootstrapProgress();
 
   const server = await startDesktopServer({ isPackaged: app.isPackaged, port });
   stopServer = server.stop;
   serverHealthy = true;
   appendBootstrapStage("server-healthy", `Desktop server is healthy on 127.0.0.1:${server.port}.`);
+  if (externalServer) openMainWindow();
   updateBootstrapProgress();
 }
 
@@ -583,6 +590,7 @@ function registerStoreBroadcasts(): void {
 }
 
 async function handleBootstrapFailure(error: unknown): Promise<void> {
+  if (bootstrapFailed) return;
   bootstrapFailed = true;
   initializeDesktopUpdaterController();
   maybeScheduleUpdateCheck(0);

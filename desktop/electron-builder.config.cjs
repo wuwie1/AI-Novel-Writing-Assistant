@@ -102,6 +102,16 @@ module.exports = {
   },
   mac: {
     icon: "builder/app-icon.icns",
+    // Launch Services supplies these defaults when opened from Finder or the Dock.
+    extendInfo: {
+      LSEnvironment: {
+        // extendInfo replaces the whole dictionary; preserve Electron's allocator setting.
+        MallocNanoZone: "0",
+        AI_NOVEL_DESKTOP_SERVER_MODE: "external",
+        AI_NOVEL_SERVER_PORT: "15173",
+        AI_NOVEL_DESKTOP_RENDERER_URL: "http://127.0.0.1:15173",
+      },
+    },
     // Apple Silicon needs a valid bundle signature even without a Developer ID certificate.
     identity: "-",
     forceCodeSigning: true,

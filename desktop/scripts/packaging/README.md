@@ -14,4 +14,8 @@ ad-hoc 签名只校验内容完整性，不提供 Apple Developer ID 身份或�
 
 需要指定分支的 Apple Silicon Mac 安装包时，在 GitHub Actions 的 `Desktop Release` 选择目标分支，手动运行并将 `target` 设为 `mac`（默认）。该入口只构建 arm64；构建完成后从该运行的 Artifacts 下载 `mac-dmg-<版本>-arm64-<提交>`，解压取得 DMG 与 SHA-256 校验文件；产物保存 14 天。版本来自 `desktop/package.json`。手动打包只使用仓库读取权限和 `--publish never`，不会创建 GitHub Release 或触发自动更新。选择 `windows` 则运行既有 Windows 目录打包验证。
 
+Mac 安装包通过 `mac.extendInfo.LSEnvironment` 在签名前写入默认连接：`AI_NOVEL_DESKTOP_SERVER_MODE=external`、`AI_NOVEL_SERVER_PORT=15173`、`AI_NOVEL_DESKTOP_RENDERER_URL=http://127.0.0.1:15173`。Finder/Dock 启动时读取这些变量，网页和 API 都使用该 Web 服务；使用者须先启动服务或 SSH 通道。这个入口不启动内置后端，也不自动建立通道。保留 Electron 的 `MallocNanoZone=0`，因为 builder 对 `extendInfo` 使用浅合并。Windows/Linux 和源码开发启动仍使用各自既有配置。直接运行 `.app/Contents/MacOS/` 下的可执行文件不经过 Launch Services，须自行传入上述变量。不能修改已签名应用的 Info.plist；修改默认地址后应重新构建并安装。
+
+启动边界、数据归属和诊断规则见 [Mac 安装包默认连接](../../../docs/wiki/workflows/desktop-release-versioning.md#mac-安装包默认连接)。打包契约测试通过 builder 的实际 plist 合并路径验证配置；启动测试验证外部健康检查、网页与 API 地址一致、连接失败提示及不创建本地后端或随机令牌。
+
 增加平台时同时更新 builder 目标、窗口图标、workflow 和原生架构验证。Windows 本机目录打包不能替代 Mac/Linux runner 的实际构建与启动验收。

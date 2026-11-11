@@ -48,6 +48,18 @@ Mac 的完整性签名与 Apple 身份认证是两个边界。缺少 Developer I
 
 原生重编译的 buildPath 和 projectRootPath 必须同时指向 staging。electron-builder 默认会使用 workspaceRoot 扫描依赖，仅脱离 staging 硬链接仍可能改写源码 SQLite 的 ABI，表现为打包后 Node 测试报 Electron NODE_MODULE_VERSION。beforePack 通过既有 @electron/rebuild 限定范围，并以 npmRebuild=false 禁止默认重编译，保留正常依赖收集；本地验证须确认源码二进制散列保持不变且 Node 可加载。
 
+## Mac 安装包默认连接
+
+此处指 `desktop/` 的 Electron 安装包；`desktop_mac/` 的 Swift 工作台有独立的启动与连接规则。本仓库的 Mac 安装包面向已有 Web 服务的使用场景：双击后打开 `http://127.0.0.1:15173`，API 使用同一地址下的 `/api`，业务数据由该服务负责。`127.0.0.1` 指当前 Mac；连接远端服务器时，SSH 通道须由使用者提前建立，Electron 不负责建立或关闭通道。
+
+默认值由 `electron-builder.config.cjs` 的 `mac.extendInfo.LSEnvironment` 写入应用 Info.plist：服务模式为 `external`，端口为 `15173`，renderer URL 为 `http://127.0.0.1:15173`。配置在签名前生成，不能为改地址而修改已签名包。按照 [Apple Launch Services 规则](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/LaunchServicesKeys.html)，该环境用于 Finder/Dock 等系统启动入口，直接运行包内二进制时不生效；命令行调试需显式传入三项环境变量。builder 浅合并会替换整个 `LSEnvironment`，所以须同时保留 Electron 的 `MallocNanoZone=0`。
+
+网页地址和 API 地址需要同时配置。只改 API 端口仍会加载包内 `file://` 页面；它产生的 `Origin: null` 不属于普通 Web 后端默认允许的来源。加载同一服务的网页还可让前端与后端版本一致，不应为此放宽服务器 CORS。客户端从 preload 读取 API 地址；外部模式沿用显式配置的访问令牌，没有令牌时不生成本地随机凭据。
+
+外部模式先在限时健康检查通过后加载网页；服务不可用或页面加载失败时显示中文连接说明。不要自动退回内置服务，否则用户可能误以为服务器上的小说丢失，或把新内容写入另一份数据库。桌面包仍携带原有 managed/SQLite 能力，但此入口不启动它；既有本地数据不迁移、不删除，外部连接也不把服务器数据复制到本地库。Windows/Linux 的安装启动与源码开发流程不采用这组 Mac 包配置。
+
+验收应使用重新构建的安装包，通过 Finder/Dock 启动，并分别检查通道可用、通道未启动和网页加载失败的情况。源码 `pnpm dev:desktop` 或直接启动旧版 `.app` 不能证明新包的默认连接有效。完整签名校验仍由既有打包 hook 执行。
+
 ## 工作区依赖与部署快照
 
 桌面包通过 `pnpm deploy --prod` 使用注入的 `@ai-novel/server`，而源码运行使用 server importer。新增服务端生产依赖时，必须同步检查锁文件的 `server` importer 和 `snapshots` 中 `@ai-novel/server@file:server(...)` 的依赖集合；仅在 importer 和 packages 中出现新库，仍可能通过 frozen install，却在桌面部署时遗漏该库。
