@@ -71,6 +71,7 @@ module.exports = {
   npmRebuild: false,
   beforePack: "./scripts/packaging/rebuild-native.cjs",
   afterPack: "./scripts/packaging/verify-native-runtime.cjs",
+  afterSign: "./scripts/packaging/verify-mac-signature.cjs",
   extraMetadata: {
     main: "dist/main.js",
   },
@@ -101,7 +102,9 @@ module.exports = {
   },
   mac: {
     icon: "builder/app-icon.icns",
-    identity: null,
+    // Apple Silicon needs a valid bundle signature even without a Developer ID certificate.
+    identity: "-",
+    forceCodeSigning: true,
     notarize: false,
     target: [{ target: "dmg", arch: ["x64", "arm64"] }],
     artifactName: "${productName}-${version}-mac-${arch}.${ext}",

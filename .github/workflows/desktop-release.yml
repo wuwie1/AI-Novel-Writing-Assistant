@@ -105,7 +105,7 @@ jobs:
       - run: pnpm stage:desktop
       - name: Verify packaging contracts
         run: node --test desktop/tests/*.test.cjs
-      - name: Publish unsigned DMG
+      - name: Publish ad-hoc signed DMG
         run: node desktop/scripts/run-electron-builder.cjs --mac dmg --${{ matrix.arch }} --publish always
 
   publish-linux:
@@ -147,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, arm64]
+        arch: [arm64]
     env:
       AI_NOVEL_RELEASE_CHANNEL: release
       AI_NOVEL_DATABASE_MODE: sqlite
@@ -173,8 +173,10 @@ jobs:
       - run: pnpm stage:desktop
       - name: Verify packaging and release boundaries
         run: node --test desktop/tests/*.test.cjs scripts/tests/desktop-release.test.cjs
-      - name: Build unsigned DMG
+      - name: Build ad-hoc signed DMG
         run: node desktop/scripts/run-electron-builder.cjs --mac dmg --${{ matrix.arch }} --publish never
+      - name: Verify Mac bundle signature before upload
+        run: codesign --verify --deep --strict --verbose=2 "desktop/build/dist/mac-arm64/Biz Novel Studio.app"
       - name: Record installer checksums
         working-directory: desktop/build/dist
         run: shasum -a 256 ./*.dmg > SHA256SUMS.txt

@@ -137,7 +137,7 @@ test("workflow publishes only on pushed version tags and manual dispatch is veri
   assert.ok(!workflow.jobs["verify-only"].steps.some(step => step.run?.includes("--publish always")));
 });
 
-test("manual Mac packaging produces downloadable DMGs without release upload credentials", () => {
+test("manual Mac packaging produces only Apple Silicon DMGs without release upload credentials", () => {
   const repoRoot = path.resolve(__dirname, "../..");
   const req = createRequire(require.resolve("electron-builder/package.json", { paths: [path.join(repoRoot, "desktop")] }));
   const workflow = req("js-yaml").load(fs.readFileSync(path.join(repoRoot, ".github/workflows/desktop-release.yml"), "utf8"));
@@ -148,15 +148,19 @@ test("manual Mac packaging produces downloadable DMGs without release upload cre
   const job = workflow.jobs["package-mac"];
   assert.match(job.if, /workflow_dispatch.*inputs.target == 'mac'/);
   assert.deepEqual(job.permissions, { contents: "read" });
-  assert.deepEqual(job.strategy.matrix.arch, ["x64", "arm64"]);
+  assert.deepEqual(job.strategy.matrix.arch, ["arm64"]);
   assert.equal(job.env.AI_NOVEL_DATABASE_MODE, "sqlite");
   assert.ok(!JSON.stringify(job).includes("secrets."));
   const commands = job.steps.flatMap(step => step.run ? [step.run] : []);
   const build = commands.find(command => command.includes("run-electron-builder.cjs"));
   assert.match(build, /--mac dmg --\$\{\{ matrix.arch \}\} --publish never$/);
   assert.ok(commands.indexOf("pnpm stage:desktop") < commands.indexOf(build));
+  const signatureCheck = job.steps.find(step => step.run?.startsWith("codesign --verify"));
+  assert.match(signatureCheck?.run ?? "", /--deep --strict.*mac-arm64\/Biz Novel Studio\.app/);
+  assert.ok(job.steps.indexOf(signatureCheck) > job.steps.findIndex(step => step.run === build));
   assert.ok(!commands.some(command => /--publish always|publish:desktop|trigger-desktop-release/.test(command)));
   const upload = job.steps.find(step => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.ok(job.steps.indexOf(signatureCheck) < job.steps.indexOf(upload));
   assert.equal(upload.with["if-no-files-found"], "error");
   assert.match(upload.with.path, /desktop\/build\/dist\/\*\.dmg/);
   assert.match(upload.with.name, /steps.version.outputs.version.*matrix.arch.*github.sha/);

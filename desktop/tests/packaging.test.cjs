@@ -5,11 +5,13 @@ const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const { createRequire } = require("node:module");
+const { execFileSync } = require("node:child_process");
 const builderRequire = createRequire(require.resolve("electron-builder/package.json", { paths: [path.resolve(__dirname, "..")] }));
 const { validateConfiguration } = builderRequire("app-builder-lib/out/util/config/config");
 const { Arch } = builderRequire("builder-util");
 const asar = builderRequire("@electron/asar");
 const verifyNative = require("../scripts/packaging/verify-native-runtime.cjs");
+const verifyMacSignature = require("../scripts/packaging/verify-mac-signature.cjs");
 const { normalizeBuildEnvironment } = require("../scripts/run-electron-builder.cjs");
 const { stagedRebuildOptions } = require("../scripts/packaging/rebuild-native.cjs");
 
@@ -18,7 +20,9 @@ test("builder schema accepts DMG/AppImage and preserves Windows targets", async 
   await validateConfiguration(config, { debug: () => {} });
   assert.deepEqual(config.win.target.map(target => target.target), ["nsis", "portable"]);
   assert.deepEqual(config.mac.target, [{ target: "dmg", arch: ["x64", "arm64"] }]);
-  assert.equal(config.mac.identity, null);
+  assert.equal(config.mac.identity, "-");
+  assert.equal(config.mac.forceCodeSigning, true);
+  assert.equal(config.afterSign, "./scripts/packaging/verify-mac-signature.cjs");
   assert.deepEqual(config.linux.target, [{ target: "AppImage", arch: ["x64"] }]);
   assert.equal(config.npmRebuild, false);
   assert.match(config.beforePack, /rebuild-native/);
@@ -26,6 +30,36 @@ test("builder schema accepts DMG/AppImage and preserves Windows targets", async 
   assert.throws(() => normalizeBuildEnvironment({ AI_NOVEL_RELEASE_CHANNEL: "release" }, ["--win"]), /signing/);
   assert.equal(normalizeBuildEnvironment({ AI_NOVEL_RELEASE_CHANNEL: "release" }, ["--mac"]).AI_NOVEL_RELEASE_CHANNEL, "release");
   assert.equal(normalizeBuildEnvironment({ AI_NOVEL_RELEASE_CHANNEL: "release" }, ["--linux"]).AI_NOVEL_RELEASE_CHANNEL, "release");
+});
+
+test("Mac signature verification rejects unsealed and modified bundles", { skip: process.platform !== "darwin" }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "anw-mac-signature-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const appPath = path.join(root, "Fixture.app");
+  const contents = path.join(appPath, "Contents");
+  fs.mkdirSync(path.join(contents, "MacOS"), { recursive: true });
+  fs.mkdirSync(path.join(contents, "Resources"), { recursive: true });
+  fs.copyFileSync("/bin/echo", path.join(contents, "MacOS", "Fixture"));
+  fs.writeFileSync(path.join(contents, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.ai-novel.signature-fixture</string>
+  <key>CFBundleExecutable</key><string>Fixture</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>`);
+  const resource = path.join(contents, "Resources", "fixture.txt");
+  fs.writeFileSync(resource, "original resource");
+  const context = { appOutDir: root, electronPlatformName: "darwin", packager: { appInfo: { productFilename: "Fixture" } } };
+  await assert.rejects(verifyMacSignature(context), /signature verification failed/);
+  execFileSync("/usr/bin/codesign", ["--force", "--sign", "-", appPath], { stdio: "pipe" });
+  await verifyMacSignature(context);
+  fs.writeFileSync(resource, "modified resource");
+  await assert.rejects(verifyMacSignature(context), /signature verification failed/);
+});
+
+test("Mac signature verification leaves Windows and Linux packaging alone", async () => {
+  for (const electronPlatformName of ["win32", "linux"]) {
+    await verifyMacSignature({ electronPlatformName });
+  }
 });
 
 function binary(platform, arch) {
