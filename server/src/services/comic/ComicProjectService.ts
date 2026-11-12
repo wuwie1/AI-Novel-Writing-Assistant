@@ -6,6 +6,7 @@
  * （由 CI 守卫 comicDecoupling.test.js 强制）。
  */
 import { prisma } from "../../db/prisma";
+import { deleteComicProjectWithBackup } from "./lifecycle";
 import { adaptationSourceRegistry } from "../adaptation/source/SourceContentPort";
 import { novelSourceAdapter } from "../adaptation/source/NovelSourceAdapter";
 import type { AdaptationSourceType, SourceBundle, SourceRef } from "../adaptation/contracts/sourceBundle";
@@ -106,7 +107,7 @@ export class ComicProjectService {
   }
 
   async deleteProject(projectId: string) {
-    return prisma.comicProject.delete({ where: { id: projectId } });
+    return deleteComicProjectWithBackup(projectId);
   }
 
   /**

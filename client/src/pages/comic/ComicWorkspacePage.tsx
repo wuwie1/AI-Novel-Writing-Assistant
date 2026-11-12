@@ -10,9 +10,11 @@ import {
   Plus,
   Sparkles,
   SquareStack,
+  Trash2,
 } from "lucide-react";
 import {
   createComicProject,
+  deleteComicProject,
   importComicSourceBundle,
   listComicProjects,
   type ComicProject,
@@ -25,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import SelectControl from "@/components/common/SelectControl";
 
@@ -231,10 +234,14 @@ function ProjectCard({
   project,
   busyId,
   onImport,
+  onDelete,
+  deleting,
 }: {
   project: ComicProject;
   busyId: string;
   onImport: (p: ComicProject) => void;
+  onDelete: (p: ComicProject) => void;
+  deleting: boolean;
 }) {
   const busy = busyId === project.id;
   return (
@@ -253,6 +260,10 @@ function ProjectCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="ghost" className="order-last text-destructive hover:text-destructive"
+          disabled={busy || deleting} onClick={() => onDelete(project)} aria-label={`删除项目：${project.title}`}>
+          <Trash2 className="h-4 w-4" />删除项目
+        </Button>
         <Button asChild type="button" size="sm">
           <Link to={`/comic/projects/${project.id}`}>
             打开工作台
@@ -264,7 +275,7 @@ function ProjectCard({
             type="button"
             size="sm"
             variant="outline"
-            disabled={busy}
+            disabled={busy || deleting}
             onClick={() => onImport(project)}
           >
             <Layers3 className="h-4 w-4" />
@@ -509,6 +520,16 @@ export default function ComicWorkspacePage() {
   const navigate = useNavigate();
   const [showWizard, setShowWizard] = useState(false);
   const [busyId, setBusyId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ComicProject | null>(null);
+  const deleteMut = useMutation({
+    mutationFn: deleteComicProject,
+    onSuccess: async (_data, id) => {
+      setDeleteTarget(null);
+      queryClient.setQueryData<ComicProject[]>(["comic", "projects"], previous => previous?.filter(project => project.id !== id));
+      await queryClient.invalidateQueries({ queryKey: ["comic"] });
+      toast.success("漫画项目及关联内容已删除");
+    },
+  });
 
   const { data: projects = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["comic", "projects"],
@@ -579,9 +600,29 @@ export default function ComicWorkspacePage() {
             project={proj}
             busyId={busyId}
             onImport={(p) => importMut.mutate(p.id)}
+            onDelete={(p) => { deleteMut.reset(); setDeleteTarget(p); }}
+            deleting={deleteMut.isPending}
           />
         ))}
       </div>
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleteMut.isPending) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除漫画项目「{deleteTarget?.title}」？</DialogTitle>
+            <DialogDescription>
+              将删除此项目的导入内容、话数、分格脚本、角色、场景、图片及导出文件。原小说和其他漫画项目会保留。删除后无法在工作台恢复。
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMut.isError && <p role="alert" className="text-sm text-destructive">{deleteMut.error.message}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={deleteMut.isPending} onClick={() => setDeleteTarget(null)}>取消</Button>
+            <Button type="button" variant="destructive" disabled={deleteMut.isPending || !deleteTarget}
+              onClick={() => { if (deleteTarget && !deleteMut.isPending) deleteMut.mutate(deleteTarget.id); }}>
+              {deleteMut.isPending ? "删除中…" : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
