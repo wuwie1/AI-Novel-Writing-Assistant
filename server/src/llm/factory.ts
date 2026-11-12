@@ -1,3 +1,4 @@
+import { assertModelPurpose, usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
 import { loadCapability } from "./compatibility";
 import {attachLLMCacheRequestPolicy,resolveCacheCapability} from "../platform/llm/cache";
 import {attachExecutionSignal,assertLlmExecutionConfiguration,attachLlmExecutionPolicy,resolveScopedTaskOutputTokens} from "../platform/llm/execution";
@@ -290,6 +291,8 @@ export async function resolveLLMClientOptions(
     throw new Error(`未配置 ${providerName} 的默认模型。`);
   }
 
+  assertModelPurpose(model, "text");
+
   const baseURL = resolveProviderBaseUrl(
     resolvedProvider,
     options.baseURL ?? dbSecret?.baseURL,
@@ -306,7 +309,7 @@ export async function resolveLLMClientOptions(
   const timeoutMs = normalizeOptionalTimeoutMs(options.timeoutMs);
   const concurrencyLimit = normalizeLimitValue(dbSecret?.concurrencyLimit);
   const requestIntervalMs = normalizeLimitValue(dbSecret?.requestIntervalMs);
-  const requestProtocol = options.requestProtocol === "anthropic" && !isOfficialOpenAIBaseUrl(baseURL)
+  const requestProtocol = options.requestProtocol === "anthropic" && !isOfficialOpenAIBaseUrl(baseURL) && !usesLocalProxy(baseURL)
     ? "anthropic"
     : "openai_compatible";
   const structuredStrategy = options.structuredStrategy;

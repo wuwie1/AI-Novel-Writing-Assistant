@@ -1,3 +1,4 @@
+import { usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
 import { ChatOpenAI, ChatOpenAICompletions, type ChatOpenAIFields } from "@langchain/openai";
 import { isOfficialOpenAIBaseUrl } from "../providers";
 
@@ -21,7 +22,9 @@ export function usesOpenAIReasoningByDefault(model: string): boolean {
 export function createOpenAICompatibleChat(
   fields: ChatOpenAIFields & { model: string; configuration: { baseURL: string } },
 ): ChatOpenAI {
-  if (!isOfficialOpenAIBaseUrl(fields.configuration.baseURL)) {
+  const openAIParameters = isOfficialOpenAIBaseUrl(fields.configuration.baseURL)
+    || (usesLocalProxy(fields.configuration.baseURL) && /^(?:gpt-[3456](?:[.-]|$)|o[134](?:[.-]|$))/i.test(fields.model));
+  if (!openAIParameters) {
     return new ChatOpenAI(fields);
   }
   const effort = fields.modelKwargs?.reasoning_effort ?? fields.reasoning?.effort;

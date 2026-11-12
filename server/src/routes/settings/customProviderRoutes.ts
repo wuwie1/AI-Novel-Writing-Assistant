@@ -1,3 +1,4 @@
+import { defaultTextModel, modelPurposeError } from "@ai-novel/shared/utils/modelConnection/index";
 import { probeIfEnabled } from "../../llm/compatibility/probing";
 import type { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
@@ -132,7 +133,7 @@ export function registerCustomProviderRoutes(router: Router): void {
           success: true,
           data: {
             models,
-            defaultModel: models[0] ?? "",
+            defaultModel: defaultTextModel(models) ?? "",
           },
           message: `已获取 ${models.length} 个模型。`,
         } satisfies ApiResponse<{
@@ -155,6 +156,8 @@ export function registerCustomProviderRoutes(router: Router): void {
     async (req, res, next) => {
       try {
         const body = req.body as z.infer<typeof createCustomProviderSchema>;
+        const purposeError = modelPurposeError(body.model, "text") ?? modelPurposeError(body.imageModel, "image");
+        if (purposeError) throw new AppError(purposeError, 400);
         const provider = await ensureUniqueCustomProviderId(body.name);
         const apiKey = normalizeOptionalText(body.key);
         const baseURL = body.baseURL.trim();
@@ -168,7 +171,7 @@ export function registerCustomProviderRoutes(router: Router): void {
 
         try {
           models = await refreshProviderModels(provider, apiKey, baseURL, authMode);
-          model = model ?? models[0];
+          model = model ?? defaultTextModel(models);
         } catch (error) {
           if (!model) {
             const detail = error instanceof Error ? `：${error.message}` : "。";
@@ -176,6 +179,8 @@ export function registerCustomProviderRoutes(router: Router): void {
           }
           message = "自定义厂商已创建，但模型列表刷新失败。可以稍后在厂商卡片中刷新。";
         }
+
+        if (!model) throw new AppError("请选择或手动填写支持文本对话的模型；模型列表中未找到已确认的文本模型。", 400);
 
         const data = await secretStore.createProvider(provider, {
           displayName: body.name.trim(),

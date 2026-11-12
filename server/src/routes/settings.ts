@@ -1,3 +1,4 @@
+import { modelPurposeError } from "@ai-novel/shared/utils/modelConnection/index";
 import { registerInvocationHistoryRoutes } from "./settings/invocationHistoryRoutes";
 import { registerModelCompatibilityRoutes } from "../llm/compatibility/http";
 import { probeIfEnabled } from "../llm/compatibility/probing";
@@ -611,6 +612,8 @@ router.put(
     try {
       const { provider } = req.params as z.infer<typeof providerSchema>;
       const body = req.body as z.infer<typeof upsertApiKeySchema>;
+      const purposeError = modelPurposeError(body.model, "text") ?? modelPurposeError(body.imageModel, "image");
+      if (purposeError) throw new AppError(purposeError, 400);
       const existing = await secretStore.getProvider(provider);
       const existingRecord = existing as APIKeyRecordLike | null;
       if (!isBuiltInProvider(provider) && !existing) {

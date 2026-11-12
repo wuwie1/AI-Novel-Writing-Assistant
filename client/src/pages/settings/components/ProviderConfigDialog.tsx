@@ -1,3 +1,4 @@
+import { modelModality, modelPurposeError } from "@ai-novel/shared/utils/modelConnection/index";
 import type { Dispatch, SetStateAction } from "react";
 import { Bot, Image, KeyRound, Link2, SlidersHorizontal } from "lucide-react";
 import type { APIKeyStatus } from "@/api/settings";
@@ -68,14 +69,17 @@ export default function ProviderConfigDialog({
   deleteDisabled,
   deleteLabel,
 }: ProviderConfigDialogProps) {
-  const primaryModelLabel = isCreatingCustomProvider ? "默认模型（可选）" : isCustomDialog ? "默认模型" : "模型名称";
-  const canSelectListedModels = selectableModels.length > 0;
-  const imageModelOptions = editingConfig?.imageModels ?? [];
+  const textError = modelPurposeError(form.model, "text");
+  const imageError = modelPurposeError(form.imageModel, "image");
+  const textModels = selectableModels.filter(model => !modelPurposeError(model, "text"));
+  const primaryModelLabel = "文本模型";
+  const canSelectListedModels = textModels.length > 0;
+  const imageModelOptions = [...new Set([...(editingConfig?.imageModels ?? []), ...selectableModels.filter(model => modelModality(model) === "image")])].filter(model => !modelPurposeError(model, "image"));
   const canSelectImageModels = imageModelOptions.length > 0;
   const modelGuidance = editingConfig?.provider === "deepseek"
     ? "推荐使用 DeepSeek Flash，兼顾中文长篇质量与响应速度；也可以选择其他可用模型。"
     : isCreatingCustomProvider
-      ? "获取模型列表后会自动填入第一个可用模型；接口不返回列表时，可以手动填写。"
+      ? "获取模型列表后优先填入已识别的文本模型；自定义别名请手动选择并测试连接。"
       : editingConfig?.kind === "custom" && !canSelectListedModels
         ? "可点击厂商卡片的“刷新模型”获取列表，也可以手动填写默认模型。"
         : "如果列表里没有目标模型，可以手动输入。";
@@ -88,7 +92,7 @@ export default function ProviderConfigDialog({
           : isCreatingCustomProvider ? "新增自定义厂商" : isCustomDialog ? "编辑自定义厂商" : "配置模型厂商"}
         footer={(
           <>
-            <Button className="w-full sm:w-auto" onClick={onSubmit} disabled={submitDisabled}>
+            <Button className="w-full sm:w-auto" onClick={onSubmit} disabled={submitDisabled || Boolean(textError || imageError)}>
               {submitLabel}
             </Button>
 
@@ -96,7 +100,7 @@ export default function ProviderConfigDialog({
               variant="secondary"
               className="w-full sm:w-auto"
               onClick={onTest}
-              disabled={testDisabled}
+              disabled={testDisabled || Boolean(textError) || !form.model.trim()}
             >
               测试连接
             </Button>
@@ -221,11 +225,11 @@ export default function ProviderConfigDialog({
 
           {canSelectListedModels ? (
             <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">可用模型</div>
+              <div className="text-xs text-muted-foreground">可用文本模型</div>
               <SearchableSelect
                 value={form.model}
                 onValueChange={(value) => setForm((prev) => ({ ...prev, model: value }))}
-                options={selectableModels.map((model) => ({ value: model }))}
+                options={textModels.map((model) => ({ value: model, label: modelModality(model) === "unknown" ? `${model}（能力待确认）` : model }))}
                 placeholder="选择模型"
                 searchPlaceholder="搜索模型"
                 emptyText="没有可用模型"
@@ -243,7 +247,9 @@ export default function ProviderConfigDialog({
             onChange={(event) => setForm((prev) => ({ ...prev, model: event.target.value }))}
           />
 
-          <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+          {textError ? <p role="alert" className="text-sm text-destructive">{textError}</p> : form.model.trim() && modelModality(form.model) === "unknown" ? <p className="text-xs text-muted-foreground">模型能力尚未确认，请确认支持文本对话并测试连接。</p> : null}
+
+          <div className="space-y-3 rounded-xl bg-muted/20 p-4">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Image className="h-3.5 w-3.5" /> 图像模型（可选）</div>
               <div className="text-xs text-muted-foreground">
@@ -268,11 +274,13 @@ export default function ProviderConfigDialog({
               onChange={(event) => setForm((prev) => ({ ...prev, imageModel: event.target.value }))}
             />
             <div className="text-xs text-muted-foreground">
-              图片生成会调用这个厂商的 OpenAI 兼容图像接口。
+              图片生成会调用这个厂商的 OpenAI 兼容图像接口；文本连接测试不验证图片生成。
             </div>
           </div>
 
-          <div className="rounded-xl border border-dashed bg-muted/10 p-4">
+          {imageError ? <p role="alert" className="text-sm text-destructive">{imageError}</p> : form.imageModel.trim() && modelModality(form.imageModel) === "unknown" ? <p className="text-xs text-muted-foreground">模型能力尚未确认，请向服务商确认支持图像生成接口。</p> : null}
+
+          <div className="rounded-xl bg-muted/10 p-4">
             <div className="mb-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><SlidersHorizontal className="h-3.5 w-3.5" /> 请求限制</div>
             <ProviderRequestLimitFields
               concurrencyLimit={form.concurrencyLimit}

@@ -1,3 +1,4 @@
+import { usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import type { LLMProvider, ProviderAuthMode } from "@ai-novel/shared/types/llm";
@@ -67,13 +68,13 @@ function toErrorMessage(error: unknown): string {
     return "连接测试失败。";
   }
   if (/fetch failed|connection error|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(raw)) {
-    return "无法连接到模型服务。请确认网络可用、服务地址正确，本机服务（如 Ollama）已启动。";
+    return `无法连接到模型服务。请确认网络可用、服务地址正确，本机服务（如 Ollama）已启动。原始错误：${raw}`;
   }
   return raw;
 }
 
 function getProtocolCandidates(baseURL: string, preferred?: ModelRouteRequestProtocol): ModelRouteRequestProtocol[] {
-  if (isOfficialOpenAIBaseUrl(baseURL)) {
+  if (isOfficialOpenAIBaseUrl(baseURL) || usesLocalProxy(baseURL)) {
     return ["openai_compatible"];
   }
   if (preferred === "openai_compatible" || preferred === "anthropic") {
@@ -219,20 +220,22 @@ async function testConnection(input: {
 
   const protocols = getProtocolCandidates(target.baseURL, input.requestProtocol);
   // A reasoning model's output limit includes tokens spent before the visible reply.
-  const reasoningProbe = isOfficialOpenAIBaseUrl(target.baseURL) && usesOpenAIReasoningByDefault(target.model);
+  const reasoningProbe = (isOfficialOpenAIBaseUrl(target.baseURL) || usesLocalProxy(target.baseURL)) && usesOpenAIReasoningByDefault(target.model);
   let plain: ConnectivityProbeStatus | null = null;
   let structured: StructuredConnectivityProbeStatus | null = null;
   if (probeMode !== "structured") {
     for (const requestProtocol of protocols) {
-      plain = await testPlainConnection(target, requestProtocol, reasoningProbe ? 256 : 16);
-      if (plain.ok) break;
+      const attempt = await testPlainConnection(target, requestProtocol, reasoningProbe ? 256 : 16);
+      if (!plain || attempt.ok) plain = attempt;
+      if (attempt.ok) break;
     }
   }
   if (probeMode !== "plain") {
     for (const requestProtocol of protocols) {
       for (const format of getStructuredFormatCandidates({ ...target, requestProtocol, preferred: input.structuredResponseFormat })) {
-        structured = await testStructuredConnection(target, requestProtocol, format, reasoningProbe ? 512 : 256);
-        if (structured.ok) break;
+        const attempt = await testStructuredConnection(target, requestProtocol, format, reasoningProbe ? 512 : 256);
+        if (!structured || attempt.ok) structured = attempt;
+        if (attempt.ok) break;
       }
       if (structured?.ok) break;
     }

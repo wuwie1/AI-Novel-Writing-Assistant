@@ -1,3 +1,4 @@
+import { assertModelPurpose } from "@ai-novel/shared/utils/modelConnection/index";
 import {executionSignal} from "../../platform/runtime/execution";
 import fs from "fs/promises";
 import path from "path";
@@ -210,6 +211,7 @@ export async function resolveImageModel(provider: LLMProvider, model?: string): 
   if (!resolved) {
     throw new Error(`No default image model configured for provider=${provider}.`);
   }
+  assertModelPurpose(resolved, "image");
   return resolved;
 }
 

@@ -5,6 +5,10 @@ const { llmConnectivityService } = require("../dist/llm/connectivity");
 const { setProviderSecretCache } = require("../dist/llm/factory");
 
 function configure(t, provider, baseURL) {
+  const findMany = prisma.appSetting.findMany, findUnique = prisma.appSetting.findUnique;
+  prisma.appSetting.findMany = async () => [];
+  prisma.appSetting.findUnique = async () => null;
+  t.after(() => { prisma.appSetting.findMany = findMany; prisma.appSetting.findUnique = findUnique; });
   setProviderSecretCache(provider, { key: "test-key", model: "gpt-6.1-sol", baseURL });
   t.after(() => setProviderSecretCache(provider, null));
   const createUsage = prisma.llmInvocationUsageRecord.create;
@@ -74,4 +78,53 @@ test("an OpenAI provider with a saved gateway can still discover the Anthropic p
   assert.equal(result.plain.ok, true, result.error);
   assert.equal(result.requestProtocol, "anthropic");
   assert.deepEqual(paths, ["/v1/chat/completions", "/v1/messages"]);
+});
+
+test("local tunnel stays on OpenAI even with an Anthropic preference and preserves upstream errors", async (t) => {
+  configure(t, "custom_local", "http://127.0.0.1:14000/v1/");
+  const paths = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    paths.push(new URL(url).pathname);
+    return Response.json({error: {message: "Original upstream error: insufficient_quota", code: "insufficient_quota"}}, {status: 429});
+  });
+  const result = await llmConnectivityService.testConnection({provider: "custom_local", requestProtocol: "anthropic", probeMode: "both"});
+  assert.equal(result.ok, false);
+  assert.equal(result.plain.requestProtocol, "openai_compatible");
+  assert.equal(result.structured.requestProtocol, "openai_compatible");
+  assert.match(result.error, /Original upstream error: insufficient_quota/);
+  assert.match(result.structured.error, /Original upstream error: insufficient_quota/);
+  assert.ok(paths.length >= 2);
+  assert.ok(paths.every(path => path === "/v1/chat/completions"));
+});
+
+test("failed automatic protocol discovery keeps the first error", async (t) => {
+  configure(t, "custom_errors", "https://gateway.example/v1");
+  t.mock.method(globalThis, "fetch", async (url) => new URL(url).pathname.endsWith("/messages")
+    ? new Response("Not Found", {status: 404})
+    : Response.json({error: {message: "Original model permission denied"}}, {status: 403}));
+  const result = await llmConnectivityService.testConnection({provider: "custom_errors", probeMode: "plain"});
+  assert.match(result.error, /Original model permission denied/);
+  assert.equal(result.requestProtocol, "openai_compatible");
+});
+
+test("historical image-as-text configuration fails before any network request", async (t) => {
+  configure(t, "custom_bad_model", "http://127.0.0.1:14000/v1");
+  const fetch = t.mock.method(globalThis, "fetch", async () => { throw new Error("must not call network"); });
+  const result = await llmConnectivityService.testConnection({provider: "custom_bad_model", model: "gpt-image-2", probeMode: "both"});
+  assert.match(result.error, /不支持文本对话/);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test("local OpenAI reasoning model can complete a streamed test with compatible parameters", async (t) => {
+  configure(t, "custom_local_success", "http://127.0.0.1:14000/v1");
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    const body = JSON.parse(init.body);
+    assert.equal(new URL(url).pathname, "/v1/chat/completions");
+    assert.equal(body.temperature, undefined);
+    assert.equal(body.max_tokens, undefined);
+    assert.ok(body.max_completion_tokens >= 256);
+    return new Response('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', {headers:{"content-type":"text/event-stream"}});
+  });
+  const result = await llmConnectivityService.testConnection({provider:"custom_local_success", probeMode:"plain"});
+  assert.equal(result.ok, true, result.error);
 });

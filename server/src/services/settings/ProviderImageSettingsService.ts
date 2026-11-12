@@ -1,3 +1,4 @@
+import { assertModelPurpose } from "@ai-novel/shared/utils/modelConnection/index";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 
@@ -150,6 +151,7 @@ export async function saveProviderImageModel(
   }
 
   const normalized = normalizeOptionalText(imageModel);
+  assertModelPurpose(normalized, "image");
 
   try {
     if (!normalized) {

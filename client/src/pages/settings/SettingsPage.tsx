@@ -1,3 +1,4 @@
+import { defaultTextModel, modelPurposeError } from "@ai-novel/shared/utils/modelConnection/index";
 import { EntityDirectory, useDirectorySelection } from "@/platform";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -197,7 +198,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
       setPreviewModelsResult(response.message ?? `已获取 ${models.length} 个模型。`);
       setForm((prev) => ({
         ...prev,
-        model: prev.model.trim() || models[0] || "",
+        model: prev.model.trim() || defaultTextModel(models) || "",
       }));
     },
     onError: (error) => {
@@ -448,6 +449,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
 
   const isSavingProvider = saveMutation.isPending || createCustomProviderMutation.isPending;
   const providerSubmitDisabled = isSavingProvider
+    || Boolean(modelPurposeError(form.model, "text") || modelPurposeError(form.imageModel, "image"))
     || previewCustomProviderModelsMutation.isPending
     || (!isCreatingCustomProvider && !form.model.trim())
     || (isCustomDialog && !form.displayName.trim())
