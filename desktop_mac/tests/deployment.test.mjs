@@ -90,3 +90,8 @@ test('isolated deployment backup, maintenance and every artifact switch rollback
   const result = spawnSync('python3', [fileURLToPath(new URL('./deployment_cases.py', import.meta.url))], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
+
+test('post-deployment retention preserves verified recovery and refuses unsafe cleanup', () => {
+  const result = spawnSync('python3', ['-B', fileURLToPath(new URL('./deployment_retention_cases.py', import.meta.url))], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});

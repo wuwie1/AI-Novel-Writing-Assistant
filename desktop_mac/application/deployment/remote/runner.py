@@ -4,9 +4,10 @@ def run_remote(payload):
         info = inspect_deployment(payload)
         emit('inspection', current=info['old'], candidate=info['sha'], known=info['known'], differences=info['differences'], checks=info['checks'], artifacts=list(ARTIFACTS), protected=list(PROTECTED), database=str(info['db']), assets=[str(item) for item in info['assets']])
         check_quiescence(payload, info)
-        emit('dry_run', candidate=info['sha'], verified=not info['checks'], steps=['核对提交、任务状态与产物', '同版本校验通过后重启', '版本变化时按构建输入准备候选，留存上一版并备份数据', '重启并验收网页、健康接口和小说读取'])
+        emit('dry_run', candidate=info['sha'], verified=not info['checks'], steps=['核对提交、任务状态与产物', '同版本校验通过后重启', '版本变化时按构建输入准备候选，留存上一版并备份数据', '重启并验收网页、健康接口和小说读取', '成功后校验并保留当前与上一版本备份，清理无引用的历史部署产物'])
         return 0
     timings = DeploymentTimings()
+    batch = None
     try:
         root = pathlib.Path(payload['config']['serverDir']).resolve(strict=True)
         if not (root / '.runtime').is_dir():
@@ -25,6 +26,7 @@ def run_remote(payload):
                 prefix = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + info['sha'][:12] + '-'
                 batch = pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir=deployments))
                 timings.batch = batch
+                write_json(batch / 'transaction.json', dict(phase='preparing', old=info['old'], sha=info['sha'], branch=info['branch']))
                 record_path = root / '.runtime/deployment.json'
                 previous = json.loads(record_path.read_text()) if record_path.is_file() else {}
             with timings.stage('verify-live'):
@@ -52,7 +54,21 @@ def run_remote(payload):
                         raise Refused('准备期间部署基线或服务状态变化，请重新执行')
                     if plan['mode'] != 'restart' and live_artifacts(root, file_hashes) != installed:
                         raise Refused('准备期间线上产物发生变化，请核对后重新执行')
-                return switch_transaction(payload, info, batch, candidate, manifest, previous, timings)
+                result = switch_transaction(payload, info, batch, candidate, manifest, previous, timings)
+                if result == 0:
+                    cleanup_after_success(info, batch, timings)
+                return result
+    except Exception as error:
+        # A normal build/preflight refusal is terminal and can be pruned after a later
+        # successful release. Interrupted/unknown transactions still block the next run.
+        if batch is not None and not isinstance(error, (InterruptedError, subprocess.TimeoutExpired)):
+            journal_path = batch / 'transaction.json'
+            if journal_path.is_file():
+                journal = json.loads(journal_path.read_text())
+                if journal.get('phase') == 'preparing':
+                    journal['phase'] = 'aborted'
+                    write_json(journal_path, journal)
+        raise
     finally:
         timings.finish()
 

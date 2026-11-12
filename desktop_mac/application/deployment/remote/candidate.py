@@ -168,6 +168,11 @@ def prepare_candidate(info, batch, validation, plan, installed, toolchain, timin
             else:
                 candidate = batch / 'candidate'
                 os.rename(copied, candidate)
+                evidence = pathlib.Path(proof['evidence'])
+                if evidence == path.parent / 'build.log' and evidence.is_file() and not evidence.is_symlink():
+                    shutil.copyfile(evidence, batch / 'build.log')
+                    (batch / 'build.log').chmod(0o600)
+                    proof = dict(proof, evidence=str(batch / 'build.log'))
                 manifest['validation'] = str(batch / 'validation.json')
                 write_json(batch / 'validation.json', proof)
                 write_json(batch / 'candidate-manifest.json', manifest)

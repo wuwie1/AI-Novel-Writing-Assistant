@@ -13,7 +13,7 @@ CODE = pathlib.Path(__file__).resolve().parents[1] / 'application/deployment/rem
 
 def module():
     result = types.ModuleType('deployment_fixture')
-    for name in ('common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'):
+    for name in ('common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'retention.py', 'runner.py'):
         exec(compile((CODE / name).read_text(), str(CODE / name), 'exec'), result.__dict__)
     result.emit = lambda *a, **k: None
     return result
@@ -180,7 +180,8 @@ class DeploymentTests(unittest.TestCase):
             m.write_json(prior / 'transaction.json', dict(phase='aborted', sha='B', old='A', movedOld=[], installed=[]))
             manifest = dict(sha='B', mode='incremental', artifacts=[slot], hashes={slot:digest},
                             baselineHashes=baseline, toolchain='v1')
-            proof = dict(sha='B', ref='origin/ai', evidence='real previous candidate log', passed=list(m.VALIDATION_CHECKS))
+            (prior / 'build.log').write_text('real previous candidate log')
+            proof = dict(sha='B', ref='origin/ai', evidence=str(prior / 'build.log'), passed=list(m.VALIDATION_CHECKS))
             m.write_json(prior / 'candidate-manifest.json', manifest)
             m.write_json(prior / 'validation.json', proof)
             m.build_candidate = Mock(return_value=(None, {}))
@@ -191,7 +192,9 @@ class DeploymentTests(unittest.TestCase):
                                            change.get('inputs', baseline), change.get('tools', 'v1'), m.DeploymentTimings())
             staged, record = attempt('matching')
             self.assertEqual(m.artifact_digest(staged / slot), digest)
-            self.assertEqual(json.loads(pathlib.Path(record['validation']).read_text()), proof)
+            self.assertEqual(json.loads(pathlib.Path(record['validation']).read_text()),
+                             dict(proof, evidence=str(root / 'matching/build.log')))
+            self.assertEqual((root / 'matching/build.log').read_text(), 'real previous candidate log')
             m.build_candidate.assert_not_called()
             external = dict(proof, evidence='same-commit CI checks')
             m.write_json(prior / 'validation.json', dict(proof, externalValidation=external))
@@ -311,6 +314,7 @@ class DeploymentTests(unittest.TestCase):
         m.remote_lock = lambda *_: self.fail('dry-run acquired remote lock')
         m.build_candidate = lambda *_: self.fail('dry-run built artifacts')
         m.backup_snapshot = lambda *_: self.fail('dry-run wrote a backup')
+        m.cleanup_after_success = lambda *_: self.fail('dry-run removed backups')
         self.assertEqual(m.run_remote(dict(dryRun=True)), 0)
 
     def test_candidate_requires_pinned_local_commit_without_remote_lookup(self):
@@ -348,6 +352,7 @@ class DeploymentTests(unittest.TestCase):
                 m.check_quiescence = Mock()
                 m.backup_snapshot = Mock()
                 m.switch_transaction = Mock(return_value=0)
+                m.cleanup_after_success = Mock()
                 m.live_artifacts = Mock(return_value={})
                 m.runtime_toolchain = Mock(return_value={})
                 m.check_build_space = Mock()
@@ -393,9 +398,14 @@ class DeploymentTests(unittest.TestCase):
                     self.assertEqual(list(root.rglob('validation.json')), [])
                     m.backup_snapshot.assert_not_called()
                     m.switch_transaction.assert_not_called()
+                    m.cleanup_after_success.assert_not_called()
+                    journals = list(root.glob('.runtime/desktop_mac-deploy/*/transaction.json'))
+                    self.assertEqual(len(journals), 1)
+                    self.assertEqual(json.loads(journals[0].read_text())['phase'], 'aborted')
                 else:
                     self.assertEqual(m.run_remote(payload), 0)
                     m.switch_transaction.assert_called_once()
+                    m.cleanup_after_success.assert_called_once()
                     record = json.loads(next(root.rglob('validation.json')).read_text())
                     m.require_validation_record(record, info['sha'], info['ref'])
                     self.assertIn('targeted-tests', steps)

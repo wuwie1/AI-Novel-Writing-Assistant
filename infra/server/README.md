@@ -134,6 +134,7 @@ bash infra/server/tunnel.sh stop
 
 ## 更新与排查
 
+- `make server_update` 成功后自动保留当前和上一版本必要的恢复资料，校验后清理无引用的历史部署备份及构建产物。清理范围仅为 `.runtime/desktop_mac-deploy`；手工备份、专项维护备份和业务数据保留。清理失败不会回滚已正常运行的版本，按终端 `cleanup_warning` 和批次 `cleanup.json` 核实原因。
 - 更新前记录部署提交、检查磁盘空间并备份数据库和资产。运行中的 SQLite 用 SQLite backup API 获取一致快照，验证 `PRAGMA integrity_check`；不要只复制正在写入的单个 `.db`。
 - 源码、依赖和构建产物可以重建；`data`、`server/storage`、`server/.env` 必须保留。应先完成构建，再安排服务重启；迁移和恢复不能隐藏在 start/restart 脚本里。
 - 健康接口成功只代表进程可访问。还要读小说列表等数据库接口，确认数据访问正常；实际 AI 生成需用户配置模型后验收。

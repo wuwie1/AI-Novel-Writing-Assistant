@@ -48,7 +48,7 @@ export async function runDeployment({ repoRoot, env = process.env, dryRun = fals
   const config = await loadConfig({ repoRoot, env });
   let validation;
   if (env.DEPLOY_VALIDATION_FILE) validation = JSON.parse(await readFile(env.DEPLOY_VALIDATION_FILE, 'utf8'));
-  const sources = await Promise.all(['common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'runner.py'].map((name) => readFile(path.join(directory, 'remote', name), 'utf8')));
+  const sources = await Promise.all(['common.py', 'inspection.py', 'artifacts.py', 'backup.py', 'candidate.py', 'transaction.py', 'retention.py', 'runner.py'].map((name) => readFile(path.join(directory, 'remote', name), 'utf8')));
   const quiescence = await readFile(path.join(repoRoot, 'desktop_mac/infrastructure/processes/quiescence.mjs'), 'utf8');
   const source = sources.join('\n');
   const deploy = async () => {
