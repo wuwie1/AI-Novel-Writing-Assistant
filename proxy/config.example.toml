@@ -1,0 +1,4 @@
+# 实际模型服务的 OpenAI 兼容 API 根地址；在本机复制为 config.toml。
+# API Key 沿用页面中的厂商配置，由代理透明转发。
+[openai]
+url = "https://api.openai.com/v1"

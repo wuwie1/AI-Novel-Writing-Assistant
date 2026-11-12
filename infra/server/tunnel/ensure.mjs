@@ -5,11 +5,12 @@ import { getRepoPaths, loadConfig } from '../../../desktop_mac/infrastructure/pr
 import { acquireLock, writeState } from '../../../desktop_mac/infrastructure/processes/lock.mjs';
 import { resolveSshEndpoint } from '../../../desktop_mac/infrastructure/transport/ssh-identity.mjs';
 import { localTunnel } from './local.mjs';
+import { localProxyLifecycle, PROXY_PORT } from '../../../proxy/index.mjs';
 
 function alternatePort(config) {
   // Skip ports reserved by the desktop even when its windows are closed.
   const reserved = new Set([config.localApiPort, config.devUiPort, config.appUiPort, config.remoteWebPort,
-    config.maintenanceProbePort, config.qdrantTunnelPort]);
+    config.maintenanceProbePort, config.qdrantTunnelPort, PROXY_PORT]);
   let port = config.tunnelPort;
   do { port = port === 65535 ? 1024 : port + 1; } while (reserved.has(port));
   return port;
@@ -92,6 +93,11 @@ async function main() {
   if (Math.min(config.tunnelPort, config.remoteWebPort, config.qdrantTunnelPort, config.remoteQdrantPort) < 1024) {
     throw new Error('隧道端口需在 1024 到 65535 之间。');
   }
+  if (['start', 'restart'].includes(action)
+    && [config.tunnelPort, config.qdrantTunnelPort, config.remoteWebPort, config.remoteQdrantPort,
+      config.localApiPort, config.appUiPort, config.devUiPort, config.maintenanceProbePort].includes(PROXY_PORT)) {
+    throw new Error(`端口 ${PROXY_PORT} 保留给本机模型代理，请为 Web、Qdrant 和桌面配置其他端口。`);
+  }
   const { lifecycleLock } = getRepoPaths(config.repoRealPath);
   const guard = await acquireLock(lifecycleLock, { repoRealPath: config.repoRealPath, operation: 'ssh_server' });
   try {
@@ -108,11 +114,25 @@ async function main() {
       console.error(error.message);
       process.exitCode = 1;
     }
-    const { url, status } = await ensureQdrantTunnel(config, localTunnel(config, 'qdrant'), action);
-    if (status === 'unavailable') {
-      console.warn(`Qdrant 隧道已连接，管理页尚未就绪。请检查服务器的 Qdrant 服务（端口 ${config.remoteQdrantPort}）。`);
-    } else {
-      console.log(status === 'stopped' ? 'Qdrant 隧道已停止。' : `Qdrant 隧道${message[status]}，管理页 ${url}`);
+    try {
+      const { url, status } = await ensureQdrantTunnel(config, localTunnel(config, 'qdrant'), action);
+      if (status === 'unavailable') {
+        console.warn(`Qdrant 隧道已连接，管理页尚未就绪。请检查服务器的 Qdrant 服务（端口 ${config.remoteQdrantPort}）。`);
+      } else {
+        console.log(status === 'stopped' ? 'Qdrant 隧道已停止。' : `Qdrant 隧道${message[status]}，管理页 ${url}`);
+      }
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
+    // A failed optional forward must not prevent stopping/starting the other owned services.
+    try {
+      const { url, status } = await localProxyLifecycle(config).control(action);
+      if (status === 'unavailable') { console.error('本机模型代理或反向通道尚未就绪。'); process.exitCode = 1; }
+      else console.log(status === 'stopped' ? '本机模型代理及反向通道已停止。' : `本机模型代理${message[status]}，服务端 API 地址 ${url}`);
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
     }
   } finally { await guard.release(); }
 }

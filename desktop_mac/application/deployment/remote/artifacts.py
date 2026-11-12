@@ -80,7 +80,7 @@ def release_plan(info, installed, toolchain, record):
         return dict(mode='restart', slots=[], tests=False, reason='提交、运行工具链和全部产物均已核对')
     affected = set()
     tests = False
-    independent = {'.agents', '.claude', '.github', '.superpowers', 'docs', 'desktop', 'desktop_mac', 'site'}
+    independent = {'.agents', '.claude', '.github', '.superpowers', 'docs', 'desktop', 'desktop_mac', 'site', 'proxy'}
     for path in info['differences']:
         group, _, name = path.partition('/')
         if path == 'desktop/package.json':  # client/vite.config.ts embeds its version.
@@ -92,7 +92,8 @@ def release_plan(info, installed, toolchain, record):
                 tests = True
             else:
                 affected.add(group + '/dist')
-        elif group in independent or ('/' not in path and (path.endswith('.md') or path in ('.gitignore', 'LICENSE', 'NOTICE', 'Makefile'))):
+        elif (group in independent or path.startswith('infra/server/tunnel/') or path in ('infra/server/tunnel.sh', 'infra/server/README.md')
+              or ('/' not in path and (path.endswith('.md') or path in ('.gitignore', 'LICENSE', 'NOTICE', 'Makefile')))):
             continue
         else:
             affected.update(ARTIFACTS)  # Includes lockfiles, install hooks, global TS settings and unknown inputs.

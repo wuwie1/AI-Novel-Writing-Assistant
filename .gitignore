@@ -28,6 +28,7 @@ server/src/prisma/dev.db-journal
 .histyory/
 .logs/
 .runtime/
+proxy/config.toml
 /data/
 /logs/
 .tmp/

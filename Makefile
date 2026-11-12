@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := list
-.PHONY: list dev_app app stop_app restart_app ssh_server server_update
+.PHONY: list dev_app app stop_app restart_app ssh_server ssh_restart_server ssh_stop_server server_update
 
 export APP_MODE LOCAL_API_PORT DEV_UI_PORT APP_UI_PORT TUNNEL_PORT SSH_TARGET
 export REMOTE_WEB_PORT MAINTENANCE_PROBE_PORT SERVER_DIR DEPLOY_REF DRY_RUN DEPLOY_VALIDATION_FILE
@@ -27,9 +27,17 @@ stop_app:
 restart_app:
 	@node desktop_mac/scripts/mac.mjs restart_app
 
-## ssh_server — 建立或恢复 Web 和 Qdrant 隧道，显示两个浏览器地址
+## ssh_server — 启动本机模型代理，建立 Web、Qdrant 和模型反向通道
 ssh_server:
 	@node infra/server/tunnel/ensure.mjs
+
+## ssh_restart_server — 重启本机模型代理及独立 SSH 通道（不重启远端应用）
+ssh_restart_server:
+	@node infra/server/tunnel/ensure.mjs restart
+
+## ssh_stop_server — 关闭本机模型代理及独立 SSH 通道（不停止远端应用）
+ssh_stop_server:
+	@node infra/server/tunnel/ensure.mjs stop
 
 ## server_update — 将当前部署分支的本地提交更新到服务器，并重启 API 和网页服务
 server_update:

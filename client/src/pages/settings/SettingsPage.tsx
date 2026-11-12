@@ -448,7 +448,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     || previewCustomProviderModelsMutation.isPending
     || (!isCreatingCustomProvider && !form.model.trim())
     || (isCustomDialog && !form.displayName.trim())
-    || (isCreatingCustomProvider && !form.baseURL.trim())
+    || (isCustomDialog && !form.baseURL.trim())
     || (!isCustomDialog && editingConfig?.requiresApiKey !== false && !form.key.trim() && !editingConfig?.isConfigured);
   const providerSubmitLabel = isSavingProvider ? "保存中..." : isCreatingCustomProvider ? "创建厂商" : "保存";
 

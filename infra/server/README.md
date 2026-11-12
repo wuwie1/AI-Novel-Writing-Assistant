@@ -107,7 +107,9 @@ tail -F logs/server.log logs/nginx-error.log
 
 ## 本地通道
 
-在本机仓库根目录运行 `make ssh_server`，终端会显示小说助手和 Qdrant 管理页的浏览器地址。两条转发都由 autossh 在后台保持连接。已有 Web 通道时，同一命令可单独补建 Qdrant 通道。退出桌面后两个地址仍可使用。
+在本机仓库根目录运行 `make ssh_server`，终端会显示小说助手和 Qdrant 管理页的浏览器地址，同时启动本机模型代理和反向通道。各条 SSH 转发由 autossh 在后台保持连接。已有 Web 通道时可单独补建其他通道，退出桌面后仍可使用。
+
+首次使用先将 `proxy/config.example.toml` 复制为本机的 `proxy/config.toml`，填写 `openai.url`，并确认本机有 Python 3.11+。模型代理与页面使用固定入口 `http://127.0.0.1:14000/v1`，服务器通过反向 SSH 访问本机相同端口；不需要在服务器安装代理。[代理使用说明](../../proxy/README.md)
 
 默认地址为 `http://127.0.0.1:15173/`。如果桌面先占用了该端口，浏览器会获得另一个独立地址，默认配置下为 `http://127.0.0.1:15176/`。下次执行命令会沿用这个地址。SSH 目标和端口沿用 `make app` 的配置。未指定 SSH 目标时，也会读取独立通道保存的服务器地址。需要指定 SSH 别名或端口时，可运行 `make ssh_server SSH_TARGET=my-server TUNNEL_PORT=15200`。
 
@@ -122,12 +124,12 @@ printf '%s\n' 'user@your-server' > .runtime/tunnel/target
 bash infra/server/tunnel.sh start
 ```
 
-以下命令一起管理两个独立通道。日志分别在本机 `.logs/tunnel.log` 和 `.logs/qdrant-tunnel.log`。电脑重启后可重新运行 `make ssh_server`。
+以下命令一起管理独立 Web、Qdrant、模型反向通道和本机代理；不停止或重启远端 API、网页或数据库。Web/Qdrant 通道日志分别在本机 `.logs/tunnel.log` 和 `.logs/qdrant-tunnel.log`；模型代理不记录请求、响应或密钥。电脑重启后可重新运行 `make ssh_server`。
 
 ```bash
 bash infra/server/tunnel.sh status
-bash infra/server/tunnel.sh restart
-bash infra/server/tunnel.sh stop
+make ssh_restart_server
+make ssh_stop_server
 ```
 
 可用 `AI_NOVEL_SSH_TARGET`、`AI_NOVEL_LOCAL_PORT`、`AI_NOVEL_REMOTE_PORT` 覆盖目标和端口；控制非默认端口时，stop/status 也需提供相同本地端口。SSH 保留正常主机密钥校验，且转发仅绑定本机 `127.0.0.1`。

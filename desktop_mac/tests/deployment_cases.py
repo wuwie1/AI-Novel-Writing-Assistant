@@ -434,6 +434,8 @@ class DeploymentTests(unittest.TestCase):
             cases = [(['client/src/page.tsx'], ['client/dist'], True), (['server/src/app.ts'], ['server/dist'], True),
                      (['server/src/x', 'client/src/y'], ['server/dist', 'client/dist'], True),
                      (['desktop/package.json'], ['client/dist'], True), (['desktop_mac/src/app.ts', 'docs/guide.md'], [], False),
+                     (['proxy/server.mjs', 'infra/server/tunnel/ensure.mjs', 'infra/server/tunnel.sh', 'infra/server/README.md', 'Makefile'], [], False),
+                     (['proxy/server.mjs', 'client/src/pages/settings/components/ProviderConfigDialog.tsx'], ['client/dist'], True),
                      (['client/tests/test.js'], [], True), (['shared/types/X.ts'], list(m.ARTIFACTS), True),
                      (['pnpm-lock.yaml'], list(m.ARTIFACTS), True), (['unknown-build-file'], list(m.ARTIFACTS), True)]
             for changed, slots, tests in cases:
