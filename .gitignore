@@ -2,6 +2,7 @@
 node_modules/
 dist/
 .turbo/
+novels/
 .DS_Store
 .env
 .env.local
