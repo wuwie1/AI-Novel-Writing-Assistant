@@ -153,3 +153,38 @@ def wait_for_drain(payload, info):
                 return
             clear_once = True
         time.sleep(5)
+
+
+def begin_observer_drain(info):
+    # This is a short-lived control lease, not task state. The API can read it as its service user.
+    file = info['root'] / 'server/storage/.llm-live-drain.json'
+    file.parent.mkdir(parents=True, exist_ok=True)
+    if file.is_symlink():
+        raise Refused('实况排空标记不能是符号链接')
+    if file.exists():
+        existing = json.loads(file.read_text())
+        if existing.get('expiresAt', 0) > time.time() * 1000:
+            raise Refused('已有实况排空操作，请等待租约到期后重试')
+    owner = os.urandom(16).hex()
+    # Publish readable contents atomically; readers never see a partial or root-only lease.
+    with tempfile.NamedTemporaryFile(mode='w', dir=file.parent, delete=False) as stream:
+        temporary = pathlib.Path(stream.name)
+        try:
+            json.dump(dict(version=1, owner=owner, expiresAt=int(time.time() * 1000) + 90000), stream)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o644)
+            os.fsync(stream.fileno())
+            os.replace(temporary, file)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+    emit('observer_drain', expiresInSeconds=90)
+    return file, owner
+
+
+def end_observer_drain(lease):
+    if lease is None:
+        return
+    file, owner = lease
+    if file.is_file() and not file.is_symlink() and json.loads(file.read_text()).get('owner') == owner:
+        file.unlink()

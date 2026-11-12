@@ -85,6 +85,73 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(requests[-1].full_url, 'http://127.0.0.1:18080/api/novels?page=1&limit=1')
                 self.assertNotIn('Authorization', requests[-1].headers)
 
+    def test_observer_lease_is_readable_bounded_and_cleanup_checks_ownership(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            with patch.object(m.time, 'time', return_value=100):
+                lease = m.begin_observer_drain(dict(root=root))
+                file, owner = lease
+                record = json.loads(file.read_text())
+                self.assertEqual(record, dict(version=1, owner=owner, expiresAt=190000))
+                self.assertEqual(file.stat().st_mode & 0o777, 0o644)
+                with self.assertRaisesRegex(m.Refused, '已有实况排空'):
+                    m.begin_observer_drain(dict(root=root))
+                m.end_observer_drain((file, 'different-owner'))
+                self.assertTrue(file.exists())
+                m.end_observer_drain(lease)
+                self.assertFalse(file.exists())
+                file.write_text(json.dumps(dict(expiresAt=99000)))
+                expired = m.begin_observer_drain(dict(root=root))
+                m.end_observer_drain(expired)
+                self.assertFalse(file.exists())
+
+    def test_drain_timeout_restores_web_config_and_clears_observer_lease_without_stopping_services(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            batch = root / '.runtime/batch'
+            batch.mkdir(parents=True)
+            (root / 'infra/server').mkdir(parents=True)
+            original = (CODE.parents[3] / 'infra/server/nginx.conf.template').read_text()
+            (root / 'infra/server/nginx.conf.template').write_text(original)
+            (root / '.runtime/nginx.conf').write_text(original.replace('@ROOT@', str(root)))
+            info = dict(root=root, old='old', sha='new', branch='ai', branchTip='old',
+                        states=dict.fromkeys(('ai-novel-api', 'ai-novel-web'), 'active'))
+            m.check_quiescence = Mock()
+            m.set_nginx = Mock()
+            m.command = Mock()
+            m.git = Mock(return_value='ai')
+            def refuse(*args):
+                self.assertTrue((root / 'server/storage/.llm-live-drain.json').is_file())
+                raise m.ActiveConnections('real generation stream')
+            m.wait_for_drain = refuse
+            config = dict(remoteWebPort=18080, maintenanceProbePort=18081)
+            result = m.switch_transaction(dict(config=config), info, batch, None,
+                                          dict(mode='restart', artifacts=[]), {}, m.DeploymentTimings())
+            self.assertEqual(result, 6)
+            m.command.assert_not_called()
+            self.assertEqual(json.loads((batch / 'transaction.json').read_text())['phase'], 'aborted')
+            self.assertEqual(m.set_nginx.call_args.args[1], original.replace('@ROOT@', str(root)))
+            self.assertFalse((root / 'server/storage/.llm-live-drain.json').exists())
+
+    def test_observer_drain_does_not_bypass_active_tasks_or_real_connections(self):
+        m = module()
+        with tempfile.TemporaryDirectory() as directory:
+            info = dict(root=pathlib.Path(directory))
+            lease = m.begin_observer_drain(info)
+            m.check_quiescence = Mock(side_effect=m.Refused('active task'))
+            m.check_connections = Mock()
+            with self.assertRaisesRegex(m.Refused, 'active task'):
+                m.wait_for_drain({}, info)
+            m.check_connections.assert_not_called()
+            m.check_quiescence = Mock()
+            m.check_connections = Mock(side_effect=m.ActiveConnections('generation response active'))
+            with patch.object(m.time, 'monotonic', side_effect=[0, 30]):
+                with self.assertRaises(m.ActiveConnections):
+                    m.wait_for_drain({}, info)
+            m.end_observer_drain(lease)
+
     def test_drain_waits_for_two_quiet_samples_and_times_out_while_busy(self):
         m = module()
         m.check_quiescence = Mock()
@@ -524,6 +591,7 @@ class DeploymentTests(unittest.TestCase):
                 m.backup_snapshot.assert_not_called()
                 m.verify_snapshot.assert_not_called()
                 self.assertEqual(m.check_connections.call_count, 2)
+                self.assertFalse((root / 'server/storage/.llm-live-drain.json').exists())
                 deployment = json.loads((root / '.runtime/deployment.json').read_text())
                 self.assertEqual(deployment, prior)
                 self.assertEqual(deployment['commit'], sha)

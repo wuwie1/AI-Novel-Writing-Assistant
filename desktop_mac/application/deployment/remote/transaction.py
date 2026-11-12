@@ -56,18 +56,22 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
         journal['phase'] = name
         write_json(journal_path, journal)
     phase('prepared')
+    observer_lease = None
     switched = stopped = record_written = False
     record_path = root / '.runtime/deployment.json'
     try:
         with timings.stage('drain'):
             check_quiescence(payload, info)
             set_nginx(root, maintained, reload=info['states']['ai-novel-web'] == 'active')
+            observer_lease = begin_observer_drain(info)
             wait_for_drain(payload, info)
         with timings.stage('stop'):
             phase('stopping')
             stopped = True
             command(['systemctl', 'stop', 'ai-novel-web', 'ai-novel-api'])
             check_quiescence(payload, info)
+            end_observer_drain(observer_lease)
+            observer_lease = None
         if not restart:
             with timings.stage('final-backup'):
                 final_backup = backup_snapshot(info, batch / 'backups/quiesced')
@@ -136,6 +140,8 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
                         write_json(record_path, previous)
                     else:
                         os.rename(record_path, batch / 'uncommitted-deployment.json')
+            end_observer_drain(observer_lease)
+            observer_lease = None
             set_nginx(root, original, reload=not stopped and info['states']['ai-novel-web'] == 'active')
             if stopped and info['states']['ai-novel-api'] == 'active':
                 start_and_check(config['remoteWebPort'], root)
@@ -149,6 +155,8 @@ def switch_transaction(payload, info, batch, candidate, manifest, previous, timi
             phase('rollback_failed')
             emit('rollback_failed', record=str(journal_path), backup=backup)
             return 8
+    finally:
+        end_observer_drain(observer_lease)
     emit('deployed', sha=info['sha'], mode=manifest['mode'], artifacts=slots, backup=backup,
          backupReused=restart, timings=str(batch / 'timings.json'))
     return 0
