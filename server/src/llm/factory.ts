@@ -291,8 +291,6 @@ export async function resolveLLMClientOptions(
     throw new Error(`未配置 ${providerName} 的默认模型。`);
   }
 
-  assertModelPurpose(model, "text");
-
   const baseURL = resolveProviderBaseUrl(
     resolvedProvider,
     options.baseURL ?? dbSecret?.baseURL,
@@ -400,6 +398,9 @@ export function buildOpenAICompatibleDefaultHeaders(
 }
 
 export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions): ChatOpenAI {
+  // Settings also resolve connection metadata so invalid historical choices remain editable.
+  // Enforce purpose at client construction, including direct callers and compatibility probes.
+  assertModelPurpose(resolved.model, "text");
   assertLlmExecutionConfiguration(resolved);
   const llm = resolved.requestProtocol === "anthropic"
     ? createAnthropicLLM({

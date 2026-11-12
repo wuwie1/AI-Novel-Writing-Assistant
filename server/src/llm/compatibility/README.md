@@ -11,7 +11,7 @@
 - `invocation.ts`：统一装饰模型的 invoke / stream / batch，在每次物理请求结束时写用量、计时与可选压缩载荷。旧 `usageTracking` 只保留业务计数、上下文和兼容导出；业务调用方不得另加记录钩子。
 - `observation.ts`：异步上下文中的逻辑调用链和解析归属。结构化入口为完整回退序列建立链；每个生成/修复解析作用域只拥有其首次物理请求，修复不能覆盖原始解析错误。持久化由平台 usage 模块负责。
 
-`factory.resolveLLMClientOptions` 在构造参数前加载档案，保持现有同步能力查询函数兼容。调用层通过 `index.ts` 使用档案与适配参数，通过 `probing.ts` 触发探测，避免业务模块依赖存储细节。
+`factory.resolveLLMClientOptions` 在构造参数前加载档案，保持现有同步能力查询函数兼容。它也用于设置页只读加载，不因旧配置的模型用途错误而拒绝读取；用途校验位于 `createLLMFromResolvedOptions`，连接测试在探测前提前校验。这样用户能打开设置修正配置，而任何真实文本调用仍被保护。调用层通过 `index.ts` 使用档案与适配参数，通过 `probing.ts` 触发探测，避免业务模块依赖存储细节。
 
 调用顺序与安全边界见 [模型兼容性合同](../../../../docs/wiki/prompts/model-compatibility.md)。
 

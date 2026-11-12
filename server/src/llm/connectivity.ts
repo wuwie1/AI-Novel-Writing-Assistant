@@ -1,4 +1,4 @@
-import { usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
+import { assertModelPurpose, usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import type { LLMProvider, ProviderAuthMode } from "@ai-novel/shared/types/llm";
@@ -206,6 +206,7 @@ async function testConnection(input: {
   let target: ProbeTarget;
   try {
     const { provider, model, apiKey, baseURL, authMode } = await resolveLLMClientOptions(input.provider, input);
+    assertModelPurpose(model, "text");
     target = { provider, model, apiKey, baseURL, authMode };
   } catch (error) {
     const failure = { ok: false, latency: null, error: toErrorMessage(error), requestProtocol: null };

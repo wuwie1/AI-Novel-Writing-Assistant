@@ -71,3 +71,36 @@ test("creating from an image-only catalog requires an explicit text model and ma
   assert.match((await response.json()).error, /未找到已确认的文本模型/);
   assert.equal(writes, 0);
 });
+
+test("settings can read an invalid historical model while every text client construction rejects it", async (t) => {
+  const {setProviderSecretCache, resolveLLMClientOptions, createLLMFromResolvedOptions, getLLM} = require("../dist/llm/factory");
+  const findMany = prisma.appSetting.findMany, findUnique = prisma.appSetting.findUnique;
+  prisma.appSetting.findMany = async () => [];
+  prisma.appSetting.findUnique = async () => null;
+  t.after(() => { prisma.appSetting.findMany = findMany; prisma.appSetting.findUnique = findUnique; });
+  for (const [provider, model] of [["custom_read_invalid", "gpt-image-2"], ["custom_read_valid", "gpt-5"]]) {
+    setProviderSecretCache(provider, {key:"test-key",model,baseURL:"http://127.0.0.1:14000/v1"});
+    t.after(() => setProviderSecretCache(provider, null));
+  }
+  const httpFetch = global.fetch;
+  let upstreamRequests = 0;
+  t.mock.method(global, "fetch", async () => { upstreamRequests++; throw new Error("settings must not contact the model service"); });
+  const server = http.createServer(createApp());
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  for (const provider of ["custom_read_invalid", "custom_read_valid"]) {
+    const response = await httpFetch(`http://127.0.0.1:${server.address().port}/api/settings/model-compat/${provider}`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.success, true);
+    assert.equal(body.data.status.state, "idle");
+    assert.equal(body.data.autoProbe, false);
+    assert.ok(body.data.profile);
+    assert.equal(JSON.stringify(body).includes("test-key"), false);
+  }
+  const resolved = await resolveLLMClientOptions("custom_read_invalid");
+  assert.equal(resolved.model, "gpt-image-2", "reading must preserve the user's selection");
+  assert.throws(() => createLLMFromResolvedOptions(resolved), /不支持文本对话/);
+  await assert.rejects(getLLM("custom_read_invalid"), /不支持文本对话/);
+  assert.equal(upstreamRequests, 0);
+});
