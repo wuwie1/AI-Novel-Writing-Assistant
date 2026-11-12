@@ -9,7 +9,7 @@ import { createProxyServer } from '../server.mjs';
 import { loadProxyConfig, validateConfig, PROXY_BASE_URL } from '../infrastructure/config.mjs';
 import { forwardedHeaders, upstreamTarget } from '../infrastructure/forward.mjs';
 import { ownedProcess, isolatedSshProfile } from '../application/lifecycle.mjs';
-import { LOCAL_PROXY_BASE_URL, selectLocalProxy, usesLocalProxy } from '../../client/src/pages/settings/models/localProxy.ts';
+import { LOCAL_PROXY_BASE_URL, newProviderConnection, isLocalModelProvider, usesLocalProxy } from '../../client/src/pages/settings/models/localProxy.ts';
 
 async function serve(t, server) {
   server.listen(0, '127.0.0.1');
@@ -128,17 +128,17 @@ test('TOML accepts comments and dotted keys, rejects bad settings without exposi
   }
 });
 
-test('UI saves the actual proxy endpoint and safely restores direct URL choices', () => {
+test('UI local model entry fixes the tunnel endpoint and recognizes saved local connections', () => {
   assert.equal(LOCAL_PROXY_BASE_URL, PROXY_BASE_URL);
-  const form = { baseURL: 'https://example.com/v1', key: 'unchanged', model: 'model' };
-  assert.equal(usesLocalProxy(form.baseURL), false);
-  const selected = selectLocalProxy(form, true);
-  assert.equal(selected.baseURL, PROXY_BASE_URL);
-  assert.equal(selected.key, form.key);
-  assert.equal(usesLocalProxy(`${selected.baseURL}/`), true);
-  assert.equal(selectLocalProxy(selectLocalProxy(selected, true), false).baseURL, form.baseURL);
-  assert.equal(selectLocalProxy({ baseURL: PROXY_BASE_URL }, false, PROXY_BASE_URL).baseURL, '');
-  assert.equal(selectLocalProxy({ baseURL: PROXY_BASE_URL }, false, 'https://example.com/v1').baseURL, form.baseURL);
+  const local = newProviderConnection('local');
+  assert.equal(local.baseURL, PROXY_BASE_URL);
+  assert.equal(local.displayName, '本机模型');
+  assert.deepEqual(newProviderConnection('custom'), { displayName: '', baseURL: '' });
+  assert.equal(usesLocalProxy(`${local.baseURL}/`), true);
+  assert.equal(isLocalModelProvider({ kind: 'custom', currentBaseURL: `${local.baseURL}/` }), true);
+  assert.equal(isLocalModelProvider({ kind: 'custom', currentBaseURL: 'http://127.0.0.1:11434/v1' }), false);
+  assert.equal(isLocalModelProvider({ kind: 'builtin', currentBaseURL: local.baseURL }), false);
+  assert.equal(isLocalModelProvider(undefined), false);
 });
 
 test('process ownership requires complete argv; isolated SSH profiles do not repeat other forwards', () => {

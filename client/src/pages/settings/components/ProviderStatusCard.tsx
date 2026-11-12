@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 import { ProviderRequestLimitSummary } from "./ProviderRequestLimitFields";
 import { formatBalanceAmount, formatBalanceTime } from "../settingsFormatters";
+import { isLocalModelProvider } from "../models/localProxy";
 
 export interface ProviderCardViewModel {
   provider: APIKeyStatus;
@@ -29,7 +30,7 @@ function getBalanceSummary(input: {
 }) {
   const { provider, balance, isBalanceLoading } = input;
   if (provider.kind === "custom") {
-    return "自定义厂商暂不接入余额查询。";
+    return isLocalModelProvider(provider) ? "请到模型服务商账户查看余额。" : "自定义厂商暂不接入余额查询。";
   }
   if (isBalanceLoading) {
     return "正在查询余额...";
@@ -65,6 +66,7 @@ export default function ProviderStatusCard(props: {
     isRefreshingModels,
   } = props;
   const { provider, balance } = item;
+  const isTunnelModel = isLocalModelProvider(provider);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const imageModelLabel = provider.supportsImageGeneration
@@ -84,6 +86,8 @@ export default function ProviderStatusCard(props: {
     ? "完成配置后可用于创作任务。"
     : !provider.isActive
       ? "已停用，不会用于创作任务。"
+      : isTunnelModel
+        ? "通过本机代理连接模型。请保持电脑联网，并先测试连接。"
       : isLocalProvider
         ? "已填写本机地址与模型。请先点「测试连接」，确认服务真正可用。"
         : "已保存密钥与模型。建议先点「测试连接」，再用于创作。";
@@ -108,7 +112,7 @@ export default function ProviderStatusCard(props: {
         <div className="min-w-0 space-y-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className={`font-semibold ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>{provider.name}</div>
-            {provider.kind === "custom" ? <Badge variant="outline">自定义</Badge> : null}
+            {provider.kind === "custom" ? <Badge variant="outline">{isTunnelModel ? "本机模型" : "自定义"}</Badge> : null}
           </div>
           <div className={`text-xs text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
             {statusHint}

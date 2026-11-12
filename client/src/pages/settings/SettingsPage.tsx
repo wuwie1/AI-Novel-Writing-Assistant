@@ -18,6 +18,7 @@ import {
 import { queryKeys } from "@/api/queryKeys";
 import ProviderConfigDialog, { type ProviderFormState } from "./components/ProviderConfigDialog";
 import ProviderSettingsSection from "./components/ProviderSettingsSection";
+import { isLocalModelProvider, newProviderConnection, type ProviderCreationKind } from "./models/localProxy";
 import SettingsActionResult from "./SettingsActionResult";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 
@@ -41,7 +42,8 @@ function formatConnectionTestResult(response: Awaited<ReturnType<typeof testLLMC
 export default function SettingsPage({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const [editingProvider, setEditingProvider] = useState("");
-  const [isCreatingCustomProvider, setIsCreatingCustomProvider] = useState(false);
+  const [creatingProviderKind, setCreatingProviderKind] = useState<ProviderCreationKind | null>(null);
+  const isCreatingCustomProvider = creatingProviderKind !== null;
   const [form, setForm] = useState<ProviderFormState>({
     displayName: "",
     key: "",
@@ -77,11 +79,12 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
   );
   const isDialogOpen = isCreatingCustomProvider || Boolean(editingProvider);
   const isCustomDialog = isCreatingCustomProvider || editingConfig?.kind === "custom";
+  const isLocalModelDialog = creatingProviderKind === "local" || (!isCreatingCustomProvider && isLocalModelProvider(editingConfig));
   const modelOptions = editingConfig?.models ?? [];
   const selectableModels = isCreatingCustomProvider ? previewModels : modelOptions;
   const resetDialogState = () => {
     setEditingProvider("");
-    setIsCreatingCustomProvider(false);
+    setCreatingProviderKind(null);
     setForm({
       displayName: "",
       key: "",
@@ -177,7 +180,8 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     }) => createCustomProvider(payload),
     onSuccess: async (response) => {
       resetDialogState();
-      setActionResult(response.message ?? "自定义厂商创建成功。");
+      const message = response.message ?? "自定义厂商创建成功。";
+      setActionResult(creatingProviderKind === "local" ? message.replaceAll("自定义厂商", "本机模型") : message);
       await invalidateProviderQueries();
     },
     onError: (error) => {
@@ -289,7 +293,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     if (!config) {
       return;
     }
-    setIsCreatingCustomProvider(false);
+    setCreatingProviderKind(null);
     setEditingProvider(provider);
     setForm({
       displayName: config.displayName ?? config.name,
@@ -307,15 +311,14 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     setPreviewModelsResult("");
   };
 
-  const openCreateCustomDialog = () => {
+  const openCreateProviderDialog = (kind: ProviderCreationKind) => {
     setEditingProvider("");
-    setIsCreatingCustomProvider(true);
+    setCreatingProviderKind(kind);
     setForm({
-      displayName: "",
+      ...newProviderConnection(kind),
       key: "",
       model: "",
       imageModel: "",
-      baseURL: "",
       authMode: "bearer",
       concurrencyLimit: "0",
       requestIntervalMs: "0",
@@ -429,7 +432,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     if (!editingProvider || !editingConfig) {
       return;
     }
-    if (!window.confirm(`确认删除自定义厂商 ${editingConfig.name} 吗？`)) {
+    if (!window.confirm(`确认删除${isLocalModelProvider(editingConfig) ? "本机模型" : "自定义厂商"} ${editingConfig.name} 吗？`)) {
       return;
     }
     deleteCustomProviderMutation.mutate(editingProvider);
@@ -450,7 +453,8 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
     || (isCustomDialog && !form.displayName.trim())
     || (isCustomDialog && !form.baseURL.trim())
     || (!isCustomDialog && editingConfig?.requiresApiKey !== false && !form.key.trim() && !editingConfig?.isConfigured);
-  const providerSubmitLabel = isSavingProvider ? "保存中..." : isCreatingCustomProvider ? "创建厂商" : "保存";
+  const providerSubmitLabel = isSavingProvider ? "保存中..."
+    : creatingProviderKind === "local" ? "添加本机模型" : isCreatingCustomProvider ? "创建厂商" : "保存";
 
   return (
     <div className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot}>
@@ -468,7 +472,8 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
           refreshingModelProvider={refreshModelsMutation.isPending ? refreshModelsMutation.variables : undefined}
           refreshingBalanceProvider={refreshBalanceMutation.isPending ? refreshBalanceMutation.variables : undefined}
           reasoningProvider={modelControlsMutation.isPending ? modelControlsMutation.variables?.provider : undefined}
-          onCreateCustomProvider={openCreateCustomDialog}
+          onCreateCustomProvider={() => openCreateProviderDialog("custom")}
+          onCreateLocalModel={() => openCreateProviderDialog("local")}
           onRemoveProvider={handleRemoveProvider}
           onOpenConfig={openBuiltInDialog}
           onTest={handleProviderCardTest}
@@ -509,6 +514,7 @@ export default function SettingsPage({ embedded = false }: { embedded?: boolean 
         }}
         isCreatingCustomProvider={isCreatingCustomProvider}
         isCustomDialog={isCustomDialog}
+        isLocalModelDialog={isLocalModelDialog}
         editingConfig={editingConfig}
         form={form}
         setForm={setForm}

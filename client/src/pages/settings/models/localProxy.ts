@@ -5,13 +5,14 @@ export function usesLocalProxy(baseURL: string): boolean {
   return baseURL.trim().replace(/\/+$/, "") === LOCAL_PROXY_BASE_URL;
 }
 
-export function selectLocalProxy<T extends { baseURL: string; directBaseURL?: string }>(
-  form: T, enabled: boolean, defaultBaseURL = "",
-): T {
-  if (enabled) {
-    return { ...form, baseURL: LOCAL_PROXY_BASE_URL,
-      directBaseURL: usesLocalProxy(form.baseURL) ? form.directBaseURL : form.baseURL };
-  }
-  const directBaseURL = form.directBaseURL ?? (usesLocalProxy(defaultBaseURL) ? "" : defaultBaseURL);
-  return { ...form, baseURL: directBaseURL, directBaseURL: undefined };
+export type ProviderCreationKind = "custom" | "local";
+
+export function newProviderConnection(kind: ProviderCreationKind) {
+  return kind === "local"
+    ? { displayName: "本机模型", baseURL: LOCAL_PROXY_BASE_URL }
+    : { displayName: "", baseURL: "" };
+}
+
+export function isLocalModelProvider(provider?: { kind: string; currentBaseURL: string }): boolean {
+  return provider?.kind === "custom" && usesLocalProxy(provider.currentBaseURL);
 }

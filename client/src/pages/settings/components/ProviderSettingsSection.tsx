@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, PlugZap, ServerCog, Sparkles } from "lucide-react";
+import { Monitor, Plus, PlugZap, ServerCog, Sparkles } from "lucide-react";
 import type { LLMProvider, ReasoningEffort } from "@ai-novel/shared/types/llm";
 import type { APIKeyStatus, ProviderBalanceStatus } from "@/api/settings";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ export default function ProviderSettingsSection(props: {
   refreshingBalanceProvider?: string;
   reasoningProvider?: string;
   onCreateCustomProvider: () => void;
+  onCreateLocalModel: () => void;
   onRemoveProvider: (provider: APIKeyStatus) => void;
   onOpenConfig: (provider: LLMProvider) => void;
   onTest: (provider: APIKeyStatus) => void;
@@ -42,6 +43,7 @@ export default function ProviderSettingsSection(props: {
     refreshingBalanceProvider,
     reasoningProvider,
     onCreateCustomProvider,
+    onCreateLocalModel,
     onRemoveProvider,
     onOpenConfig,
     onTest,
@@ -126,14 +128,14 @@ export default function ProviderSettingsSection(props: {
           <div className="rounded-xl border border-dashed bg-background/70 p-6 text-center text-sm text-muted-foreground md:col-span-2">
             <PlugZap className="mx-auto mb-3 h-6 w-6 text-primary" />
             <div className="font-medium text-foreground">还没有可用的模型连接</div>
-            <div className="mt-1">添加内置厂商或自定义服务后，即可配置第一个文本模型。</div>
+            <div className="mt-1">选择内置厂商、自定义服务或本机模型，配置第一个文本模型。</div>
           </div>
         ) : null}
       </CardContent>
       <Dialog open={isAddProviderOpen} onOpenChange={setIsAddProviderOpen}>
         <AppDialogContent
           title="添加模型厂商"
-          description="选择一个内置厂商模板，或添加你自己的 OpenAI 兼容服务。"
+          description="选择内置厂商、自定义服务，或通过本机代理连接模型。"
           className="max-w-2xl"
         >
           <div className="grid gap-3 sm:grid-cols-2">
@@ -141,7 +143,7 @@ export default function ProviderSettingsSection(props: {
               <button
                 key={provider.provider}
                 type="button"
-                className="rounded-xl border bg-background p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary hover:bg-primary/5 hover:shadow-sm"
+                className="rounded-xl bg-muted/30 p-4 text-left transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   setIsAddProviderOpen(false);
                   onOpenConfig(provider.provider);
@@ -153,7 +155,7 @@ export default function ProviderSettingsSection(props: {
             ))}
             <button
               type="button"
-              className="rounded-xl border border-dashed bg-background p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary hover:bg-primary/5 hover:shadow-sm"
+              className="rounded-xl bg-muted/30 p-4 text-left transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => {
                 setIsAddProviderOpen(false);
                 onCreateCustomProvider();
@@ -162,9 +164,20 @@ export default function ProviderSettingsSection(props: {
               <div className="flex items-center gap-2 font-medium"><ServerCog className="h-4 w-4 text-primary" /> 自定义厂商</div>
               <div className="mt-2 text-xs text-muted-foreground">连接任意 OpenAI 兼容服务。</div>
             </button>
+            <button
+              type="button"
+              className="rounded-xl bg-muted/30 p-4 text-left transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setIsAddProviderOpen(false);
+                onCreateLocalModel();
+              }}
+            >
+              <div className="flex items-center gap-2 font-medium"><Monitor className="h-4 w-4 text-primary" /> 添加本机模型</div>
+              <div className="mt-2 text-xs text-muted-foreground">通过 SSH 通道连接你电脑上的模型代理。</div>
+            </button>
           </div>
           {!addableBuiltIns.length ? (
-            <div className="mt-3 text-sm text-muted-foreground">所有内置厂商都已添加；你仍可以添加自定义厂商。</div>
+            <div className="mt-3 text-sm text-muted-foreground">可继续添加自定义厂商或本机模型。</div>
           ) : null}
         </AppDialogContent>
       </Dialog>

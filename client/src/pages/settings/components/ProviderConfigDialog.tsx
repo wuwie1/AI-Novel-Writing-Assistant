@@ -6,8 +6,6 @@ import SearchableSelect from "@/components/common/SearchableSelect";
 import { Button } from "@/components/ui/button";
 import { AppDialogContent, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { selectLocalProxy, usesLocalProxy } from "../models/localProxy";
 import ProviderRequestLimitFields from "./ProviderRequestLimitFields";
 
 export interface ProviderFormState {
@@ -16,7 +14,6 @@ export interface ProviderFormState {
   model: string;
   imageModel: string;
   baseURL: string;
-  directBaseURL?: string;
   authMode: ProviderAuthMode;
   concurrencyLimit: string;
   requestIntervalMs: string;
@@ -27,6 +24,7 @@ interface ProviderConfigDialogProps {
   onOpenChange: (open: boolean) => void;
   isCreatingCustomProvider: boolean;
   isCustomDialog: boolean;
+  isLocalModelDialog: boolean;
   editingConfig?: APIKeyStatus;
   form: ProviderFormState;
   setForm: Dispatch<SetStateAction<ProviderFormState>>;
@@ -51,6 +49,7 @@ export default function ProviderConfigDialog({
   onOpenChange,
   isCreatingCustomProvider,
   isCustomDialog,
+  isLocalModelDialog,
   editingConfig,
   form,
   setForm,
@@ -73,7 +72,6 @@ export default function ProviderConfigDialog({
   const canSelectListedModels = selectableModels.length > 0;
   const imageModelOptions = editingConfig?.imageModels ?? [];
   const canSelectImageModels = imageModelOptions.length > 0;
-  const useLocalProxy = usesLocalProxy(form.baseURL);
   const modelGuidance = editingConfig?.provider === "deepseek"
     ? "推荐使用 DeepSeek Flash，兼顾中文长篇质量与响应速度；也可以选择其他可用模型。"
     : isCreatingCustomProvider
@@ -86,7 +84,8 @@ export default function ProviderConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <AppDialogContent
         className="max-w-lg"
-        title={isCreatingCustomProvider ? "新增自定义厂商" : isCustomDialog ? "编辑自定义厂商" : "配置模型厂商"}
+        title={isLocalModelDialog ? (isCreatingCustomProvider ? "添加本机模型" : "配置本机模型")
+          : isCreatingCustomProvider ? "新增自定义厂商" : isCustomDialog ? "编辑自定义厂商" : "配置模型厂商"}
         footer={(
           <>
             <Button className="w-full sm:w-auto" onClick={onSubmit} disabled={submitDisabled}>
@@ -119,16 +118,20 @@ export default function ProviderConfigDialog({
         <div className="space-y-5">
           {isCustomDialog ? (
             <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">厂商名称</div>
+              <div className="text-xs text-muted-foreground">{isLocalModelDialog ? "连接名称" : "厂商名称"}</div>
               <Input
                 value={form.displayName}
-                placeholder="例如：我的模型网关"
+                placeholder={isLocalModelDialog ? "例如：本机写作模型" : "例如：我的模型网关"}
                 onChange={(event) => setForm((prev) => ({ ...prev, displayName: event.target.value }))}
               />
             </div>
           ) : null}
 
-          {(isCustomDialog || editingConfig?.requiresApiKey === false) ? (
+          {isLocalModelDialog ? (
+            <p className="text-sm text-muted-foreground">
+              通过你的电脑连接 OpenAI 兼容模型服务。请启动本机代理和 SSH 通道，并保持电脑联网；模型名称和 API Key 使用代理所连接服务的配置。
+            </p>
+          ) : (isCustomDialog || editingConfig?.requiresApiKey === false) ? (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               API Key 可以留空；填写 API 地址后可获取模型列表，系统会选择一个默认模型。
             </div>
@@ -171,29 +174,11 @@ export default function ProviderConfigDialog({
             </div>
           ) : null}
 
-          <div className="space-y-2">
-            <label className="flex items-center gap-3 text-sm font-medium">
-              <Switch
-                checked={useLocalProxy}
-                onCheckedChange={(checked) => {
-                  setForm((prev) => ({ ...selectLocalProxy(prev, checked, editingConfig?.defaultBaseURL),
-                    model: isCreatingCustomProvider ? "" : prev.model }));
-                  onClearPreviewModels();
-                }}
-                aria-label="使用本机代理"
-              />
-              使用本机代理
-            </label>
-            <p className="text-xs text-muted-foreground">
-              通过你的电脑连接 OpenAI 兼容模型服务。请启动本机代理并保持电脑联网，API Key 填写代理所连接服务的密钥。
-            </p>
-          </div>
-
           <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> API 地址</div>
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Link2 className="h-3.5 w-3.5" /> {isLocalModelDialog ? "隧道代理地址" : "API 地址"}</div>
             <Input
               value={form.baseURL}
-              readOnly={useLocalProxy}
+              readOnly={isLocalModelDialog}
               placeholder={editingConfig?.defaultBaseURL ?? "https://api.example.com/v1"}
               onChange={(event) => {
                 setForm((prev) => ({
@@ -207,8 +192,8 @@ export default function ProviderConfigDialog({
               }}
             />
             <div className="text-xs text-muted-foreground">
-              {useLocalProxy
-                ? "通过 SSH 通道访问本机代理；实际模型服务地址由本机代理配置决定。取消选择后可填写直连地址。"
+              {isLocalModelDialog
+                ? "地址由本机代理与 SSH 通道提供，无需填写；实际模型服务地址在本机代理中配置。"
                 : isCreatingCustomProvider
                 ? "填写 OpenAI 兼容 API 地址，通常以 /v1 结尾；本地 Ollama 常见地址是 http://127.0.0.1:11434/v1。"
                 : "留空会使用默认地址；本地 Ollama 常见地址是 http://127.0.0.1:11434/v1。"}
