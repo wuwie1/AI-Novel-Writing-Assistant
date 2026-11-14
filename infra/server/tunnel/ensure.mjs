@@ -127,8 +127,8 @@ async function main() {
     }
     // A failed optional forward must not prevent stopping/starting the other owned services.
     try {
-      const { url, status } = await localProxyLifecycle(config).control(action);
-      if (status === 'unavailable') { console.error('本机模型代理或反向通道尚未就绪。'); process.exitCode = 1; }
+      const { url, status, reason } = await localProxyLifecycle(config).control(action);
+      if (status === 'unavailable') { console.error(reason ?? '本机模型代理或反向通道尚未就绪。'); process.exitCode = 1; }
       else console.log(status === 'stopped' ? '本机模型代理及反向通道已停止。' : `本机模型代理${message[status]}，服务端 API 地址 ${url}`);
     } catch (error) {
       console.error(error.message);

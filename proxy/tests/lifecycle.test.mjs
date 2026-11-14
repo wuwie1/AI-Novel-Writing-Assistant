@@ -26,8 +26,12 @@ async function fixture(t) {
     request: async () => Response.json({ service: 'ai-novel-local-proxy', owner: failLocal ? 'foreign' : owner }),
     execute: async (_command, args) => {
       if (args.includes('-G')) return { stdout: 'host server\nhostname server\nuser writer\nport 22\nlocalforward 80 localhost:80\n' };
+      const target = args.at(-2);
+      if (![...processes.values()].some(argv => argv[0] === 'autossh' && argv.at(-1) === target)) {
+        return { stdout: '\n__AI_NOVEL_PROXY_HEALTH__\n' };
+      }
       if (failRemote) throw new Error('remote unavailable');
-      return { stdout: `LISTEN 0 128 127.0.0.1:14000 0.0.0.0:*\n${JSON.stringify({ service: 'ai-novel-local-proxy', owner })}` };
+      return { stdout: `LISTEN 0 128 127.0.0.1:14000 0.0.0.0:*\n__AI_NOVEL_PROXY_HEALTH__\n${JSON.stringify({ service: 'ai-novel-local-proxy', owner })}` };
     },
   };
   const config = { repoRealPath: root, sshTarget: 'server' };
@@ -66,7 +70,7 @@ test('PID reuse never terminates an unrelated process, even when stopping', asyn
 
 test('failed reverse connection rolls back newly created processes without leaking raw errors', async t => {
   const f = await fixture(t); f.failRemote();
-  await assert.rejects(f.lifecycle.control('start'), /服务器无法通过回环反向通道/);
+  await assert.rejects(f.lifecycle.control('start'), /服务器反向通道检查未完成/);
   assert.equal(f.processes.size, 0);
   assert.deepEqual(f.signals, [[102, 'SIGTERM'], [101, 'SIGTERM']]);
 });
@@ -106,4 +110,77 @@ test('changing SSH destination replaces only the owned reverse tunnel', async t 
   assert.equal(f.launches.length, 3);
   assert.deepEqual(f.signals, [[102, 'SIGTERM']]);
   assert.equal(f.launches[2].args.at(-1), 'second-server');
+});
+
+test('an existing proxy from another workspace is diagnosed before launching or stopping anything', async t => {
+  const f = await fixture(t);
+  f.adapters.execute = async () => ({ stdout: 'LISTEN 0 128 127.0.0.1:14000 0.0.0.0:*\n__AI_NOVEL_PROXY_HEALTH__\n'
+    + JSON.stringify({ service: 'ai-novel-local-proxy', owner: 'another-workspace' }) });
+  const lifecycle = localProxyLifecycle(f.config, f.adapters);
+  await assert.rejects(lifecycle.control('start'), /另一台电脑或另一个工作区.*原电脑.*make ssh_stop_server/);
+  assert.deepEqual(f.launches, []);
+  assert.deepEqual(f.signals, []);
+  const state = JSON.parse(await readFile(path.join(f.root, '.runtime/local-proxy/state.json')));
+  assert.equal(state.proxy, undefined);
+  assert.equal(state.tunnel, undefined);
+  const status = await lifecycle.control('status');
+  assert.equal(status.status, 'unavailable');
+  assert.match(status.reason, /另一台电脑或另一个工作区/);
+});
+
+test('a conflict on a new SSH destination preserves the existing proxy and tunnel', async t => {
+  const f = await fixture(t);
+  await f.lifecycle.control('start');
+  const execute = f.adapters.execute;
+  f.adapters.execute = async (...args) => {
+    if (args[1].at(-2) !== 'second-server') return execute(...args);
+    return { stdout: 'LISTEN 0 128 127.0.0.1:14000 0.0.0.0:*\n__AI_NOVEL_PROXY_HEALTH__\n{"service":"other"}' };
+  };
+  const switched = localProxyLifecycle({ ...f.config, sshTarget: 'second-server' }, f.adapters);
+  await assert.rejects(switched.control('start'), /非本次管理的连接占用/);
+  assert.equal(f.launches.length, 2);
+  assert.deepEqual(f.signals, []);
+  assert.equal((await f.lifecycle.control('status')).status, 'ready');
+});
+
+test('a port claimed between preflight and startup rolls back only the new processes', async t => {
+  const f = await fixture(t);
+  const execute = f.adapters.execute;
+  f.adapters.execute = async (...args) => {
+    const response = await execute(...args);
+    return { stdout: response.stdout.replace(/"owner":"[^"]+"/, '"owner":"foreign-owner"') };
+  };
+  await assert.rejects(localProxyLifecycle(f.config, f.adapters).control('start'), /另一台电脑或另一个工作区/);
+  assert.deepEqual(f.signals, [[102, 'SIGTERM'], [101, 'SIGTERM']]);
+  assert.equal(f.processes.size, 0);
+});
+
+test('preflight SSH failure reports connection diagnosis without leaking command output', async t => {
+  const f = await fixture(t);
+  f.adapters.execute = async () => { throw Object.assign(new Error('secret connection details'), { code: 255 }); };
+  await assert.rejects(localProxyLifecycle(f.config, f.adapters).control('start'), error => {
+    assert.match(error.message, /SSH 健康检查连接失败/);
+    assert.doesNotMatch(error.message, /secret|GatewayPorts/);
+    return true;
+  });
+  assert.deepEqual(f.launches, []);
+});
+
+test('restart tolerates the remote listener briefly outliving its verified SSH process', async t => {
+  const f = await fixture(t);
+  await f.lifecycle.control('start');
+  const execute = f.adapters.execute;
+  let closing = true;
+  f.adapters.execute = async (...args) => {
+    if (closing && f.processes.size === 0) {
+      closing = false;
+      throw Object.assign(new Error('curl target closed'), { code: 71,
+        stdout: 'LISTEN 0 128 127.0.0.1:14000 0.0.0.0:*\n__AI_NOVEL_PROXY_HEALTH__\n' });
+    }
+    return execute(...args);
+  };
+  assert.equal((await localProxyLifecycle(f.config, f.adapters).control('restart')).status, 'started');
+  assert.equal(closing, false);
+  assert.equal(f.launches.length, 4);
+  assert.deepEqual(f.signals, [[102, 'SIGTERM'], [101, 'SIGTERM']]);
 });

@@ -6,10 +6,21 @@ import { promisify } from 'node:util';
 import { readProcessArgv } from '../../desktop_mac/infrastructure/processes/argv.mjs';
 import { writeState } from '../../desktop_mac/infrastructure/processes/lock.mjs';
 import { loadProxyConfig, PROXY_BASE_URL, PROXY_PORT } from '../infrastructure/config.mjs';
+import { inspectRemoteProxy } from '../infrastructure/remote-probe.mjs';
 
 const exec = promisify(execFile);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const forward = `127.0.0.1:${PROXY_PORT}:127.0.0.1:${PROXY_PORT}`;
+
+function remoteFailure(status) {
+  if (status === 'foreign_proxy') return `服务器端口 ${PROXY_PORT} 被另一台电脑或另一个工作区的模型代理占用。请在原电脑的对应工作区运行 make ssh_stop_server，再在本机运行 make ssh_server；如需保留原连接，请继续使用原代理。`;
+  if (status === 'occupied' || status === 'ready') return `服务器端口 ${PROXY_PORT} 被非本次管理的连接占用。请确认连接归属并在原启动位置停止后重试。`;
+  if (status === 'unsafe') return `服务器端口 ${PROXY_PORT} 未仅绑定回环地址，请检查 GatewayPorts=no。`;
+  if (status === 'ssh_failed') return '服务器 SSH 健康检查连接失败，请检查网络与免交互 SSH 登录。';
+  if (status === 'probe_failed') return '服务器反向通道检查未完成，请检查 SSH 连接及远端 ss、curl 命令是否可用。';
+  if (status === 'unresponsive') return `服务器端口 ${PROXY_PORT} 存在监听，但本机代理健康检查未通过，请检查通道目标及本机代理。`;
+  return `服务器反向通道未建立，端口 ${PROXY_PORT} 没有监听，请检查 SSH 远程转发权限及 autossh 连接。`;
+}
 
 export function ownedProcess(record, argv) {
   return Boolean(record && Array.isArray(argv) && argv.length === record.args.length + 1
@@ -64,23 +75,14 @@ export function localProxyLifecycle(config, {
       return response.ok && value.service === 'ai-novel-local-proxy' && value.owner === owner;
     } catch { return false; }
   }
-  async function remoteHealth(owner) {
-    try {
-      const { stdout } = await execute('/usr/bin/ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'ClearAllForwardings=yes',
-        '-o', 'ConnectTimeout=5', config.sshTarget,
-        `ss -H -ltn 'sport = :${PROXY_PORT}' && curl --noproxy '*' -fsS --max-time 3 http://127.0.0.1:${PROXY_PORT}/health`], { timeout: 10_000 });
-      const lines = stdout.trim().split('\n');
-      const value = JSON.parse(lines.pop());
-      // GatewayPorts=yes can override -R's requested bind address. Refuse a public listener.
-      if (!lines.length || lines.some(line => ![`127.0.0.1:${PROXY_PORT}`, `[::1]:${PROXY_PORT}`].includes(line.trim().split(/\s+/)[3]))) return false;
-      return value.service === 'ai-novel-local-proxy' && value.owner === owner;
-    } catch { return false; }
-  }
+  const remoteStatus = owner => inspectRemoteProxy(config.sshTarget, owner, execute);
 
   async function control(action) {
     const current = await state();
+    let stoppedOwnedTunnel = false;
     if (action === 'stop' || action === 'restart') {
       // Disconnect the server before stopping the local target. Never signal unverified PIDs.
+      stoppedOwnedTunnel = await alive(current.tunnel);
       await stopRecord(current.tunnel);
       await stopRecord(current.proxy);
       delete current.tunnel; delete current.proxy;
@@ -88,9 +90,10 @@ export function localProxyLifecycle(config, {
       if (action === 'stop') return { status: 'stopped', url: PROXY_BASE_URL };
     }
     if (action === 'status') {
-      const ready = await alive(current.proxy) && await alive(current.tunnel)
-        && await localHealth(current.owner) && await remoteHealth(current.owner);
-      return { status: ready ? 'ready' : 'unavailable', url: PROXY_BASE_URL };
+      const localReady = await alive(current.proxy) && await alive(current.tunnel) && await localHealth(current.owner);
+      const remote = await remoteStatus(current.owner);
+      return { status: localReady && remote === 'ready' ? 'ready' : 'unavailable', url: PROXY_BASE_URL,
+        reason: remote === 'ready' && localReady ? undefined : remoteFailure(remote) };
     }
     const proxyConfig = await loadProxyConfig(path.join(root, 'proxy/config.toml'));
     const signature = createHash('sha256').update(JSON.stringify(proxyConfig)).digest('hex');
@@ -101,6 +104,18 @@ export function localProxyLifecycle(config, {
     let startedProxy = false;
     let startedTunnel = false;
     try {
+      // Check before launching anything when no verified tunnel owns this destination.
+      // A different owner is not reusable: its upstream and credentials contract may differ.
+      if (!await alive(current.tunnel) || current.target !== config.sshTarget) {
+        let remote = await remoteStatus(current.owner);
+        // sshd may need a moment to release a just-closed, verified connection.
+        for (let i = 0; i < 3 && stoppedOwnedTunnel && current.target === config.sshTarget
+          && ['ready', 'unresponsive'].includes(remote); i++) {
+          await wait(500);
+          remote = await remoteStatus(current.owner);
+        }
+        if (remote !== 'free') throw new Error(remoteFailure(remote === 'unresponsive' ? 'occupied' : remote));
+      }
       if (!proxyAlive) {
         // Give each new process its own identity so a stale remote listener cannot pass readiness.
         await stopRecord(current.tunnel);
@@ -139,11 +154,14 @@ export function localProxyLifecycle(config, {
         current.target = config.sshTarget;
         await writeState(stateFile, current);
       }
+      let remote;
       for (let i = 0; i < 3; i++) {
-        if (await remoteHealth(current.owner)) return { status: startedProxy || startedTunnel ? 'started' : 'ready', url: PROXY_BASE_URL };
+        remote = await remoteStatus(current.owner);
+        if (remote === 'ready') return { status: startedProxy || startedTunnel ? 'started' : 'ready', url: PROXY_BASE_URL };
+        if (remote === 'foreign_proxy' || remote === 'unsafe') break;
         await wait(500);
       }
-      throw new Error(`服务器无法通过回环反向通道连接本机代理，请检查 SSH 转发权限、GatewayPorts=no 及远端端口 ${PROXY_PORT}。`);
+      throw new Error(remoteFailure(remote));
     } catch (error) {
       // Roll back only processes created by this attempt, preserving pre-existing working services.
       if (startedTunnel) { await stopRecord(current.tunnel); delete current.tunnel; }
