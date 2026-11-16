@@ -9,6 +9,7 @@ import {AppError} from "../../../../middleware/errorHandler";
 import {assertNovelDirectorVersion, readRunExecutionEpoch} from "../../../../modules/novel/director-routing";
 import type {ChapterArtifactDeltaOutput} from "../../../../prompting/prompts/novel/chapterArtifactDelta.prompts";
 import {buildChapterArtifactContentHash} from "../../runtime/artifactSync/ChapterArtifactContentVersion";
+import {CHAPTER_ARTIFACT_BOUNDARY_TYPE, hasCurrentChapterArtifactSyncBoundary} from "../../runtime/artifactSync/ChapterArtifactSyncBoundary";
 import {canonicalizeCandidateReferences} from "./references";
 import {writeCharacterAppearances} from "../appearances";
 import {chapterArtifactDeltaOutputSchema} from "../../../../prompting/prompts/novel/chapterArtifactDelta.prompts";
@@ -133,8 +134,13 @@ export class DirectorCharacterCandidateService {
       this.db.directorNextRunControl.findUnique({where: {runId}, select: {status: true}}),
       this.db.generationJob.findFirst({where: {novelId: run.novelId, executionLeaseExpiresAt: {gt: new Date()}}}),
     ]);
+    const chapters = await this.db.chapter.findMany({where: {novelId: run.novelId, id: {in: [...new Set(rows.map(row => row.chapterId))]}},
+      select: {id: true, content: true}});
+    const currentHashes = new Map(chapters.map(chapter => [chapter.id, buildChapterArtifactContentHash(chapter.content ?? "")]));
     const reviews: StoredReview[] = [];
     for (const row of rows) {
+      // Historical decisions remain durable, but cannot hold the current prose's confirmation gate.
+      if (currentHashes.get(row.chapterId) !== row.contentHash) continue;
       const review = readReview(row.metadataJson);
       if (row.artifactType !== artifactType(runId) && (review.driver !== "auto" || !review.items.some(i => i.status === "pending"))) continue;
       if (review.items.length) reviews.push(review);
@@ -188,8 +194,26 @@ export class DirectorCharacterCandidateService {
   async assertResolved(runId: string, reviewId: string, tx: Prisma.TransactionClient) {
     const row = await tx.chapterArtifactSyncCheckpoint.findFirst({where: {id: reviewId, artifactType: artifactType(runId)}});
     if (!row) throw new AppError("缺少本章人物确认记录。", 409);
-    const review = readReview(row.metadataJson);
-    await this.assertContent(tx, row.novelId, row.chapterId, review.contentHash);
+    const chapter = await tx.chapter.findFirst({where: {id: row.chapterId, novelId: row.novelId}, select: {content: true}});
+    if (!chapter) throw new AppError("找不到待确认人物所属的章节。", 409);
+    const hash = buildChapterArtifactContentHash(chapter.content ?? "");
+    await this.assertContent(tx, row.novelId, row.chapterId, hash);
+    // A saved author edit can supersede the review captured by either production engine.
+    // Revalidate the current review without approving or rewriting the old one.
+    const current = row.contentHash === hash ? row : await tx.chapterArtifactSyncCheckpoint.findUnique({where: {
+      novelId_chapterId_contentHash_artifactType_syncMode: {novelId: row.novelId, chapterId: row.chapterId,
+        contentHash: hash, artifactType: artifactType(runId), syncMode: "identity"},
+    }});
+    if (!current) {
+      // A revision with no character candidates has no review row. Only a completed
+      // current-content artifact boundary proves that this absence is intentional.
+      const boundaries = await tx.chapterArtifactSyncCheckpoint.findMany({where: {novelId: row.novelId,
+        chapterId: row.chapterId, contentHash: hash, artifactType: CHAPTER_ARTIFACT_BOUNDARY_TYPE, status: "succeeded"}});
+      if (hasCurrentChapterArtifactSyncBoundary(chapter.content, boundaries, {requireAppliedDelta: true})) return;
+      throw new AppError("当前正文的人物资料尚未同步完成，请稍后从保存进度继续。", 409);
+    }
+    const review = readReview(current.metadataJson);
+    if (review.chapterId !== row.chapterId || review.contentHash !== hash) throw new AppError("人物确认记录与当前正文不一致。", 409);
     if (review.blocking || review.items.some(i => i.status === "pending")) throw new AppError("请先确认本章人物，再从保存进度继续。", 409);
   }
 }
