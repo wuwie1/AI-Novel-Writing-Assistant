@@ -64,6 +64,33 @@ test('completed creation handoffs are quiescent without changing the confirmatio
   assert.deepEqual(await readFile(dbPath), before);
 });
 
+test('queued chapter jobs awaiting explicit recovery are quiescent without clearing the pause', async (t) => {
+  const {dbPath} = await fixture(t);
+  const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO GenerationJob(status,pendingManualRecovery,retryCount,maxRetries) VALUES ('queued',1,0,2)"); c.execute("INSERT INTO DirectorNextRunControl(status) VALUES ('paused')"); c.commit(); c.close()`, dbPath]);
+  assert.equal(seeded.status, 0);
+  const before = await readFile(dbPath);
+  const result = await inspectSqliteQuiescence({dbPath});
+  assert.equal(result.safeToStop, true, JSON.stringify(result));
+  assert.deepEqual(await readFile(dbPath), before);
+});
+
+test('chapter manual recovery does not exempt runnable jobs or active and uncertain leases', async (t) => {
+  for (const [status, manual, owner, expiry, kind] of [
+    ['queued', 0, null, null, 'active_task'],
+    ['running', 1, null, null, 'active_task'],
+    ['queued', 1, 'worker', '4102444800000', 'active_lease'],
+    ['queued', 1, 'worker', null, 'unbounded_lease'],
+    ['queued', 1, null, 'invalid', 'invalid_lease_expiry'],
+  ]) {
+    const {dbPath} = await fixture(t);
+    const seeded = spawnSync('python3', ['-c', `import sqlite3,sys,json; c=sqlite3.connect(sys.argv[1]); c.execute('INSERT INTO GenerationJob(status,pendingManualRecovery,executionOwner,executionLeaseExpiresAt) VALUES (?,?,?,?)',json.loads(sys.argv[2])); c.commit(); c.close()`, dbPath, JSON.stringify([status, manual, owner, expiry])]);
+    assert.equal(seeded.status, 0);
+    const result = await inspectSqliteQuiescence({dbPath});
+    assert.equal(result.safeToStop, false);
+    assert.ok(result.blockers.some(item => item.table === 'GenerationJob' && item.kind === kind), JSON.stringify(result));
+  }
+});
+
 test('a completed creation handoff does not hide active successor work', async (t) => {
   const { dbPath } = await fixture(t);
   const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO CreationStudioConfirmation(status) VALUES ('handed_off')"); c.execute("INSERT INTO NovelWorkflowTask(status,pendingManualRecovery,attemptCount,maxAttempts,heartbeatAt) VALUES ('running',0,1,3,NULL)"); c.commit(); c.close()`, dbPath]);

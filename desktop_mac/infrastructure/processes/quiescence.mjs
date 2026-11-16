@@ -111,6 +111,9 @@ def main():
                     blockers.append({'kind':'unknown_status','table':table,'count':1}); break
                 if status in active or status=='pending' and table in pending_queues:
                     if table=='NovelWorkflowTask' and values.get('pendingManualRecovery') in (1,True) and status=='waiting_approval': continue
+                    # The chapter worker cannot claim queued jobs while explicit recovery is required.
+                    # Continue only the status check: leases below still forbid stopping live work.
+                    if table=='GenerationJob' and status=='queued' and values.get('pendingManualRecovery') in (1,True): continue
                     blockers.append({'kind':'active_task','table':table,'status':status,'count':1}); break
                 if status in manual and table=='CreationStudioConfirmation' and status=='claimed':
                     blockers.append({'kind':'active_confirmation','table':table,'status':status,'count':1}); break
