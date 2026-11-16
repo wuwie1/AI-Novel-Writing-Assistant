@@ -1,1 +1,1 @@
-export {withDirectorExecution} from "./ExecutionScopeAdapter";
+export {withDirectorExecution, registerDirectorCancellation} from "./ExecutionScopeAdapter";

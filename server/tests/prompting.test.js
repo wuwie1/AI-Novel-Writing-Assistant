@@ -170,7 +170,7 @@ test("prompt registry exposes versioned planning assets", () => {
     "novel.story_macro.decomposition@v1",
     "novel.volume.strategy@v2",
     "novel.volume.strategy.critique@v1",
-    "novel.volume.skeleton@v3",
+    "novel.volume.skeleton@v4",
     "title.generation@v2",
     "audit.chapter.full@v2",
     "bookAnalysis.source.note@v1",
@@ -181,8 +181,8 @@ test("prompt registry exposes versioned planning assets", () => {
     "novel.framing.suggest@v1",
     "novel.production.characters@v1",
     "state.snapshot.extract@v4",
-    "novel.payoff_ledger.sync@v8",
-    "novel.characterDynamics.volumeProjection@v3",
+    "novel.payoff_ledger.sync@v9",
+    "novel.characterDynamics.volumeProjection@v4",
     "novel.character_resource.extract_updates@v1",
     "storyMode.child.generate@v1",
     "storyMode.expansion.recommend@v1",
@@ -637,8 +637,8 @@ test("workspace diagnosis prompt requires english recommendedAction enum values"
 });
 
 test("character dynamics prompts harden plannedChapterOrders and confidence output contracts", () => {
-  const volumeAsset = getRegisteredPromptAsset("novel.characterDynamics.volumeProjection", "v3");
-  const chapterAsset = getRegisteredPromptAsset("novel.characterDynamics.chapterExtract", "v1");
+  const volumeAsset = getRegisteredPromptAsset("novel.characterDynamics.volumeProjection", "v4");
+  const chapterAsset = getRegisteredPromptAsset("novel.characterDynamics.chapterExtract", "v2");
   assert.ok(volumeAsset);
   assert.ok(chapterAsset);
 
@@ -724,7 +724,7 @@ test("novel main-chain prompt assets declare explicit non-zero context budgets",
     ["novel.story_macro.field_regeneration@v1", NOVEL_PROMPT_BUDGETS.storyMacroFieldRegeneration],
     ["novel.volume.strategy@v2", NOVEL_PROMPT_BUDGETS.volumeStrategy],
     ["novel.volume.strategy.critique@v1", NOVEL_PROMPT_BUDGETS.volumeStrategyCritique],
-    ["novel.volume.skeleton@v3", NOVEL_PROMPT_BUDGETS.volumeSkeleton],
+    ["novel.volume.skeleton@v4", NOVEL_PROMPT_BUDGETS.volumeSkeleton],
     ["novel.volume.beat_sheet@v3", NOVEL_PROMPT_BUDGETS.volumeBeatSheet],
     ["novel.volume.chapter_list@v9", NOVEL_PROMPT_BUDGETS.volumeChapterList],
     ["novel.volume.chapter_purpose@v3", NOVEL_PROMPT_BUDGETS.volumeChapterDetail],

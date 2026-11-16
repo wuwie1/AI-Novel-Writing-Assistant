@@ -5,9 +5,20 @@ test('dynamic examples and advanced templates retain tail hint placement',()=>{f
 
 test('updated production assets resolve through registry at their exact versions', () => {
   const { getRegisteredPromptAsset } = require('../dist/prompting/registry');
-  for (const [id, version] of [['novel.chapter.writer', 'v10'], ['novel.chapter.acceptance_assessment', 'v24'], ['novel.review.patch', 'v11'], ['novel.review.chapter', 'v3'], ['novel.review.repair', 'v4'], ['novel.chapter.artifact_delta.extract', 'v10'], ['novel.payoff_ledger.sync', 'v8'], ['style.detection', 'v10'], ['style.rewrite', 'v4']]) {
+  for (const [id, version] of [['novel.chapter.writer', 'v10'], ['novel.chapter.acceptance_assessment', 'v24'], ['novel.review.patch', 'v11'], ['novel.review.chapter', 'v3'], ['novel.review.repair', 'v4'], ['novel.chapter.artifact_delta.extract', 'v11'], ['novel.payoff_ledger.sync', 'v9'], ['style.detection', 'v10'], ['style.rewrite', 'v4']]) {
     const asset = getRegisteredPromptAsset(id, version);
     assert.ok(asset, `${id}@${version} must be registered`);
     assert.equal(asset.version, version);
   }
+});
+
+test('registry loader declarations match the versions exported by their prompt assets', () => {
+  const { promptAssetLoaderEntries } = require('../dist/prompting/registry/promptAssetLoaderEntries');
+  const mismatches = [];
+  for (const entry of promptAssetLoaderEntries) {
+    const asset = entry.load();
+    const actualKey = `${asset.id}@${asset.version}`;
+    if (entry.key !== actualKey) mismatches.push({ declared: entry.key, actual: actualKey });
+  }
+  assert.deepEqual(mismatches, [], 'update loader declarations whenever prompt asset versions change');
 });

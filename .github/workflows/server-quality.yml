@@ -1,10 +1,9 @@
 name: Server Quality
 
 on:
-  pull_request:
-    branches: [ai, main]
   push:
-    branches: [ai]
+    tags:
+      - '**'
 
 permissions:
   contents: read

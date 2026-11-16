@@ -126,6 +126,38 @@ test('stop cancels in-flight work and wake cannot revive a stopped service', {ti
   worker.wake(); assert.equal(worker.getHealth().state, 'stopped');
 });
 
+test('director cancellation targets its run and unregisters after lease release', {timeout: 2000}, async () => {
+  const {withDirectorExecution, registerDirectorCancellation} = require('../../../dist/modules/director/infrastructure');
+  const {cancelTaskExecutions} = require('../../../dist/platform/runtime/execution');
+  let entered, signal, cancellations = 0, releases = 0;
+  const started = new Promise(resolve => {entered = resolve;});
+  const worker = new CoreWorker({runtime, executionScope: withDirectorExecution,
+    registerCancellation: (runId, cancel) => registerDirectorCancellation(runId, () => {cancellations++; cancel();}),
+    runRepository: repo({releaseLease: async () => {releases++;}}),
+    executor: {runOnce: async () => {
+      signal = executionSignal();
+      entered();
+      await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), {once: true}));
+    }}});
+  const tick = worker.tick();
+  try {
+    await started;
+    cancelTaskExecutions('novel:book');
+    cancelTaskExecutions('director:other-book');
+    assert.equal(signal.aborted, false);
+    cancelTaskExecutions('director:book');
+    assert.equal(await tick, false);
+    assert.equal(signal.aborted, true);
+    assert.equal(releases, 1);
+    assert.equal(cancellations, 1);
+    cancelTaskExecutions('director:book');
+    assert.equal(cancellations, 1);
+  } finally {
+    worker.stop();
+    await tick;
+  }
+});
+
 test('stop during lease acquisition prevents late execution and releases the acquired owner', {timeout: 2000}, async () => {
   let entered, acquired, runs = 0, releases = 0;
   const claiming = new Promise(r => {entered = r;});

@@ -14,6 +14,8 @@ HTTP 冻结不能保护进程内工具调用。新导演启用时，应用层从
 
 新内核采用 `domain -> application ports -> infrastructure repositories` 的依赖方向。领域层只处理计划、控制态、停止信号和投影，不知道 Prisma、数据库时钟或随机 ID；应用层只定义事实访问端口；Prisma 实现集中在 `infrastructure/`。
 
+执行作用域与任务取消注册同属 `infrastructure/execution/` 适配器，由 `infrastructure/index.ts` 暴露给 `bootstrap.ts` 装配。适配器负责平台取消键 `director:<runId>`，Worker 只使用注入的执行作用域、注册和注销端口；租约执行结束时注销回调。启动装配不能直接导入平台执行模块，否则平台细节会绕过已有边界进入内核。
+
 持久化事实分成六张独立表：
 
 - `DirectorNextRun` 保存不可变的 `RunContract` 快照。
