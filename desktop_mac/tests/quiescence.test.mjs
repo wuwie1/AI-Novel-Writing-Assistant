@@ -74,6 +74,35 @@ test('a completed creation handoff does not hide active successor work', async (
   assert.equal(result.blockers.some(item => item.table === 'CreationStudioConfirmation'), false);
 });
 
+test('dead side-effect jobs are quiescent and retain their failure record', async (t) => {
+  const { dbPath } = await fixture(t);
+  const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO NovelSideEffectJob(status,attempts,maxAttempts,lastError) VALUES ('dead',5,5,'preserve failure')"); c.commit(); c.close()`, dbPath]);
+  assert.equal(seeded.status, 0);
+  const before = await readFile(dbPath);
+  const result = await inspectSqliteQuiescence({ dbPath });
+  assert.equal(result.safeToStop, true, JSON.stringify(result));
+  assert.deepEqual(await readFile(dbPath), before);
+});
+
+test('side-effect retries, active leases and misplaced dead statuses still block shutdown', async (t) => {
+  for (const [table, status, expiry, kind] of [
+    ['NovelSideEffectJob', 'failed', null, 'automatic_retry_candidate'],
+    ['NovelSideEffectJob', 'pending', null, 'active_task'],
+    ['NovelSideEffectJob', 'dead', '4102444800000', 'active_lease'],
+    ['NovelSideEffectJob', 'future_status', null, 'unknown_status'],
+    ['AgentRun', 'dead', null, 'unknown_status'],
+  ]) {
+    const { dbPath } = await fixture(t);
+    const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); table=sys.argv[2]; c.execute('INSERT INTO '+table+'(status) VALUES (?)',(sys.argv[3],));
+if table=='NovelSideEffectJob': c.execute('UPDATE NovelSideEffectJob SET attempts=1,maxAttempts=5,leaseOwner=?,leaseExpiresAt=?',('worker' if sys.argv[4] else None,sys.argv[4] or None))
+c.commit(); c.close()`, dbPath, table, status, expiry ?? '']);
+    assert.equal(seeded.status, 0, seeded.stderr?.toString());
+    const result = await inspectSqliteQuiescence({ dbPath });
+    assert.equal(result.safeToStop, false, `${table}:${status}`);
+    assert.ok(result.blockers.some(item => item.table === table && item.kind === kind), JSON.stringify(result));
+  }
+});
+
 test('claimed confirmations and unknown or misplaced handoff statuses still block shutdown', async (t) => {
   for (const [table, status, kind] of [
     ['CreationStudioConfirmation', 'claimed', 'active_task'],

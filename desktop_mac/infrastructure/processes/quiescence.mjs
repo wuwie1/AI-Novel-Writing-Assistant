@@ -52,7 +52,8 @@ manual={'waiting_approval','waiting_gate','paused','pending_manual_recovery','ne
 pending_queues={'NovelSideEffectJob','ComicExportJob','DramaBatchJob','ComicBatchJob'}
 terminal={'succeeded','success','completed','complete','done','failed','cancelled','canceled','rejected','expired','archived','published','skipped','confirmed','failed_hard','delivered','sent','idle','ready'}
 # A completed creation handoff leaves the successor workflow/director responsible for active work.
-table_terminal={'CreationStudioConfirmation': {'handed_off'}}
+# Side-effect workers only lease pending/failed jobs; dead jobs retain failure history.
+table_terminal={'CreationStudioConfirmation': {'handed_off'}, 'NovelSideEffectJob': {'dead'}}
 status_known=active|manual|terminal|{'draft','attached','not_started','open','closed','enabled','disabled'}
 now=datetime.datetime.now(datetime.timezone.utc)
 def parse_time(value):
