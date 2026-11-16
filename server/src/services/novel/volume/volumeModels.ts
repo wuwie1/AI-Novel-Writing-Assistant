@@ -114,6 +114,7 @@ export interface VolumeGenerateOptions {
   targetBeatKey?: string;
   targetChapterId?: string;
   detailMode?: "purpose" | "boundary" | "task_sheet";
+  chapterStyleContract?: string | null;
   estimatedChapterCount?: number;
   userPreferredVolumeCount?: number;
   respectExistingVolumeCount?: boolean;

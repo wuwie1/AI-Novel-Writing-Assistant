@@ -214,7 +214,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/planner/plannerPlan.prompts").plannerArcPlanPrompt as UnknownPromptAsset,
   },
   {
-    key: "planner.chapter.plan@v3",
+    key: "planner.chapter.plan@v4",
     load: () => require("../prompts/planner/plannerPlan.prompts").plannerChapterPlanPrompt as UnknownPromptAsset,
   },
   {
@@ -354,11 +354,11 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/volume/chapterDetail.prompts").volumeChapterTaskSheetPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.volume.chapter_execution_contract@v4",
+    key: "novel.volume.chapter_execution_contract@v5",
     load: () => require("../prompts/novel/volume/chapterDetail.prompts").volumeChapterExecutionContractPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.volume.chapter_task_sheet_quality@v5",
+    key: "novel.volume.chapter_task_sheet_quality@v6",
     load: () => require("../prompts/novel/volume/chapterTaskSheetQuality.prompts").chapterTaskSheetQualityPrompt as UnknownPromptAsset,
   },
   {

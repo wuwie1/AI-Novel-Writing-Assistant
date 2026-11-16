@@ -33,11 +33,13 @@ export async function evaluateExecutionContract(prepared: PreparedChapterExecuti
       const styleContract = ports ? prepared.preparedStyleContract : await resolveStyleContract(deps, novelId, chapterId, options.taskStyleProfileId);
       return { kind: "reuse" as const, styleContract, reviewedPrevious };
     }
+    const styleContract = ports ? prepared.preparedStyleContract : await resolveStyleContract(deps, novelId, chapterId, options.taskStyleProfileId);
     const generatedDocument = await (ports?.generateDocument ?? generateVolumePlanDocument)({
       novelId,
       workspace,
       options: {
         ...options,
+        chapterStyleContract: styleContract,
         ...(continuityGuidance ? { forceRegenerate: true,
           guidance: [options.guidance, "上一章实际正文与本章规划需要协调，保留本章目标并按以下核对结果修订入口、场景和收尾：", continuityGuidance].filter(Boolean).join("\n") } : {}),
         scope: "chapter_detail",
@@ -85,7 +87,6 @@ export async function evaluateExecutionContract(prepared: PreparedChapterExecuti
       throw new Error(formatChapterTaskSheetQualityFailure(finalQuality));
     }
 
-    const styleContract = ports ? prepared.preparedStyleContract : await resolveStyleContract(deps, novelId, chapterId, options.taskStyleProfileId);
     targetChapter.styleContract = styleContract;
 
 

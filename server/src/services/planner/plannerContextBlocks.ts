@@ -329,7 +329,9 @@ export function buildChapterPlanContextBlocks(input: {
     createContextBlock({
       id: "style_engine",
       group: "style_engine",
-      priority: 91,
+      priority: 99,
+      required: true,
+      allowSummary: false,
       content: buildBlockContent("写法引擎约束", input.styleEngine ?? "无"),
     }),
     createContextBlock({

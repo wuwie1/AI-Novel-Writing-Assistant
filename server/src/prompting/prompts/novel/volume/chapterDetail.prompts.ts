@@ -274,6 +274,8 @@ function createExecutionContractSystemPrompt(): string {
   return [
     "你是资深网文章节编辑。",
     "当前任务是一次性生成可直接交给写作器的章节执行合同。",
+    "source_chapter_contract 是原章纲权威。保留已给定的 purpose、exclusiveEvent、endingState、nextChapterEntryState 和禁止事项；只补齐缺失字段并细化执行路径。不能为避免越章而删除本章已承诺的结果，不能将完成救治改成只观察等待。",
+    "chapter_style_contract 与正文共用，须在场景中落地快慢安排、人物声音、可见回报及章末牵引；有幽默要求时选合适情绪位置，不在危机最重时插段子。",
     "只输出严格 JSON，必须同时包含 purpose、exclusiveEvent、endingState、nextChapterEntryState、conflictLevel、revealLevel、targetWordCount、mustAvoid、payoffRefs、taskSheet、readerExperience、sceneCards。",
     "purpose 用一句话说明本章到底要推进什么，不要写成摘要复述。",
     "exclusiveEvent / endingState / nextChapterEntryState 等字段不可缺失，它们是章节的硬边界合同。",
@@ -375,7 +377,7 @@ export const volumeChapterExecutionContractPrompt: PromptAsset<
   ReturnType<typeof createChapterExecutionContractSchema>["_output"]
 > = {
   id: "novel.volume.chapter_execution_contract",
-  version: "v4",
+  version: "v5",
   taskType: "planner",
   mode: "structured",
   language: "zh",

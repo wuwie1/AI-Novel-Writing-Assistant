@@ -287,7 +287,7 @@ export class StyleCompiler {
     const selfCheck = buildContractSection({
       key: "selfCheck",
       lines: [
-        "- Check whether the draft explains psychology instead of showing it through action or tone.",
+        "- Keep brief inner reactions that motivate choices; replace repeated explanations already conveyed by action or tone.",
         "- Check whether paragraph endings summarize, elevate, or moralize.",
         "- Check whether repeated sentence openings, metaphors, or bodily reactions add new information instead of repeating the same emotion.",
         "- Remove static action loops that change neither choices nor information; do not fill the length target by repeating a scene.",
@@ -308,7 +308,7 @@ export class StyleCompiler {
         activeSourceTargets: input.activeSourceTargets ?? [],
         activeSourceLabels: input.activeSourceLabels ?? [],
         writerIncludedSections: input.writerIncludedSections ?? ["narrative", "character", "language", "rhythm", "antiAi", "selfCheck"],
-        plannerIncludedSections: input.plannerIncludedSections ?? ["narrative", "character", "language", "antiAi"],
+        plannerIncludedSections: input.plannerIncludedSections ?? ["narrative", "character", "language", "rhythm", "antiAi"],
         droppedSections: input.droppedSections ?? [],
         maturity: resolveContractMaturity(input.styleProfile),
         usesGlobalAntiAiBaseline: input.usesGlobalAntiAiBaseline ?? false,

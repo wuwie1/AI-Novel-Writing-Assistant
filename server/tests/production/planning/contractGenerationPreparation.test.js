@@ -11,13 +11,14 @@ test('single chapter generation prepares full native input without invoking mode
    chapterSummary:{findFirst:async()=>({summary:'前章摘要'})}};
  f.workspace.volumes[0].chapters[0].chapterOrder=2;
  const prepared=await api.prepareChapterContractGeneration({novelId:'novel-1',workspace:f.workspace,
-   targetVolumeId:'volume-1',targetChapterId:'volume-chapter-1',options:{provider:'openai',model:'test'},db,
+   targetVolumeId:'volume-1',targetChapterId:'volume-chapter-1',options:{provider:'openai',model:'test',chapterStyleContract:'每章完成一个可见回报'},db,
    storyMacroPlanService:{getPlan:async()=>null}});
  assert.deepEqual(reads,['previous']);assert.equal(prepared.promptInput.previousChapterResult.content,'完整前文。纸条来自旧钟。');
  const requests=[];
  const document=await api.executePreparedChapterContractGeneration(JSON.parse(JSON.stringify(prepared)),{
    forceRegenerate:true,guidance:'保留前文来源',chapterTaskSheetQualityMode:'full_book_autopilot',
    chapterContractPorts:{invokePrompt:async request=>{requests.push(request);const output=candidate();return{output:{...output,sceneCards:JSON.parse(output.sceneCards).scenes}};},semanticAssessor:async()=>safe}});
+ assert.equal(requests[0].promptInput.targetChapter.styleContract,'每章完成一个可见回报');
  assert.equal(requests.length,1);assert.equal(requests[0].promptInput.guidance,'保留前文来源');
  assert.equal(requests[0].promptInput.previousChapterResult.content,'完整前文。纸条来自旧钟。');
  assert.equal(document.volumes[0].chapters[0].taskSheet,candidate().taskSheet);

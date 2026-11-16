@@ -7,12 +7,16 @@ for(const fault of [null,'after_models','assembly'])test(`native preparation use
  else reply=await f.execute();
  assert.equal(reply.result.stage,'prepare');assert.equal(f.state.models,3);
  const chapter=await f.db.chapter.findUniqueOrThrow({where:{id:'chapter-1'}});
- assert.equal(chapter.content,before.content);assert.match(chapter.taskSheet,/完成钥匙交接/);
+ assert.equal(chapter.content,before.content);assert.equal(chapter.taskSheet,require('./planning/contractFixture.cjs').candidate().taskSheet);
  assert.equal(await f.db.storyPlan.count({where:{level:'chapter'}}),1);assert.equal(await f.db.chapterPlanScene.count(),3);
  assert.deepEqual(await f.stage.recover(f.run,'prepare-request'),reply);assert.equal(f.state.models,3);
  assert.deepEqual(await f.db.chapter.findUniqueOrThrow({where:{id:'chapter-1'}}),chapter);
- const requests=f.state.requests;assert.equal(requests.filter(input=>input.options.maxTokens===3200).length,1);
+ const requests=f.state.requests;assert.equal(requests.filter(input=>input.assetId==='planner.chapter.plan').length,1);
+ assert.equal(requests.find(input=>input.assetId==='planner.chapter.plan').options.maxTokens,undefined);
  assert.ok(requests.every(input=>input.promptInput));
+ const contractRequest=requests.find(input=>input.assetId==='novel.volume.chapter_execution_contract');
+ assert.equal(contractRequest.promptInput.targetChapter.styleContract,'本章交付可见回报并保留角色声音');
+ assert.ok(contractRequest.contextBlocks.some(block=>block.id==='chapter_style_contract'&&block.required&&!block.allowSummary));
 });
 test('preparation reuses a current native chapter plan without another model call or planning overwrite',async t=>{
  const f=await nativeFixture(t,'reuse_plan'),before=await f.db.chapter.findUniqueOrThrow({where:{id:'chapter-1'}});

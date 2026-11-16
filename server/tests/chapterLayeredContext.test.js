@@ -940,7 +940,8 @@ test("chapter layered contexts carry volume mission, character duties and repair
   assert.equal(writeContext.readerExperience.rewardLevel, "partial");
   assert.match(writeContext.readerExperience.promisedReward, /第一次可见主动权/);
   assert.ok(writeContext.chapterStateGoal.summary.includes("visible gain"));
-  assert.deepEqual(writeContext.chapterMission.mustAdvance, ["The first counterattack must land.", "完成第一次明确反压"]);
+  assert.deepEqual(writeContext.chapterMission.mustAdvance, ["情报到手", "第一次反压兑现", "新的威胁出现"]);
+  assert.equal(writeContext.chapterMission.hookTarget, writeContext.readerExperience.endingHook);
   assert.equal(writeContext.payoffDirectives[0].operation, "pressure");
   assert.ok(writeContext.chapterBoundary.protectedReveals.includes("Hidden mastermind identity"));
   assert.ok(writeContext.chapterBoundary.doNotCross.some((item) => item.includes("不要提前揭露幕后黑手")));

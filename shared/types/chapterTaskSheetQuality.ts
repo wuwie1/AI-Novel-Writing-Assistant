@@ -27,6 +27,9 @@ export const CHAPTER_TASK_SHEET_QUALITY_STATUS = [
 export type ChapterTaskSheetQualityStatus = typeof CHAPTER_TASK_SHEET_QUALITY_STATUS[number];
 
 export interface ChapterExecutionContractQualityCandidate {
+  sourceChapterContract?: {summary: string; purpose?: string | null; exclusiveEvent?: string | null;
+    endingState?: string | null; nextChapterEntryState?: string | null; mustAvoid?: string | null};
+  styleContract?: string | null;
   previousChapterResult?: {chapterOrder: number; title: string; summary: string; tail: string; content?: string} | null;
   novelId: string;
   volumeId?: string | null;
@@ -145,6 +148,7 @@ export const chapterTaskSheetQualityIssueSchema = z.object({
 });
 
 export const aiChapterTaskSheetQualityAssessmentSchema = z.object({
+  sourceContractAlignment: z.enum(["aligned", "drifted", "not_provided"]).optional(),
   verdict: z.preprocess(normalizeAssessmentVerdict, z.enum(["usable", "repairable", "unusable"])),
   safeToSync: z.boolean(),
   loadRisk: z.enum(["normal", "overloaded"]).default("normal"),
@@ -257,6 +261,12 @@ export function mapSemanticAssessmentToQualityGate(
   assessment: AiChapterTaskSheetQualityAssessment,
   mode: ChapterTaskSheetQualityMode,
 ): ChapterTaskSheetQualityGateResult {
+  if (assessment.sourceContractAlignment === "drifted") {
+    return {status: "blocked", canEnterExecution: false, confidence: assessment.confidence,
+      summary: assessment.summary, repairGuidance: assessment.repairGuidance,
+      issues: [...assessment.issues, {id: "source_contract_drift", severity: "high", target: "boundary",
+        summary: "执行细化偏离原章纲的必达事件或结束状态。", repairHint: "保留原章纲里程碑，局部修正任务单与场景；确需改纲时返回章纲编辑。"}]};
+  }
   const issues = assessment.recommendedHandling === "replan_window"
     && !assessment.issues.some((issue) => issue.id === "contract_overloaded")
     ? assessment.issues.concat({

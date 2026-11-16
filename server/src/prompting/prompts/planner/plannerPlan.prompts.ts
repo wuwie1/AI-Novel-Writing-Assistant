@@ -27,7 +27,7 @@ function buildPlannerPlanAsset(input: {
       maxTokensBudget: input.maxTokensBudget,
       requiredGroups:
         input.planLevel === "chapter"
-          ? ["novel_overview", "chapter_target", "outline_source", "state_snapshot"]
+          ? ["novel_overview", "chapter_target", "outline_source", "state_snapshot", "style_engine"]
           : undefined,
       preferredGroups:
         input.planLevel === "chapter"
@@ -101,6 +101,10 @@ function buildPlannerPlanAsset(input: {
         "3. 输出必须服务于后续创作执行，而不是写分析说明。",
         "4. 各字段之间必须自洽，不得互相冲突。",
         "5. mustAdvance 和 mustPreserve 必须简短、具体、可直接用于后续写作。",
+        ...(input.planLevel === "chapter" ? [
+          "6. chapter_target 中已保存的执行合同是本章权威：保留必达事件、结束状态、读者回报和场景净变化；本次规划只能提供执行补充，不能缩窄章节职责或把本章回报推给下一章。",
+          "7. style_engine 中的节奏、人物声音与表达规则必须落实到行动、阻力、转折和情绪位移。不能用重复体感或无进展的悬停填满一章。",
+        ] : []),
         "",
         "字段要求：",
         "1. title：写当前层级规划条目的标题，简洁明确，不要占位词。",
@@ -231,7 +235,7 @@ export const plannerArcPlanPrompt = buildPlannerPlanAsset({
 
 export const plannerChapterPlanPrompt = buildPlannerPlanAsset({
   id: "planner.chapter.plan",
-  version: "v3",
+  version: "v4",
   planLevel: "chapter",
   includeScenes: true,
   maxTokensBudget: 2400,

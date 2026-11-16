@@ -5,16 +5,18 @@ import { buildPlanTaskSheet,buildPlanSceneCards,buildChapterExecutionContractHas
 
 type Reader=Pick<Prisma.TransactionClient,"storyPlan">;
 export function prepareStoryPlanRecord(input:PersistPlanInput) {
-  const taskSheet = buildPlanTaskSheet(input);
-  const sceneCards = buildPlanSceneCards(input);
+  const taskSheet = input.baseExecutionContract?.taskSheet?.trim() || buildPlanTaskSheet(input);
+  const sceneCards = input.baseExecutionContract?.sceneCards?.trim() || buildPlanSceneCards(input);
+  const expectation = input.baseExecutionContract?.expectation?.trim() || sanitizePlanText(input.objective);
+  const hook = input.baseExecutionContract?.hook?.trim() || sanitizePlanText(input.hookTarget);
   const executionContractHash = input.level === "chapter"
     ? buildChapterExecutionContractHash({
       ...(input.baseExecutionContract ?? {}),
-      expectation: sanitizePlanText(input.objective) || null,
+      expectation: expectation || null,
       targetWordCount: input.targetWordCount ?? input.baseExecutionContract?.targetWordCount ?? null,
       taskSheet: taskSheet ?? input.baseExecutionContract?.taskSheet ?? null,
       sceneCards: sceneCards ?? input.baseExecutionContract?.sceneCards ?? null,
-      hook: sanitizePlanText(input.hookTarget) || null,
+      hook: hook || null,
     })
     : null;
   const serializedRawPlan = JSON.stringify({
@@ -29,7 +31,7 @@ export function prepareStoryPlanRecord(input:PersistPlanInput) {
     executionContractHash,
   });
 
-  return {taskSheet,sceneCards,serializedRawPlan};
+  return {taskSheet,sceneCards,expectation,hook,serializedRawPlan};
 }
 
 export async function findExistingStoryPlan(db:Reader,input:PersistPlanInput) {
@@ -54,7 +56,7 @@ export async function findExistingStoryPlan(db:Reader,input:PersistPlanInput) {
 }
 
 export async function writePreparedStoryPlan(tx:Prisma.TransactionClient,input:PersistPlanInput,record:ReturnType<typeof prepareStoryPlanRecord>,existing:{id:string}|null) {
-  const {taskSheet,sceneCards,serializedRawPlan}=record;
+  const {taskSheet,sceneCards,expectation,hook,serializedRawPlan}=record;
   const plan = existing
     ? await tx.storyPlan.update({
         where: { id: existing.id },
@@ -135,10 +137,10 @@ export async function writePreparedStoryPlan(tx:Prisma.TransactionClient,input:P
       await tx.chapter.update({
         where: { id: input.chapterId },
         data: {
-          expectation: sanitizePlanText(input.objective) || undefined,
+          expectation: expectation || undefined,
           taskSheet,
           sceneCards,
-          hook: sanitizePlanText(input.hookTarget) || undefined,
+          hook: hook || undefined,
           chapterStatus: nextChapterStatus,
         },
       });

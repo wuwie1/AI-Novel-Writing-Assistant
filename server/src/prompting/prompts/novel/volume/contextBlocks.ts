@@ -26,14 +26,16 @@ import {
   type VolumeStrategyPromptInput,
 } from "./shared";
 
-function guidanceBlock(guidance?: string): PromptContextBlock | null {
+function guidanceBlock(guidance?: string, required = false): PromptContextBlock | null {
   if (!guidance?.trim()) {
     return null;
   }
   return createContextBlock({
     id: "guidance",
     group: "guidance",
-    priority: 70,
+    priority: required ? 100 : 70,
+    required,
+    allowSummary: !required,
     content: `User guidance:\n${guidance.trim()}`,
   });
 }
@@ -277,6 +279,18 @@ export function buildVolumeChapterListContextBlocks(input: VolumeChapterListProm
 
 export function buildVolumeChapterDetailContextBlocks(input: VolumeChapterDetailPromptInput): PromptContextBlock[] {
   return [
+    ...(input.detailMode === "task_sheet" ? [createContextBlock({
+      id: "source_chapter_contract", group: "source_chapter_contract", priority: 100, required: true, allowSummary: false,
+      content: `原章纲必达结果（执行细化不得缩窄或推迟，修改章纲须走上游编辑）：\n${JSON.stringify({
+        summary: input.targetChapter.summary, purpose: input.targetChapter.purpose,
+        exclusiveEvent: input.targetChapter.exclusiveEvent, endingState: input.targetChapter.endingState,
+        nextChapterEntryState: input.targetChapter.nextChapterEntryState, mustAvoid: input.targetChapter.mustAvoid,
+      })}`,
+    })] : []),
+    ...(input.targetChapter.styleContract?.trim() ? [createContextBlock({
+      id: "chapter_style_contract", group: "chapter_style_contract", priority: 100, required: true, allowSummary: false,
+      content: `本章有效写法（与正文共用；落实为节奏、行动、人物声音和可见回报）：\n${input.targetChapter.styleContract}`,
+    })] : []),
     ...(input.previousChapterResult ? [createContextBlock({
       id: "previous_chapter_result", group: "previous_chapter_result", priority: 100, required: true, allowSummary: false,
       content: `上一章已保存的实际结果（优先于未执行规划；核对物品来源、形态、持有人及人物位置；冲突时调整本章计划，不得改写前文。仅未提及不表示明确不存在）：\n${JSON.stringify(input.previousChapterResult)}`,
@@ -346,7 +360,7 @@ export function buildVolumeChapterDetailContextBlocks(input: VolumeChapterDetail
       priority: 82,
       content: `Adjacent volume window:\n${buildWindowedVolumeContext(input.workspace.volumes, input.targetVolume.id)}`,
     }),
-    guidanceBlock(input.guidance),
+    guidanceBlock(input.guidance, true),
   ].filter((block): block is PromptContextBlock => Boolean(block));
 }
 

@@ -36,6 +36,7 @@ export function shouldRetryChapterExecutionContract(error: unknown, attempt: num
   if (attempt > 0) {
     return false;
   }
+  if (error instanceof ChapterTaskSheetQualityGateError && error.result.issues.some(issue => issue.id === "source_contract_drift")) return true;
   if (error instanceof ChapterScenePlanNormalizationError) {
     return true;
   }
@@ -116,6 +117,10 @@ export async function generateChapterTaskSheetDetail(params: {
     };
   }
 
+  const sourceChapterContract = {
+    summary: existingChapter.summary, purpose: existingChapter.purpose, exclusiveEvent: existingChapter.exclusiveEvent,
+    endingState: existingChapter.endingState, nextChapterEntryState: existingChapter.nextChapterEntryState, mustAvoid: existingChapter.mustAvoid,
+  };
   let lastError: Error | null = null;
   let qualityFeedback: string | null = null;
   let usable: {value: ContractResult; report: QualityEvent} | null = null;
@@ -156,6 +161,10 @@ export async function generateChapterTaskSheetDetail(params: {
           signal: params.options.signal,
         },
       });
+      // Refinement cannot rewrite explicit upstream milestones. Semantic review still checks the scenes against them.
+      for (const key of ["purpose", "exclusiveEvent", "endingState", "nextChapterEntryState", "mustAvoid"] as const) {
+        if (existingChapter[key]?.trim()) generated.output[key] = existingChapter[key]!.trim();
+      }
       const scenePlan = normalizeChapterScenePlan(
         {
           scenes: generated.output.sceneCards,
@@ -165,6 +174,8 @@ export async function generateChapterTaskSheetDetail(params: {
       );
       let assessment: QualityEvent["assessment"];
       const quality = await qualityGate.evaluate({
+        sourceChapterContract,
+        styleContract: existingChapter.styleContract,
         previousChapterResult: promptInput.previousChapterResult,
         novelId: promptInput.workspace.novelId,
         volumeId: promptInput.targetVolume.id,

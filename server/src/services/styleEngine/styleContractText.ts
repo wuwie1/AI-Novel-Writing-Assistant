@@ -20,6 +20,7 @@ export const PLANNER_STYLE_CONTRACT_SECTIONS: StyleContractSectionKey[] = [
   "narrative",
   "character",
   "language",
+  "rhythm",
   "antiAi",
 ];
 
@@ -40,7 +41,8 @@ function compactList(values: string[] | undefined, fallback = "none"): string {
 function summarizeSection(section: StyleContractSection, maxLines: number): string[] {
   const lines = [
     section.summary?.trim() ? `${section.key}.summary: ${section.summary.trim()}` : "",
-    ...section.lines.map((line) => line.trim()).filter(Boolean),
+    ...section.lines.map((line) => line.trim()).filter(Boolean).filter(line =>
+      !section.summary?.trim() || !line.replace(/^\d+\.\s*/, "").startsWith(`${section.key}.summary:`)),
   ].filter(Boolean);
   return lines.slice(0, maxLines);
 }

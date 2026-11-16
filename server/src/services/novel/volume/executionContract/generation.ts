@@ -25,7 +25,7 @@ export async function prepareChapterContractGeneration(input: {
   const promptInput = await prepareChapterDetailPrompt({ document, novel, workspace: { ...workspace, ...document },
     storyMacroPlan, options, targetVolume, targetChapter, detailMode: "task_sheet", db: input.db });
   return { document, promptInput, options: { provider: options.provider, model: options.model, temperature: options.temperature,
-    guidance: options.guidance, taskId: options.taskId, entrypoint: options.entrypoint,
+    chapterStyleContract: options.chapterStyleContract, guidance: options.guidance, taskId: options.taskId, entrypoint: options.entrypoint,
     chapterTaskSheetQualityMode: options.chapterTaskSheetQualityMode, forceRegenerate: options.forceRegenerate } };
 }
 export type PreparedChapterContractGeneration = Awaited<ReturnType<typeof prepareChapterContractGeneration>>;
@@ -36,7 +36,9 @@ export async function executePreparedChapterContractGeneration(prepared: Prepare
   }
   const actual = { ...prepared.options, ...options };
   const generated = await generateChapterTaskSheetDetail({
-    promptInput: { ...prepared.promptInput, guidance: actual.guidance, detailMode: "task_sheet" }, options: actual,
+    promptInput: { ...prepared.promptInput,
+      targetChapter: {...prepared.promptInput.targetChapter, styleContract: actual.chapterStyleContract ?? prepared.promptInput.targetChapter.styleContract},
+      guidance: actual.guidance, detailMode: "task_sheet" }, options: actual,
   });
   return mergeChapterDetail({ document: prepared.document, targetVolumeId: prepared.promptInput.targetVolume.id,
     targetChapterId: prepared.promptInput.targetChapter.id, detailMode: "task_sheet", generatedDetail: generated });

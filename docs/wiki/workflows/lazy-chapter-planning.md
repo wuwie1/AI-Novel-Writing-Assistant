@@ -65,7 +65,7 @@ chapter_execution 阶段
 
 同一章在一个服务进程内同时进入 JIT、手动入口或恢复入口时，统一合同服务按 `novelId + chapterId` 合并在途请求；首个调用完成后，结果仍以 `Chapter` 的任务单、场景卡和边界字段为唯一持久化事实。禁止在不同入口各自提前生成合同。
 
-任务单质量检查分为两层：结构完整性（目的、边界、任务单、场景卡）是正文前置条件；全书自动执行中的语义建议只作为后续正文验收与质量债的输入，不重写同一份合同。这样既保留检查，又不会把一条可继续生产的语义建议放大为额外的整份合同调用。
+任务单质量检查分为两层：结构完整性（目的、边界、任务单、场景卡）是正文前置条件；全书自动执行中的普通语义建议作为后续正文验收与质量债的输入；原章纲里程碑漂移按文末约定局部修复，不能降级为普通建议。这样既保留检查，又不会把一条可继续生产的语义建议放大为额外的整份合同调用。
 
 **依赖注入**（通过 `ChapterPlanJITDeps`）：
 - `ensureChapterExecutionContract`：委托给 `NovelVolumeService.ensureChapterExecutionContract`
@@ -249,3 +249,17 @@ if (request.controlPolicy?.advanceMode === "full_book_autopilot") {
 ## 紧凑作品的滚动窗口
 
 紧凑作品的路线窗口仍由 JIT 服务按当前事实即时补齐，但会携带完成预算：剩余 8 章以内进入收束规划，剩余 3 章以内使用终章倒计时上下文。收束规划只能读取既有结局合同、事实账本和未兑现回报，不再扩展新的远期主线；路线补齐失败不得覆盖当前章已保存正文。
+
+## 执行细化保留上游里程碑与写法（2026-11-16）
+
+章节细化可以调整行动路径，不能把原章纲承诺本章完成的事件缩成观察、等待或留给下一章。`task_sheet` 细化把原摘要、目的、独占事件、结束态和下章入口放入独立的 `source_chapter_contract` 必需上下文；已填写的边界字段在细化结果中保留。修改里程碑应先编辑章纲，而不是借即时细化覆盖。
+
+语义评估同时看到原章纲与候选任务单/场景计划，并显式输出 `sourceContractAlignment`。AI 判定 `drifted` 时，当前合同不能进入正文，最多在既有两次额度内局部修复；第二次仍漂移则返回明确错误。其他普通节奏、表达建议仍遵守原有完成优先策略，不新增全书阻断。用户修订指导和重试反馈在本次章节细化中也是不可摘要、不可丢弃的必需上下文。
+
+有效写法在执行细化前解析，以 `chapterStyleContract` 传入生成准备并注入 `chapter_style_contract`，随后同一快照供正文使用。章节规划的摘要包含 narrative、character、language、rhythm、antiAi，`style_engine` 必需且不可自动摘要，避免小上下文预算丢掉节奏要求。
+
+`StoryPlan` 是执行补充。保存规划时，有既存执行合同便保留其 expectation、hook、taskSheet 和完整 sceneCards（含 readerExperience、阻力、转折、情绪位移、读者价值及预算），不再用五字段规划场景降级覆盖。没有既存合同才使用兼容生成路径；合同哈希按实际保存字段计算。新的章节职责需通过上游章纲/合同编辑明确更新。正文装配也以已保存章节目标、执行场景的推进/保留项和读者体验钩子为准，不能再被补充 StoryPlan 的目标或钩子覆盖。
+
+写法资产中的规则应写成要执行的动作。不要把“多个角色语气相同”等风险诊断作为正向 languageRules 导入；修成“按角色目的区分声音”，或者使用有明确类型的反模板规则。系统不会以关键词猜测并自动反转作者意图。短心理活动可以推动选择，审校只清除重复解释。
+
+相关回归：`production/planning/openingContract.test.js`、`plannerPersistence.test.js`、`chapterTaskSheetQualityGate.test.js`。提示词版本：`planner.chapter.plan@v4`、`novel.volume.chapter_execution_contract@v5`、`novel.volume.chapter_task_sheet_quality@v6`。

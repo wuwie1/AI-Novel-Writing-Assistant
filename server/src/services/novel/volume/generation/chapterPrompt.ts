@@ -26,7 +26,7 @@ export async function prepareChapterDetailPrompt(params:{document:VolumePlanDocu
     strategyPlan: document.strategyPlan,
     targetVolume,
     targetBeatSheet: getBeatSheet(document, targetVolume.id),
-    targetChapter,
+    targetChapter: {...targetChapter, styleContract: options.chapterStyleContract ?? targetChapter.styleContract},
     previousChapterResult,
     guidance: options.guidance,
     detailMode,

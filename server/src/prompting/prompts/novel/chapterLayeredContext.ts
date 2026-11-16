@@ -224,14 +224,16 @@ export function buildChapterMissionContext(
   }),
 ): ChapterMissionContext {
   const stateGoal = contextPackage.chapterStateGoal;
+  const contractScenes = contextPackage.chapter.taskSheet?.trim() ? scenePlan?.scenes ?? [] : [];
+  const hasExecutionScenes = contractScenes.length > 0;
   return {
     chapterId: contextPackage.chapter.id,
     chapterOrder: contextPackage.chapter.order,
     title: compactText(contextPackage.chapter.title),
     objective:
-      compactText(stateGoal?.summary)
-      || compactText(contextPackage.plan?.objective)
-      || compactText(contextPackage.chapter.expectation, "Push the current chapter mission forward."),
+      compactText(contextPackage.chapter.expectation)
+      || compactText(stateGoal?.summary)
+      || compactText(contextPackage.plan?.objective, "Push the current chapter mission forward."),
     expectation:
       compactText(contextPackage.chapter.expectation)
       || compactText(stateGoal?.summary)
@@ -240,14 +242,16 @@ export function buildChapterMissionContext(
     targetWordCount: resolveLengthBudgetContract(contextPackage.chapter.targetWordCount)?.targetWordCount
       ?? scenePlan?.targetWordCount ?? null,
     planRole: contextPackage.plan?.planRole ?? null,
-    hookTarget: compactText(contextPackage.plan?.hookTarget, "Leave a fresh tension point at the ending."),
+    hookTarget: compactText(scenePlan?.readerExperience?.endingHook)
+      || compactText(contextPackage.chapter.hook)
+      || compactText(contextPackage.plan?.hookTarget, "Leave a fresh tension point at the ending."),
     mustAdvance: sanitizeCreativeMustAdvanceItems(takeUnique([
-      ...(stateGoal?.targetConflicts ?? []),
-      ...(contextPackage.plan?.mustAdvance ?? []),
+      ...(hasExecutionScenes ? contractScenes.flatMap(scene => scene.mustAdvance)
+        : [...(stateGoal?.targetConflicts ?? []), ...(contextPackage.plan?.mustAdvance ?? [])]),
     ], 5)),
     mustPreserve: takeUnique([
-      ...(stateGoal?.targetRelationships ?? []),
-      ...(contextPackage.plan?.mustPreserve ?? []),
+      ...(hasExecutionScenes ? contractScenes.flatMap(scene => scene.mustPreserve)
+        : [...(stateGoal?.targetRelationships ?? []), ...(contextPackage.plan?.mustPreserve ?? [])]),
     ], 5),
     riskNotes: takeUnique([
       ...(contextPackage.protectedSecrets ?? []),
@@ -295,8 +299,8 @@ function buildChapterBoundaryContract(
   ], 12).filter(Boolean);
 
   return {
-    exclusiveEvent: compactText(contextPackage.plan?.objective)
-      || compactText(contextPackage.chapter.expectation)
+    exclusiveEvent: compactText(contextPackage.chapter.expectation)
+      || compactText(contextPackage.plan?.objective)
       || compactText(contextPackage.plan?.title)
       || null,
     entryState: compactText(firstScene?.entryState) || null,

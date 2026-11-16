@@ -74,7 +74,7 @@ export function createKernelNativePlanningPreparation(deps: NativePlanningPrepar
       const contract = await deps.contract.prepareChapterExecutionContract(unit.novelId, unit.chapterId, options, sources);
       const generation = await prepareChapterContractGeneration({ novelId: unit.novelId, workspace: contract.workspace,
         targetVolumeId: contract.matched.volumeId, targetChapterId: contract.matched.volumeChapterId,
-        options, db: deps.db, storyMacroPlanService: deps.storyMacroPlanService });
+        options: {...options, chapterStyleContract: contract.preparedStyleContract}, db: deps.db, storyMacroPlanService: deps.storyMacroPlanService });
       return wire({ request, timeline, contract, generation, contextInput });
     },
     async execute(run, input, steps) {

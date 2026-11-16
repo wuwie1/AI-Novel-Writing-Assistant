@@ -40,7 +40,7 @@ async function nativeFixture(t,fault){
  const plannerInstance=new (require('../../../dist/services/planner/PlannerService').PlannerService)();
  plannerInstance.getChapterPlan=(novelId,chapterId)=>f.db.storyPlan.findFirst({where:{novelId,chapterId,level:'chapter',status:{not:'stale'}},include:{scenes:{orderBy:{sortOrder:'asc'}}},orderBy:{updatedAt:'desc'}});
  const planning=api.createKernelNativePlanningPreparation({db:f.db,contract,
-   contractSources:{db:f.db,readWorkspace:id=>readExecutionContractWorkspace(f.db,id),resolveStyleContract:async()=>null},
+   contractSources:{db:f.db,readWorkspace:id=>readExecutionContractWorkspace(f.db,id),resolveStyleContract:async()=>"本章交付可见回报并保留角色声音"},
    storyMacroPlanService:{getPlan:async()=>null},planner:plannerInstance,
    plannerSources:{...planner.deps,db:f.db},request:async run=>({provider:run.snapshots.model.provider,model:run.snapshots.model.model}),
    sourceRoute:()=>'/lab/director/novel-1',assertOwnership:tx=>f.assertOwnership(tx,{executionToken:'lease-1'}),

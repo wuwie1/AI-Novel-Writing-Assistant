@@ -118,7 +118,8 @@
         "detailMode": "task_sheet",
         "targetVolumeId": "volume-1",
         "targetChapterId": "volume-chapter-1",
-        "chapterTaskSheetQualityMode": "ai_copilot"
+        "chapterTaskSheetQualityMode": "ai_copilot",
+        "chapterStyleContract": null
       },
       "storyMacroPlanService": {}
     },

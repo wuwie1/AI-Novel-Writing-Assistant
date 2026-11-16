@@ -152,7 +152,7 @@ test("prompt registry exposes versioned planning assets", () => {
     "agent.runtime.fallback_answer@v1",
     "agent.runtime.setup_guidance@v1",
     "agent.runtime.setup_ideation@v1",
-    "planner.chapter.plan@v3",
+    "planner.chapter.plan@v4",
     "novel.director.candidates@v2",
     "novel.director.candidate_patch@v1",
     "novel.director.blueprint@v1",
@@ -217,7 +217,7 @@ test("prompt registry exposes versioned planning assets", () => {
     assert.ok(getRegisteredPromptAsset(id, version), `missing prompt asset ${key}`);
   }
 
-  const chapterAsset = getRegisteredPromptAsset("planner.chapter.plan", "v3");
+  const chapterAsset = getRegisteredPromptAsset("planner.chapter.plan", "v4");
   assert.ok(chapterAsset);
   assert.equal(chapterAsset.taskType, "planner");
 });
