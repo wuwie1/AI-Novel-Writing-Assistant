@@ -315,6 +315,18 @@ test('a limited director range also prepares missing chapters without extending 
 });
 
 for (const qualityFirst of [false, true]) {
+  test('clearing an old draft starts generation instead of recovering a nonexistent author revision; qualityFirst=' + qualityFirst, async () => {
+    const result = await exercise({edited: true, qualityFirst, chapterTokens: 100});
+    assert.deepEqual(result.calls, ['c1', 'c2']);
+    assert.equal(result.synchronized, 0);
+    assert.equal(result.reassessed, 0);
+    assert.equal(result.job.status, 'succeeded');
+    assert.equal(result.job.pendingManualRecovery, false);
+    assert.equal(result.outcome.chapters.every(chapter => chapter.closed), true);
+  });
+}
+
+for (const qualityFirst of [false, true]) {
   test('author edit with no closed usage is reassessed without writing or repairing; qualityFirst=' + qualityFirst, async () => {
     const result = await exercise({legacySaved: true, edited: true, staleAcceptance: true, qualityFirst, chapterTokens: 100});
     assert.equal(result.synchronized, 1);

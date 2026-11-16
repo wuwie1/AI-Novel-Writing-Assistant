@@ -424,7 +424,7 @@ export class NovelPipelineExecutor {
         ]);
         const manuallyEditedChapterIds = new Set<string>();
         for (const chapter of chapterCandidates) {
-          const edited = chapter.artifactSyncCheckpoints.some(row => row.artifactType === MANUAL_CHAPTER_SYNC_TYPE
+          const edited = Boolean(chapter.content?.trim()) && chapter.artifactSyncCheckpoints.some(row => row.artifactType === MANUAL_CHAPTER_SYNC_TYPE
             && row.contentHash === buildChapterArtifactContentHash(chapter.content ?? ""));
           if (edited) manuallyEditedChapterIds.add(chapter.id);
           const terminal = chapter.generationState === "approved" || chapter.generationState === "published" || chapter.chapterStatus === "completed";
