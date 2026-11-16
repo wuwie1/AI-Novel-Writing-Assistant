@@ -258,6 +258,8 @@ if (request.controlPolicy?.advanceMode === "full_book_autopilot") {
 
 有效写法在执行细化前解析，以 `chapterStyleContract` 传入生成准备并注入 `chapter_style_contract`，随后同一快照供正文使用。章节规划的摘要包含 narrative、character、language、rhythm、antiAi，`style_engine` 必需且不可自动摘要，避免小上下文预算丢掉节奏要求。
 
+V2 前置 `chapter_detail_bundle` 和手动卷细化同样经过 `prepareChapterDetailPrompt`。未提供运行快照时，此入口读取目标章/本书的当前有效写法；已有快照（包括显式 null）则原样保留，恢复任务时不偷偷换成新配置。不能只在正文即时准备入口传递写法。
+
 `StoryPlan` 是执行补充。保存规划时，有既存执行合同便保留其 expectation、hook、taskSheet 和完整 sceneCards（含 readerExperience、阻力、转折、情绪位移、读者价值及预算），不再用五字段规划场景降级覆盖。没有既存合同才使用兼容生成路径；合同哈希按实际保存字段计算。新的章节职责需通过上游章纲/合同编辑明确更新。正文装配也以已保存章节目标、执行场景的推进/保留项和读者体验钩子为准，不能再被补充 StoryPlan 的目标或钩子覆盖。
 
 写法资产中的规则应写成要执行的动作。不要把“多个角色语气相同”等风险诊断作为正向 languageRules 导入；修成“按角色目的区分声音”，或者使用有明确类型的反模板规则。系统不会以关键词猜测并自动反转作者意图。短心理活动可以推动选择，审校只清除重复解释。

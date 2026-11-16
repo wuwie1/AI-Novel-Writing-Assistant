@@ -100,3 +100,20 @@ test('persistent source drift cannot be downgraded into an autopilot warning', a
   assert.deepEqual(mission.mustAdvance,['成人撤阵片，呼吸稳定']);
   assert.deepEqual(mission.mustPreserve,['无前世修为']);
 });
+
+test('direct volume detail resolves the active book style without a prepared style snapshot', async () => {
+  const {prepareChapterDetailPrompt}=require('../../../dist/services/novel/volume/generation/chapterPrompt');
+  const {StyleCompiler}=require('../../../dist/services/styleEngine/StyleCompiler');
+  const {contract}=new StyleCompiler().compile({styleProfile:{narrativeRules:{},characterRules:{},languageRules:{},rhythmRules:{summary:'当章完成事件'}},antiAiRules:[]});
+  const calls=[];
+  const params={document:{novelId:'novel-1',beatSheets:[]},novel:{},workspace:{},storyMacroPlan:null,options:{},
+    targetVolume:{id:'volume-1'},targetChapter:{id:'plan-1',chapterId:'chapter-1',chapterOrder:1,styleContract:'旧写法'},detailMode:'task_sheet',db:{},
+    resolveStyleContext:async input=>{calls.push(input);return {compiledBlocks:{contract}};}};
+  const generated=await prepareChapterDetailPrompt(params);
+  assert.deepEqual(calls,[{novelId:'novel-1',chapterId:'chapter-1'}]);
+  assert.match(generated.targetChapter.styleContract,/当章完成事件/);
+  assert.doesNotMatch(generated.targetChapter.styleContract,/旧写法/);
+  const prepared=await prepareChapterDetailPrompt({...params,options:{chapterStyleContract:'保存的运行快照'}});
+  assert.equal(prepared.targetChapter.styleContract,'保存的运行快照');
+  assert.equal(calls.length,1);
+});

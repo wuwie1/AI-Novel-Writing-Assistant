@@ -3,11 +3,22 @@ import type {VolumePlan,VolumePlanDocument} from "@ai-novel/shared/types/novel";
 import type {StoryMacroPlanService} from "../../storyMacro/StoryMacroPlanService";
 import type {VolumeGenerateOptions,VolumeGenerationNovel,VolumeWorkspace} from "../volumeModels";
 import {getBeatSheet} from "../volumeGenerationHelpers";
+import {StyleBindingService} from "../../../styleEngine/StyleBindingService";
+import {buildWriterStyleContractText} from "../../../styleEngine/styleContractText";
 export async function prepareChapterDetailPrompt(params:{document:VolumePlanDocument;novel:VolumeGenerationNovel;workspace:VolumeWorkspace;
   storyMacroPlan:Awaited<ReturnType<StoryMacroPlanService["getPlan"]>>|null;options:VolumeGenerateOptions;
   targetVolume:VolumePlan;targetChapter:VolumePlan["chapters"][number];detailMode:"purpose"|"boundary"|"task_sheet";
-  db:Pick<Prisma.TransactionClient,"chapter"|"chapterSummary">}) {
+  db:Pick<Prisma.TransactionClient,"chapter"|"chapterSummary">;
+  resolveStyleContext?: StyleBindingService["resolveForGeneration"]}) {
   const {document,novel,workspace,storyMacroPlan,options,targetVolume,targetChapter,detailMode,db}=params;
+  let styleContract = options.chapterStyleContract;
+  if (detailMode === "task_sheet" && styleContract === undefined) {
+    const bindingService = new StyleBindingService();
+    const resolved = await (params.resolveStyleContext ?? bindingService.resolveForGeneration.bind(bindingService))({
+      novelId: document.novelId, chapterId: targetChapter.chapterId ?? undefined,
+    });
+    styleContract = buildWriterStyleContractText(resolved.compiledBlocks?.contract ?? null) || null;
+  }
   const previous = detailMode === "task_sheet" && targetChapter.chapterOrder > 1 ? await db.chapter.findFirst({
     where: {novelId: document.novelId, order: {lt: targetChapter.chapterOrder}, content: {not: null}},
     orderBy: {order: "desc"}, select: {id: true, order: true, title: true, content: true},
@@ -26,7 +37,7 @@ export async function prepareChapterDetailPrompt(params:{document:VolumePlanDocu
     strategyPlan: document.strategyPlan,
     targetVolume,
     targetBeatSheet: getBeatSheet(document, targetVolume.id),
-    targetChapter: {...targetChapter, styleContract: options.chapterStyleContract ?? targetChapter.styleContract},
+    targetChapter: {...targetChapter, styleContract: styleContract === undefined ? targetChapter.styleContract : styleContract},
     previousChapterResult,
     guidance: options.guidance,
     detailMode,
