@@ -13,6 +13,7 @@ import type {
 } from "@ai-novel/shared/types/novel";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
+import { readNovelDirectorIdentity } from "../../../modules/novel/director-routing";
 import { novelEventBus } from "../../../events/publisher";
 import type { VolumeUpdateReason } from "../../../events/publisher";
 import { logMemoryUsage } from "../../../runtime/memoryTelemetry";
@@ -98,6 +99,14 @@ export class NovelVolumeService {
     novelId: string,
     document: VolumePlanDocument,
   ): Promise<{ document: VolumePlanDocument; changed: boolean }> {
+    const novel = await prisma.novel.findUnique({where: {id: novelId}, select: {narrativeForm: true}});
+    // V2 owns its prepared planning fields until an explicit execution sync. A
+    // detail read must not replace them with empty or older Chapter fields.
+    // Resolve historical ownership through the same policy as director routing.
+    if (novel && novel.narrativeForm !== "short_story"
+      && (await readNovelDirectorIdentity(novelId)).version === "v2") {
+      return {document, changed: false};
+    }
     const chapterRows = await prisma.chapter.findMany({
       where: { novelId },
       orderBy: { order: "asc" },

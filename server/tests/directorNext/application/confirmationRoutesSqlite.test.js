@@ -20,15 +20,16 @@ const {createDirectorNextServices, FactIntegrityError} = require(path.join(serve
 const {PrismaRunRepository} = require(path.join(server, 'dist/modules/director/infrastructure'));
 const {readDirectorWorkspace} = require(path.join(server, 'dist/app/director/workspace'));
 const {NovelVolumeService} = require(path.join(server,'dist/services/novel/volume/NovelVolumeService'));
+const {DefaultNovelApplicationServices} = require(path.join(server,'dist/services/novel/application/NovelApplicationServices'));
 function snapshot() {
  const db = new Database(process.env.DATABASE_URL.slice(5), {readonly: true});
  try {return ['DirectorNextRun','DirectorNextRunControl','DirectorNextArtifact','DirectorNextEvent','DirectorNextCommand','DirectorNextQualityDebt',
-  'Novel','VolumePlan','VolumeChapterPlan','Chapter'].map(table => ({table, rows: db.prepare('SELECT * FROM "'+table+'" ORDER BY rowid').all()}));}
+  'Novel','VolumePlan','VolumePlanVersion','VolumeChapterPlan','Chapter'].map(table => ({table, rows: db.prepare('SELECT * FROM "'+table+'" ORDER BY rowid').all()}));}
  finally {db.close();}
 }
 (async () => {
  await ensureRuntimeDatabaseReady();
- await prisma.novel.createMany({data: [{id: 'book/中文?x=1', title: '本书'}, {id: 'other', title: '其他书'}]});
+ await prisma.novel.createMany({data: [{id: 'book/中文?x=1', title: '本书', directorVersion: 'v2'}, {id: 'other', title: '其他书', directorVersion: 'v1'}]});
  const novelId = 'book/中文?x=1';
  await prisma.volumePlan.createMany({data: [
   {id: 'v-first', novelId, sortOrder: 1, title: '首卷'},
@@ -49,11 +50,43 @@ function snapshot() {
  const savedPlanning=await new NovelVolumeService().getVolumes(novelId,{hydrateCanonical:false});
  assert.equal(savedPlanning.volumes.find(v=>v.id==='v/target?x=2').chapters[0].taskSheet,'上游规划任务','planning reads must retain the prepared source instead of copying execution');
  assert.deepEqual(snapshot(),planningBefore);
+ await prisma.volumePlanVersion.create({data: {id: 'active-plan', novelId, version: 1, status: 'active', contentJson: JSON.stringify(savedPlanning)}});
+ const application = new DefaultNovelApplicationServices();
+ async function assertPlanningReadsPreserveFacts() {
+  const before = snapshot();
+  for (let read=0; read<2; read++) {
+   const detail = await application.getNovelById(novelId);
+   const workspace = await new NovelVolumeService().getVolumes(novelId);
+   for (const result of [detail,workspace]) {
+    const chapter = result.volumes.find(v=>v.id==='v/target?x=2').chapters[0];
+    assert.equal(chapter.taskSheet,'上游规划任务');
+    assert.equal(chapter.sceneCards,'上游规划场景');
+    assert.equal(chapter.title,'目标章');
+   }
+  }
+  assert.deepEqual(snapshot(),before,'detail refresh must not modify plans, active version, prose or director facts');
+ }
+ await assertPlanningReadsPreserveFacts(); // Nonempty but older execution fields.
+ await prisma.chapter.update({where:{id:'c/7?x=3'},data:{taskSheet:null,sceneCards:null}});
+ await assertPlanningReadsPreserveFacts(); // The production incident: not yet synchronized.
+ await prisma.chapter.update({where:{id:'c/7?x=3'},data:{taskSheet:'真正同步的任务',sceneCards:'真正同步的场景'}});
  const options = createDirectorProductionOptions();
  const services = createDirectorNextServices(options), runs = new PrismaRunRepository(prisma);
  const contract = options.contractFactory({runId: 'range-run', novelId, driver: 'assisted', stepIdsInScope: null,
   launchInput: {storyInput: '故事', estimatedChapterCount: 12, worldMode: 'skip', targetMode: 'opening', provider: 'openai', model: 'no-ai', executionRange: {from: 7, to: 8}}});
  await runs.open(contract); await runs.transition(contract.runId, {type: 'start'}, 0);
+ await prisma.novel.update({where:{id:novelId},data:{directorVersion:null}});
+ await assertPlanningReadsPreserveFacts(); // Historical V2 books without an explicit version.
+ await prisma.novel.update({where:{id:novelId},data:{directorVersion:'v2'}});
+ // V1 and short-story reads retain their existing canonical chapter behavior.
+ await prisma.chapter.update({where:{id:'c-other'},data:{taskSheet:'V1 执行任务',sceneCards:'V1 执行场景'}});
+ let legacy = await new NovelVolumeService().getVolumes('other');
+ assert.equal(legacy.volumes[0].chapters[0].taskSheet,'V1 执行任务');
+ assert.equal(legacy.volumes[0].chapters[0].sceneCards,'V1 执行场景');
+ await prisma.novel.update({where:{id:'other'},data:{narrativeForm:'short_story'}});
+ await prisma.chapter.update({where:{id:'c-other'},data:{taskSheet:'短篇执行任务'}});
+ legacy = await new NovelVolumeService().getVolumes('other');
+ assert.equal(legacy.volumes[0].chapters[0].taskSheet,'短篇执行任务');
  for (const [type, chapterId, volumeId] of [
   ['chapter_task_sheet','p/7?x=4','v/target?x=2'],
   ['chapter_execution_contract','c/7?x=3','v/target?x=2'],
