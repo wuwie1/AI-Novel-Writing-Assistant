@@ -1,3 +1,4 @@
+import { readChapterStateSources, projectChapterCharacters, payoffVisibleBeforeChapter, resourceVisibleBeforeChapter } from "../../../../services/novel/state/context/ChapterStateBoundary";
 import type { PrismaClient } from "@prisma/client";
 import type { CharacterResourceLedgerItem } from "@ai-novel/shared/types/characterResource";
 import { buildChapterArtifactLedgerContext } from "../../../../services/novel/runtime/artifactSync/context";
@@ -6,7 +7,7 @@ import type { ArtifactExtractionDependencies } from "./extraction";
 
 interface PreviousSnapshot {
   summary: string | null;
-  characterStates: { summary: string | null }[];
+  characterStates: {characterId?: string; currentGoal?: string | null; knownFactsJson?: string | null; summary: string | null }[];
   relationStates: { summary: string | null }[];
   informationStates: { holderType: string; fact: string }[];
   foreshadowStates: { title: string; status: string }[];
@@ -43,12 +44,12 @@ export function createArtifactSourceReader(
       db.novel.findUnique({ where: { id: novelId }, select: { title: true } }),
       db.chapter.findFirst({ where: { id: chapterId, novelId }, select: { id: true, order: true, title: true, taskSheet: true, expectation: true } }),
       db.character.findMany({ where: { novelId }, orderBy: { createdAt: "asc" }, select: {
-        id: true, name: true, role: true, castRole: true, currentGoal: true, currentState: true, currentLocation: true,
+        id: true, name: true, role: true, castRole: true, currentGoal: true, currentState: true, lastEvolvedAt: true, currentLocation: true,
       } }),
       facades.listResources(novelId),
       db.payoffLedgerItem.findMany({ where: { novelId }, orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }], take: 30,
         select: { ledgerKey: true, title: true, currentStatus: true, summary: true, targetStartChapterOrder: true,
-          targetEndChapterOrder: true, lastTouchedChapterOrder: true } }),
+          targetEndChapterOrder: true, lastTouchedChapterOrder: true, lastTouchedChapterId: true, firstSeenChapterOrder: true } }),
       facades.readPreviousSnapshot(novelId, order),
       db.characterDialogueInfluence.findMany({ where: { novelId, status: "active",
         targetStartChapterOrder: { lte: order }, targetEndChapterOrder: { gte: order } },
@@ -57,12 +58,15 @@ export function createArtifactSourceReader(
           targetStartChapterOrder: true, targetEndChapterOrder: true, character: { select: { name: true } } } }),
     ]);
     if (!novel || !chapter || chapter.order !== order) throw new InvalidProductionRequestError("Artifact source chapter identity changed");
+    const sources = new Set((await readChapterStateSources(novelId, order, db)).map(source => source.id));
     const characterLocationText = context.run.snapshots.profile.capabilities.includes("character_state")
       ? await facades.readLocationContext({ novelId, chapterOrder: order, characters }) : "";
     return {
       novelTitle: novel.title, chapterTitle: chapter.title,
       chapterGoal: chapter.taskSheet?.trim() || chapter.expectation?.trim() || "无明确章节目标",
-      ...buildChapterArtifactLedgerContext({ characters, resources, payoffs }), characterLocationText,
+      ...buildChapterArtifactLedgerContext({ characters: projectChapterCharacters(characters, snapshot?.characterStates),
+        resources: resources.filter(item => resourceVisibleBeforeChapter(item, order, sources)),
+        payoffs: payoffs.filter(item => payoffVisibleBeforeChapter(item, order, sources)) }), characterLocationText,
       previousStateText: previousState(snapshot),
       activeCharacterDialogueInfluenceText: influences.map(item => [`- influenceId=${item.id}`,
         `角色=${item.character.name}`, `对话沉淀=${item.summary}`, `窗口=${item.targetStartChapterOrder}-${item.targetEndChapterOrder}`,

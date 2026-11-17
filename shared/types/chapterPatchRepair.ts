@@ -10,6 +10,11 @@ export type ChapterPatchRepairStrategy = typeof CHAPTER_PATCH_REPAIR_STRATEGIES[
 export const chapterPatchOperationSchema = z.object({
   id: z.string().trim().min(1),
   targetExcerpt: z.string().trim().min(6),
+  // Ordinal and count refer to the same unchanged source text as targetExcerpt.
+  location: z.object({
+    occurrence: z.number().int().min(1),
+    expectedOccurrences: z.number().int().min(1),
+  }).refine(value => value.occurrence <= value.expectedOccurrences).optional(),
   replacement: z.string().trim(),
   reason: z.string().trim().min(1),
   issueIds: z.array(z.string().trim().min(1)).max(8).default([]),
@@ -54,23 +59,6 @@ export interface ChapterPatchApplyResult {
   appliedPatchIds: string[];
   appliedPatches: ChapterPatchAppliedPatch[];
   failures: ChapterPatchApplyFailure[];
-}
-
-function countOccurrences(content: string, target: string): number {
-  if (target.length === 0) {
-    return 0;
-  }
-  let count = 0;
-  let cursor = 0;
-  while (cursor < content.length) {
-    const index = content.indexOf(target, cursor);
-    if (index < 0) {
-      break;
-    }
-    count += 1;
-    cursor = index + target.length;
-  }
-  return count;
 }
 
 interface PatchMatch {
@@ -128,45 +116,24 @@ function findWhitespaceNormalizedMatches(content: string, target: string): Patch
   return matches;
 }
 
-function findSafePatchMatch(content: string, target: string): {
+function findSafePatchMatch(content: string, target: string, location?: ChapterPatchOperation["location"]): {
   match: PatchMatch | null;
   occurrenceCount: number;
   matchedBy?: ChapterPatchMatchStrategy;
 } {
-  const exactCount = countOccurrences(content, target);
-  if (exactCount === 1) {
-    const start = content.indexOf(target);
-    return {
-      match: {
-        start,
-        end: start + target.length,
-        matchedBy: "exact",
-      },
-      occurrenceCount: exactCount,
-      matchedBy: "exact",
-    };
+  const exact: PatchMatch[] = [];
+  let cursor = 0;
+  while (cursor < content.length) {
+    const start = content.indexOf(target, cursor);
+    if (start < 0) break;
+    exact.push({ start, end: start + target.length, matchedBy: "exact" });
+    cursor = start + target.length;
   }
-  if (exactCount > 1) {
-    return {
-      match: null,
-      occurrenceCount: exactCount,
-      matchedBy: "exact",
-    };
-  }
-
-  const normalizedMatches = findWhitespaceNormalizedMatches(content, target);
-  if (normalizedMatches.length === 1) {
-    return {
-      match: normalizedMatches[0]!,
-      occurrenceCount: normalizedMatches.length,
-      matchedBy: "normalized_whitespace",
-    };
-  }
-  return {
-    match: null,
-    occurrenceCount: normalizedMatches.length,
-    matchedBy: normalizedMatches.length > 0 ? "normalized_whitespace" : undefined,
-  };
+  const matches = exact.length ? exact : findWhitespaceNormalizedMatches(content, target);
+  const match = location
+    ? (location.expectedOccurrences === matches.length ? matches[location.occurrence - 1] ?? null : null)
+    : (matches.length === 1 ? matches[0]! : null);
+  return { match, occurrenceCount: matches.length, matchedBy: matches[0]?.matchedBy };
 }
 
 export function applyChapterPatchRepairPlan(
@@ -197,12 +164,13 @@ export function applyChapterPatchRepairPlan(
   for (const patch of normalizedPlan.patches) {
     const target = patch.targetExcerpt.trim();
     const replacement = patch.replacement.trim();
-    const matchResult = findSafePatchMatch(content, target);
+    const matchResult = findSafePatchMatch(content, target, patch.location);
     if (!matchResult.match) {
       failures.push({
         patchId: patch.id,
         reason: matchResult.occurrenceCount === 0
           ? "目标片段不存在，不能安全应用局部补丁。"
+          : patch.location ? "目标出现次数或位置与当前正文不一致，不能安全应用局部补丁。"
           : "目标片段出现多次，不能确定局部补丁位置。",
         failureType: matchResult.occurrenceCount === 0 ? "missing_target" : "ambiguous_target",
         matchedBy: matchResult.matchedBy,

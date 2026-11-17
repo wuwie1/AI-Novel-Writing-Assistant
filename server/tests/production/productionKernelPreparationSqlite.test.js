@@ -17,7 +17,7 @@ async function fixture(t){
 test('native chapter planning commits its plan, scenes and chapter metadata in the caller transaction',async t=>{
  const f=await fixture(t),result=await f.save(),chapter=await f.db.chapter.findUniqueOrThrow({where:{id:'chapter-1'}});
  assert.equal(result.objective,'完成钥匙交接');assert.equal(await f.db.storyPlan.count(),1);assert.equal(await f.db.chapterPlanScene.count(),3);
- assert.equal(chapter.content,f.before.content);assert.ok(chapter.taskSheet.includes('完成钥匙交接'));assert.ok(chapter.sceneCards.includes('出示钥匙'));
+ assert.equal(chapter.content,f.before.content);assert.equal(chapter.taskSheet,planInput.baseExecutionContract.taskSheet,'planning must retain the approved execution contract');assert.ok(chapter.sceneCards.includes('出示钥匙'));
  assert.equal(result.id,(await f.db.storyPlan.findFirst()).id);
 });
 test('a replaced worker cannot commit native planning records or chapter metadata',async t=>{

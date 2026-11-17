@@ -17,16 +17,21 @@ function native(file, imports) {
   return exports;
 }
 function timeline() {
-  const repo = native('modules/timeline/timeline.repository.ts', { '../../db/prisma': { prisma: {} } });
+  const repo = native('modules/timeline/timeline.repository.ts', { '../../db/prisma': { prisma: {} }, '../novel/persistence': fromServer('./dist/modules/novel/persistence') });
   const services = native('modules/timeline/timeline.service.ts', { './timeline.repository': repo });
   return tx => { const repository = new repo.PrismaTimelineRepository(tx); return { repository, service: new services.StoryTimelineService(repository) }; };
 }
 function resources() {
+  const boundary = native('services/novel/state/context/ChapterStateBoundary.ts', {
+    'node:crypto': require('node:crypto'), '../../../../db/prisma': {prisma:{}},
+    '../../runtime/artifactSync/ChapterArtifactSyncBoundary': fromServer('./dist/services/novel/runtime/artifactSync/ChapterArtifactSyncBoundary'),
+    '../../runtime/artifactSync/ChapterArtifactContentVersion': fromServer('./dist/services/novel/runtime/artifactSync/ChapterArtifactContentVersion'),
+  });
   const shared = fromServer('./dist/services/novel/characterResource/characterResourceShared');
   const ledger = native('services/novel/characterResource/CharacterResourceLedgerService.ts', {
-    '../../../db/prisma': { prisma: {} }, '../runtime/artifactSync/contracts': {}, './characterResourceShared': shared,
+    '../../../db/prisma': { prisma: {} }, '../runtime/artifactSync/contracts': {}, './characterResourceShared': shared, '../state/context/ChapterStateBoundary': boundary,
   });
-  const canonical = native('services/novel/state/CanonicalStateService.ts', { '../../../db/prisma': { prisma: {} }, '../characterResource/CharacterResourceLedgerService': ledger });
+  const canonical = native('services/novel/state/CanonicalStateService.ts', { '../../../db/prisma': { prisma: {} }, '../characterResource/CharacterResourceLedgerService': ledger, './context/ChapterStateBoundary': boundary });
   const versions = native('services/novel/state/StateVersionLog.ts', { '../../../db/prisma': { prisma: {} } });
   return { canonical: new canonical.CanonicalStateService(), versions: new versions.StateVersionLog() };
 }

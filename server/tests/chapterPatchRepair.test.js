@@ -357,3 +357,27 @@ test("runChapterRepairText preserves AI directive modes in the patch request ins
     assert.equal(result.content, "主角留下佩刀，走进门里。");
   } finally { promptRunner.runStructuredPrompt = previous; }
 });
+
+const repeatedSource = '开场。相同的完整收尾段。间隔。相同的完整收尾段。';
+function deletion(location) { return {strategy:'patch_first',summary:'删除第二处重复',patches:[{id:'delete-repeat',targetExcerpt:'相同的完整收尾段。',replacement:'',reason:'只保留首次',issueIds:[],location}]}; }
+test('explicit ordinal deletes only the selected repeated passage', () => {
+ const r=applyChapterPatchRepairPlan(repeatedSource,deletion({occurrence:2,expectedOccurrences:2}));
+ assert.equal(r.success,true);assert.equal(r.content,'开场。相同的完整收尾段。间隔。');
+});
+test('stale occurrence count rejects the entire plan without touching source', () => {
+ for(const content of [repeatedSource+'相同的完整收尾段。','相同的完整收尾段。']) {
+  const r=applyChapterPatchRepairPlan(content,deletion({occurrence:2,expectedOccurrences:2}));
+  assert.equal(r.success,false);assert.equal(r.content,content);
+ }
+});
+test('repeated normalized whitespace anchors accept an explicit location only', () => {
+ const content='相同的完整\n收尾段。间隔。相同的完整 收尾段。';
+ assert.equal(applyChapterPatchRepairPlan(content,deletion()).success,false);
+ const r=applyChapterPatchRepairPlan(content,deletion({occurrence:2,expectedOccurrences:2}));
+ assert.equal(r.success,true);assert.equal(r.content,'相同的完整\n收尾段。间隔。');
+});
+test('all patch locations refer to original text and overlapping selections remain atomic', () => {
+ const p=deletion({occurrence:2,expectedOccurrences:2});p.patches.push({...p.patches[0],id:'overlap',replacement:'另一个结尾。'});
+ const r=applyChapterPatchRepairPlan(repeatedSource,p);assert.equal(r.success,false);assert.equal(r.content,repeatedSource);
+ assert.ok(r.failures.some(x=>x.failureType==='overlapping_target'));
+});

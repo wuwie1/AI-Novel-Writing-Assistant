@@ -1,8 +1,30 @@
+import { readChapterStateSources } from "../../novel/state/context/ChapterStateBoundary";
 import type { ChapterPlanPreparationDependencies, GenerateChapterPlanOptions } from "./types";
 import { plannerStoryModeSelect } from "./types";
 
 export async function readChapterPlanInputs(novelId: string, chapterId: string, options: GenerateChapterPlanOptions, deps: ChapterPlanPreparationDependencies) {
-  const [novel, chapter, bible, plotBeats, summaries, characters, bookPlan, arcPlans, volumePlans, recentAuditReports, recentDecisions, storyMacroPlanRow, styleEngine, pendingReviewProposalCount] = await Promise.all([
+  const chapter = await deps.db.chapter.findFirst({
+      where: { id: chapterId, novelId },
+      select: {
+        id: true,
+        title: true,
+        order: true,
+        expectation: true,
+        content: true,
+        targetWordCount: true,
+        conflictLevel: true,
+        revealLevel: true,
+        mustAvoid: true,
+        hook: true,
+        taskSheet: true,
+        sceneCards: true,
+        updatedAt: true,
+      },
+    });
+  if (!chapter) throw new Error("小说或章节不存在。");
+  const sources = await readChapterStateSources(novelId, chapter.order, deps.db);
+  const sourceIds = sources.map(source => source.id);
+  const [novel, bible, plotBeats, summaries, characters, bookPlan, arcPlans, volumePlans, recentAuditReports, recentDecisions, storyMacroPlanRow, styleEngine, pendingReviewProposalCount] = await Promise.all([
     deps.db.novel.findUnique({
       where: { id: novelId },
       select: {
@@ -25,36 +47,18 @@ export async function readChapterPlanInputs(novelId: string, chapterId: string, 
         secondaryStoryMode: { select: plannerStoryModeSelect },
       },
     }),
-    deps.db.chapter.findFirst({
-      where: { id: chapterId, novelId },
-      select: {
-        id: true,
-        title: true,
-        order: true,
-        expectation: true,
-        content: true,
-        targetWordCount: true,
-        conflictLevel: true,
-        revealLevel: true,
-        mustAvoid: true,
-        hook: true,
-        taskSheet: true,
-        sceneCards: true,
-        updatedAt: true,
-      },
-    }),
     deps.db.novelBible.findUnique({
       where: { novelId },
       select: { rawContent: true },
     }),
     deps.db.plotBeat.findMany({
-      where: { novelId },
+      where: { novelId, chapterOrder: chapter.order },
       orderBy: { chapterOrder: "asc" },
       take: 8,
     }),
     deps.db.chapterSummary.findMany({
-      where: { novelId },
-      orderBy: { createdAt: "desc" },
+      where: { novelId, chapterId: {in: sourceIds} },
+      orderBy: { chapter: {order: "desc"} },
       take: 4,
     }),
     deps.db.character.findMany({
@@ -73,7 +77,7 @@ export async function readChapterPlanInputs(novelId: string, chapterId: string, 
       },
     }),
     deps.db.auditReport.findMany({
-      where: { novelId },
+      where: { novelId, chapterId: {in: sourceIds} },
       orderBy: { createdAt: "desc" },
       take: 4,
       include: {
@@ -83,7 +87,7 @@ export async function readChapterPlanInputs(novelId: string, chapterId: string, 
       },
     }),
     deps.db.creativeDecision.findMany({
-      where: { novelId },
+      where: { novelId, OR: [{chapterId: null}, {chapterId: {in: sourceIds}}] },
       orderBy: { createdAt: "desc" },
       take: 6,
       select: {

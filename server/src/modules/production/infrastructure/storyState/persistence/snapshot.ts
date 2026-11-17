@@ -1,3 +1,5 @@
+import { readChapterStateSources, snapshotMatchesSource } from "../../../../../services/novel/state/context/ChapterStateBoundary";
+import { buildChapterArtifactContentHash } from "../../../../../services/novel/runtime/artifactSync/ChapterArtifactContentVersion";
 import { detectStateDiffConflicts } from "../../../../../services/state/stateConflictDetection";
 import { exactCharacter } from "./ownership";
 import { nullable, wire, type ConsumerWriter } from "./types";
@@ -10,12 +12,15 @@ export const writeSnapshot: ConsumerWriter = async ({ tx, context, output }) => 
   const reference = (value: string | null | undefined, fallback: string | null) => value
     ? chapters.find(chapter => chapter.id === value || String(chapter.order) === value)?.id ?? null : fallback;
   const include = { characterStates: true, relationStates: true, informationStates: true, foreshadowStates: true };
-  const previous = await tx.storyStateSnapshot.findFirst({ where: { novelId, sourceChapter: { order: { lt: order } } },
+  const sources = await readChapterStateSources(novelId, order, tx);
+  const previousRows = await tx.storyStateSnapshot.findMany({ where: { novelId, sourceChapterId: {in: sources.map(source => source.id)} },
     orderBy: [{ sourceChapter: { order: "desc" } }, { createdAt: "desc" }], include });
+  const previous = previousRows.find(row => snapshotMatchesSource(row, sources)) ?? null;
+  const rawStateJson = JSON.stringify({...output.stateDeltas, sourceContentHash: buildChapterArtifactContentHash(context.content)});
   const summary = nullable(output.stateDeltas.summary) ?? output.summary;
   const snapshot = await tx.storyStateSnapshot.upsert({ where: { novelId_sourceChapterId: { novelId, sourceChapterId: chapterId } },
-    create: { novelId, sourceChapterId: chapterId, summary, rawStateJson: JSON.stringify(output.stateDeltas) },
-    update: { summary, rawStateJson: JSON.stringify(output.stateDeltas) }, select: { id: true } });
+    create: { novelId, sourceChapterId: chapterId, summary, rawStateJson },
+    update: { summary, rawStateJson }, select: { id: true } });
   await tx.characterState.deleteMany({ where: { snapshotId: snapshot.id } });
   await tx.relationState.deleteMany({ where: { snapshotId: snapshot.id } });
   await tx.informationState.deleteMany({ where: { snapshotId: snapshot.id } });

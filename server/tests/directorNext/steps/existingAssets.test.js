@@ -39,3 +39,25 @@ test('takeover does not confirm an existing skeleton without a strategy or skip 
     assert.equal((await readExistingAssets(contract)).find(asset => asset.type === 'volume_strategy').usable,true);
   } finally {methods.forEach(([owner,key],i)=>{owner[key]=originals[i];});}
 });
+
+test('a cleared chapter supersedes old protected completion facts and reaches writing in the same scope', async () => {
+ const methods=[[prisma.novel,'findUniqueOrThrow'],[prisma.bookContract,'findUnique'],[prisma.character,'findMany'],
+  [prisma.volumePlanVersion,'findFirst'],[prisma.chapter,'findMany'],[StoryMacroPlanService.prototype,'getPlan']];
+ const originals=methods.map(([owner,key])=>owner[key]);
+ prisma.novel.findUniqueOrThrow=async()=>({worldId:null});prisma.bookContract.findUnique=async()=>null;
+ prisma.character.findMany=async()=>[];prisma.volumePlanVersion.findFirst=async()=>null;
+ prisma.chapter.findMany=async()=>[{id:'one',order:1,content:''},{id:'two',order:2,content:'保留相邻正文'}];
+ StoryMacroPlanService.prototype.getPlan=async()=>null;
+ try{
+  const run={...contract,scope:'chapters:1-1',chapterRange:{from:1,to:1},stepIdsInScope:['chapter_batch']};
+  const assets=await inferExistingAssets(run,{read:readExistingAssets,contentHash:()=> 'current'});
+  const empty=assets.find(a=>a.type==='chapter_draft'&&a.scope==='chapter:1');
+  assert.equal(empty.status,'stale');assert.equal(empty.protectedUserContent,false);
+  assert.equal(assets.find(a=>a.type==='chapter_draft'&&a.scope==='chapter:2').protectedUserContent,true);
+  const old=[{type:'chapter_draft',scope:'chapter:1',status:'user_edited',protectedUserContent:true,version:1},
+   {type:'chapter_batch_closed',scope:run.scope,status:'confirmed',protectedUserContent:true,version:1}];
+  const facts={artifacts:[...old,...assets.map(a=>({...a,version:2})),{type:'chapter_execution_contract',scope:run.scope,status:'confirmed',version:1}],debts:[],stopSignal:null};
+  assert.deepEqual(createGateOrchestrator().next({plan:directorProductionPlan,contract:run,facts}),{kind:'run_step',stepId:'chapter_batch'});
+  assert.equal(old[0].status,'user_edited');
+ }finally{methods.forEach(([owner,key],i)=>{owner[key]=originals[i];});}
+});

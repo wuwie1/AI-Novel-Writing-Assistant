@@ -1,3 +1,5 @@
+import { readChapterStateSources, snapshotMatchesSource } from "../novel/state/context/ChapterStateBoundary";
+import { buildChapterArtifactContentHash } from "../novel/runtime/artifactSync/ChapterArtifactContentVersion";
 import { prisma } from "../../db/prisma";
 import { ChapterArtifactContentVersionError } from "../novel/runtime/artifactSync/contracts";
 import { stringifyStringArray } from "../novel/novelP0Utils";
@@ -127,8 +129,9 @@ export class StateService {
   }
 
   async getLatestSnapshotBeforeChapter(novelId: string, chapterOrder: number) {
+    const sources = await readChapterStateSources(novelId, chapterOrder);
     const snapshots = await prisma.storyStateSnapshot.findMany({
-      where: { novelId },
+      where: { novelId, sourceChapterId: {in: sources.map(source => source.id)} },
       include: {
         sourceChapter: {
           select: {
@@ -140,10 +143,9 @@ export class StateService {
         informationStates: true,
         foreshadowStates: true,
       },
-      orderBy: { createdAt: "desc" },
-      take: 50,
+      orderBy: [{sourceChapter: {order: "desc"}}, {createdAt: "desc"}],
     });
-    return snapshots.find((item) => (item.sourceChapter?.order ?? Number.MAX_SAFE_INTEGER) < chapterOrder) ?? null;
+    return snapshots.find(item => snapshotMatchesSource(item, sources)) ?? null;
   }
 
   async buildStateContextBlock(novelId: string, chapterOrder: number): Promise<string> {
@@ -384,6 +386,7 @@ export class StateService {
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
     const rawStateJson = JSON.stringify({
+      ...(input.expectedChapterContent !== undefined ? {sourceContentHash: buildChapterArtifactContentHash(input.expectedChapterContent)} : {}),
       summary: input.extracted.summary ?? null,
       characterStates: normalizedCharacterStates,
       relationStates: normalizedRelationStates,

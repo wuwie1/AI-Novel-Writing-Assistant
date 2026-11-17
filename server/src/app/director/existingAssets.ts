@@ -23,8 +23,20 @@ export async function readExistingAssets(contract: RunContract): Promise<Existin
   if (novel.worldId) add("world_skeleton", {worldId: novel.worldId});
   else if (contract.launchInput?.worldMode === "skip") add("world_skeleton", {disabled: true}, true, `world_skeleton:${novelId}:disabled`);
   if (characters.length) add("character_cast", characters);
-  const prose = chapters.filter(chapter => chapter.content?.trim());
-  for (const chapter of prose) assets.push({type: "chapter_draft", scope: `chapter:${chapter.order}`, usable: true, contentRef: `chapter:${chapter.id}`, content: {id: chapter.id, order: chapter.order, content: chapter.content}});
+  for (const chapter of chapters) assets.push({type: "chapter_draft", scope: `chapter:${chapter.order}`,
+    usable: Boolean(chapter.content?.trim()), protectedUserContent: Boolean(chapter.content?.trim()),
+    contentRef: `chapter:${chapter.id}`, content: {id: chapter.id, order: chapter.order, content: chapter.content}});
+  const range = contract.chapterRange;
+  if (range) {
+    const selected = chapters.filter(chapter => chapter.order >= range.from && chapter.order <= range.to);
+    // A saved empty/missing chapter revokes an old completion receipt in this scope.
+    // New ledger versions preserve the historical receipt and never overwrite prose.
+    if (selected.length !== range.to - range.from + 1 || selected.some(chapter => !chapter.content?.trim())) {
+      assets.push({type: "chapter_batch_closed", usable: false, protectedUserContent: false,
+        contentRef: `chapter_batch_closed:${novelId}:${range.from}-${range.to}`,
+        content: selected.map(({id, order, content}) => ({id, order, content}))});
+    }
+  }
   if (version) {
     const workspace = normalizeVolumeWorkspaceDocument(novelId, version.contentJson, {activeVersionId: version.id});
     if (!workspace) throw new Error("已保存的卷规划无法读取，请先在规划页核对。");

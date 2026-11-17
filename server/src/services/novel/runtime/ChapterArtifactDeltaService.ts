@@ -1,3 +1,4 @@
+import { readChapterStateSources, projectChapterCharacters, payoffVisibleBeforeChapter, resourceVisibleBeforeChapter } from "../state/context/ChapterStateBoundary";
 import type {
   ContentProvenance,
   StateChangeProposal,
@@ -318,6 +319,7 @@ export class ChapterArtifactDeltaService {
           castRole: true,
           currentGoal: true,
           currentState: true,
+          lastEvolvedAt: true,
           currentLocation: true,
         },
       }),
@@ -336,6 +338,8 @@ export class ChapterArtifactDeltaService {
           targetStartChapterOrder: true,
           targetEndChapterOrder: true,
           lastTouchedChapterOrder: true,
+          lastTouchedChapterId: true,
+          firstSeenChapterOrder: true,
         },
         take: 30,
       }),
@@ -355,7 +359,12 @@ export class ChapterArtifactDeltaService {
 
     const previousSnapshot = await stateService.getLatestSnapshotBeforeChapter(input.novelId, chapter.order);
     const contentHash = buildContentHash(content);
-    const ledgerContext = buildChapterArtifactLedgerContext({characters, resources: existingResources, payoffs: payoffRows});
+    const sources = new Set((await readChapterStateSources(input.novelId, chapter.order)).map(source => source.id));
+    const ledgerContext = buildChapterArtifactLedgerContext({
+      characters: projectChapterCharacters(characters, previousSnapshot?.characterStates),
+      resources: existingResources.filter(item => resourceVisibleBeforeChapter(item, chapter.order, sources)),
+      payoffs: payoffRows.filter(item => payoffVisibleBeforeChapter(item, chapter.order, sources)),
+    });
     const locationStates = input.artifactSyncPolicy === "director_v2"
       ? await characterLocationService.readBeforeChapter({novelId: input.novelId, chapterOrder: chapter.order, characters}) : null;
     const result = await runStructuredPrompt({

@@ -6,6 +6,7 @@ export interface ExistingNovelAsset {
   contentRef: string;
   content: unknown;
   usable: boolean;
+  protectedUserContent?: boolean;
   scope?: string;
 }
 /** Presence and completeness come from saved business schemas, never a legacy task seed. */
@@ -20,6 +21,6 @@ export async function inferExistingAssets(contract: RunContract, deps: {
     if (!asset.type || !asset.contentRef || seen.has(key)) throw new Error("小说资产快照不完整或重复。");
     seen.add(key);
     return {type: asset.type, scope: asset.scope ?? contract.scope, status: asset.usable ? "confirmed" : "stale",
-      protectedUserContent: true, contentRef: asset.contentRef, contentHash: deps.contentHash(asset.content)};
+      protectedUserContent: asset.protectedUserContent ?? true, contentRef: asset.contentRef, contentHash: deps.contentHash(asset.content)};
   });
 }

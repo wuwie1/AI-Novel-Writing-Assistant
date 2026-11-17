@@ -1,3 +1,4 @@
+import { styleRulePolicySchema, styleRulePolicyService } from "../services/styleEngine/policy/StyleRulePolicyService";
 import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { z } from "zod";
@@ -389,6 +390,20 @@ router.post("/anti-ai-rules", validate({ body: antiAiRuleSchema }), async (req, 
   } catch (error) {
     next(error);
   }
+});
+
+router.get("/style-profiles/:id/anti-ai-policy", validate({params: idSchema}), async (req, res, next) => {
+  try {
+    const data = await styleRulePolicyService.read(String(req.params.id));
+    res.json({success: true, data});
+  } catch (error) { next(error); }
+});
+
+router.put("/style-profiles/:id/anti-ai-policy", validate({params: idSchema, body: styleRulePolicySchema}), async (req, res, next) => {
+  try {
+    const data = await styleRulePolicyService.update(String(req.params.id), req.body);
+    res.json({success: true, data});
+  } catch (error) { next(error); }
 });
 
 router.put("/anti-ai-rules/:id", validate({ params: antiRuleIdSchema, body: antiAiRuleUpdateSchema }), async (req, res, next) => {

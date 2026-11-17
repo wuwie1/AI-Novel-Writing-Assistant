@@ -1,3 +1,5 @@
+import { canonicalStateService } from "../state/CanonicalStateService";
+import { readChapterStateSources } from "../state/context/ChapterStateBoundary";
 import type {
   CharacterCandidate,
   DynamicCharacterOverview,
@@ -59,6 +61,10 @@ export class CharacterDynamicsQueryService {
       throw new Error("小说不存在。");
     }
 
+    const scopedState = typeof options.chapterOrder === "number"
+      ? await canonicalStateService.getSnapshot(novelId, {chapterOrder: options.chapterOrder, includeCurrentChapterState: false}) : null;
+    const sources = typeof options.chapterOrder === "number" ? await readChapterStateSources(novelId, options.chapterOrder) : null;
+    const sourceIds = sources?.map(source => source.id);
     const currentChapterOrder = typeof options.chapterOrder === "number"
       ? options.chapterOrder
       : novel.chapters
@@ -78,7 +84,7 @@ export class CharacterDynamicsQueryService {
 
     const [candidateRows, assignmentRows, factionRows, relationStageRows, timelineRows] = await Promise.all([
       prisma.characterCandidate.findMany({
-        where: { novelId, status: "pending" },
+        where: { novelId, status: "pending", ...(sourceIds ? {sourceChapterId: {in: sourceIds}} : {}) },
         include: {
           sourceChapter: {
             select: { order: true },
@@ -100,7 +106,7 @@ export class CharacterDynamicsQueryService {
       prisma.characterFactionTrack.findMany({
         where: {
           novelId,
-          OR: [
+          OR: sourceIds ? [{chapterId: {in: sourceIds}}, {chapterId: null, chapterOrder: null, sourceType: "manual"}] : [
             { sourceType: { notIn: PROJECTION_SOURCE_TYPES } },
             ...(currentVolume?.id
               ? [{ sourceType: { in: PROJECTION_SOURCE_TYPES }, volumeId: currentVolume.id }]
@@ -117,8 +123,8 @@ export class CharacterDynamicsQueryService {
       prisma.characterRelationStage.findMany({
         where: {
           novelId,
-          isCurrent: true,
-          OR: [
+          ...(sourceIds ? {} : {isCurrent: true}),
+          OR: sourceIds ? [{chapterId: {in: sourceIds}}, {chapterId: null, chapterOrder: null, sourceType: "manual"}] : [
             { sourceType: { notIn: PROJECTION_SOURCE_TYPES } },
             ...(currentVolume?.id
               ? [{ sourceType: { in: PROJECTION_SOURCE_TYPES }, volumeId: currentVolume.id }]
@@ -149,7 +155,8 @@ export class CharacterDynamicsQueryService {
     const candidates = candidateRows.map((row) => toCharacterCandidate(row));
     const assignments = assignmentRows.map((row) => toCharacterVolumeAssignment(row));
     const factionTracks = factionRows.map((row) => toCharacterFactionTrack(row));
-    const relations = relationStageRows.map((row) => toCharacterRelationStage(row));
+    const relations = relationStageRows.filter((row, index, rows) => rows.findIndex(other =>
+      other.sourceCharacterId === row.sourceCharacterId && other.targetCharacterId === row.targetCharacterId) === index).map((row) => toCharacterRelationStage(row));
 
     const assignmentByCharacterId = new Map(assignments.map((assignment) => [assignment.characterId, assignment]));
     const appearanceOrdersByCharacterId = new Map<string, number[]>();
@@ -177,7 +184,9 @@ export class CharacterDynamicsQueryService {
         const coverage = v2Appearances ? summarizeAppearanceCoverage(v2Appearances.chapters,
           character.id, currentVolumeChapterOrders, currentChapterOrder) : null;
         const item = buildOverviewItem({
-          character,
+          character: scopedState ? {...character,
+            currentState: scopedState.characters.find(row => row.characterId === character.id)?.currentState ?? null,
+            currentGoal: scopedState.characters.find(row => row.characterId === character.id)?.currentGoal ?? null} : character,
           assignment: assignmentByCharacterId.get(character.id) ?? null,
           factionTrack: factionTrackByCharacterId.get(character.id) ?? null,
           appearanceOrders: coverage?.orders ?? appearanceOrdersByCharacterId.get(character.id) ?? [],

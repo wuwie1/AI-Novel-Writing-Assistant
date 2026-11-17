@@ -109,7 +109,7 @@ export class DirectorStateProposalResolutionService {
     const snapshot = await canonicalStateService.getSnapshot(input.novelId, {
       chapterId: input.chapterId ?? undefined,
       chapterOrder: input.chapterOrder ?? undefined,
-      includeCurrentChapterState: true,
+      purpose: "commit_history", includeCurrentChapterState: true,
     });
     const reviewContext = input.resourceReview ? await this.buildResourceReviewContext(snapshot, proposals) : snapshot;
     const aiResult = await this.promptRunner({

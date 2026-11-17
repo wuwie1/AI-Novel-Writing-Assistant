@@ -1,3 +1,4 @@
+import { readChapterStateSources, payoffVisibleBeforeChapter } from "../state/context/ChapterStateBoundary";
 import type { GenerationContextPackage } from "@ai-novel/shared/types/chapterRuntime";
 import { buildDirectorCompletionProfile } from "@ai-novel/shared/types/directorCompletion";
 import { buildCompressionLog } from "../../../prompting/core/contextBudget";
@@ -143,6 +144,9 @@ export class GenerationContextAssembler {
     // Context assembly is a read boundary. Planning and contract writes must
     // finish in ChapterExecutionPreparationService before this method runs.
     const ensuredPlan = await plannerService.getChapterPlan(novelId, chapterId);
+    const stateSources = await readChapterStateSources(novelId, chapter.order);
+    const sourceIds = stateSources.map(source => source.id);
+    const sourceSet = new Set(sourceIds);
     const resourceCharacterIds = resolveChapterResourceCharacterIds({
       plan: ensuredPlan,
       characters: novel.characters,
@@ -185,7 +189,7 @@ export class GenerationContextAssembler {
       prisma.chapterSummary.findMany({
         where: {
           novelId,
-          chapter: { order: { lt: chapter.order } },
+          chapterId: {in: sourceIds},
         },
         include: { chapter: true },
         orderBy: { chapter: { order: "desc" } },
@@ -213,7 +217,7 @@ export class GenerationContextAssembler {
         chapterOrder: chapter.order,
       }).catch(() => null),
       prisma.characterMindSnapshot.findMany({
-        where: { novelId, isCurrent: true },
+        where: { novelId, sourceChapterId: {in: sourceIds} },
         select: {
           characterId: true, currentInterpretation: true, privateIntent: true, activePlan: true,
           emotionalStance: true, actionTendency: true, decisionTrigger: true, beliefsJson: true,
@@ -384,8 +388,8 @@ export class GenerationContextAssembler {
         ...(characterLocations?.has(item.id) ? {locationState: characterLocations.get(item.id)} : {}),
         availability: item.availability ?? null,
         prohibitions: parseCharacterProhibitionsJson(item.prohibitionsJson),
-        currentState: canonicalCharacter?.currentState ?? item.currentState ?? null,
-        currentGoal: canonicalCharacter?.currentGoal ?? item.currentGoal ?? null,
+        currentState: canonicalCharacter ? canonicalCharacter.currentState : null,
+        currentGoal: canonicalCharacter ? canonicalCharacter.currentGoal : null,
         appearance: item.appearance ?? null,
         physique: item.physique ?? null,
         attireStyle: item.attireStyle ?? null,
@@ -406,7 +410,10 @@ export class GenerationContextAssembler {
         return [];
       }
     };
-    const characterMindStates = characterMindRows.map((item) => ({
+    const characterMindStates = characterMindRows
+      .sort((a, b) => sourceIds.indexOf(a.sourceChapterId!) - sourceIds.indexOf(b.sourceChapterId!))
+      .filter((item, index, rows) => rows.findIndex(other => other.characterId === item.characterId) === index)
+      .map((item) => ({
       characterId: item.characterId,
       currentInterpretation: item.currentInterpretation,
       privateIntent: item.privateIntent,
@@ -455,7 +462,7 @@ export class GenerationContextAssembler {
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
     })).concat(
-      buildSyntheticPayoffIssues(payoffLedger.items, chapter.order).map((issue) => ({
+      buildSyntheticPayoffIssues(payoffLedger.items.filter(item => payoffVisibleBeforeChapter(item, chapter.order, sourceSet)), chapter.order).map((issue) => ({
         id: `payoff-ledger:${issue.ledgerKey}:${issue.code}`,
         reportId: `payoff-ledger:${novelId}:${chapterId}`,
         auditType: "plot" as const,
@@ -590,7 +597,7 @@ export class GenerationContextAssembler {
       if (factEntries.length > 0) {
         // Milestones and state changes arrive as separate category lists. The
         // prompt's recent window must follow chapter chronology across both.
-        chapterWriteContext.completedMilestones = [...factEntries]
+        chapterWriteContext.completedMilestones = factEntries.filter(entry => entry.source === "manual" || stateSources.some(source => source.order === entry.chapterOrder))
           .sort((left, right) => left.chapterOrder - right.chapterOrder)
           .map((entry) => entry.text);
       }

@@ -1,3 +1,4 @@
+import { readChapterStateSources, resourceVisibleBeforeChapter } from "../state/context/ChapterStateBoundary";
 import type {
   CharacterResourceContext,
   CharacterResourceLedgerItem,
@@ -201,7 +202,8 @@ export class CharacterResourceLedgerService {
     ]);
     const chapterOrder = options.chapterOrder;
     const characterIds = new Set((options.characterIds ?? []).map((item) => compactText(item)).filter(Boolean));
-    const items = rows.map(mapCharacterResourceRow);
+    const sources = typeof chapterOrder === "number" ? new Set((await readChapterStateSources(novelId, chapterOrder)).map(source => source.id)) : null;
+    const items = rows.map(mapCharacterResourceRow).filter(item => !sources || resourceVisibleBeforeChapter(item, chapterOrder!, sources));
     const relevant = items.filter((item) => {
       if (!isChapterRelevant(item, chapterOrder)) {
         return false;

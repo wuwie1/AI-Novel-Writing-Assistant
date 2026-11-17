@@ -10,7 +10,7 @@ import type { ChapterPlanPreparationDependencies,GenerateChapterPlanOptions } fr
 
 /** Read-only native source assembly. Caller owns dispatch and persistence. */
 export async function prepareChapterPlan(novelId: string, chapterId: string, options: GenerateChapterPlanOptions, deps: ChapterPlanPreparationDependencies) {
-  const {novel,chapter,bible,plotBeats,summaries,characters,bookPlan,arcPlans,volumePlans,recentAuditReports,recentDecisions,storyMacroPlanRow,styleEngine,pendingReviewProposalCount}=await readChapterPlanInputs(novelId,chapterId,options,deps);
+  const {novel,chapter,bible,plotBeats,summaries,characters: originalCharacters,bookPlan,arcPlans,volumePlans,recentAuditReports,recentDecisions,storyMacroPlanRow,styleEngine,pendingReviewProposalCount}=await readChapterPlanInputs(novelId,chapterId,options,deps);
   const storyModeBlock = buildPlannerStoryModeBlock(novel);
   const storyMacroPlan = storyMacroPlanRow ? mapRowToPlan(storyMacroPlanRow) : null;
   const payoffLedger = await deps.readPayoff(novelId, {
@@ -111,6 +111,11 @@ export async function prepareChapterPlan(novelId: string, chapterId: string, opt
     openAuditIssueCount: openAuditIssues.length,
     hasRepairableDraft: Boolean(chapter.content?.trim()),
   });
+  const characters = originalCharacters.map(item => {
+    const state = resolvedStateDrivenContext.snapshot.characters.find(row => row.characterId === item.id);
+    return {...item, currentGoal: state?.currentGoal ?? null, currentState: state?.currentState ?? null};
+  });
+  const visiblePayoffKeys = new Set([...resolvedStateDrivenContext.snapshot.narrative.pendingPayoffs, ...resolvedStateDrivenContext.snapshot.narrative.overduePayoffs].map(item => item.ledgerKey));
   const plannerStateGoalText = buildPlannerStateGoalText({
     summary: resolvedStateDrivenContext.chapterStateGoal?.summary ?? null,
     targetConflicts: resolvedStateDrivenContext.chapterStateGoal?.targetConflicts ?? [],
@@ -206,7 +211,7 @@ export async function prepareChapterPlan(novelId: string, chapterId: string, opt
       : "无",
     storyMacroSummary: buildStoryMacroSummary(storyMacroPlan),
     currentVolumeWindow: buildCurrentVolumeWindowSummary(plannerVolumes, chapter.order),
-    payoffLedgerSummary: buildPlannerPayoffLedgerContext(payoffLedger, chapter.order),
+    payoffLedgerSummary: buildPlannerPayoffLedgerContext({...payoffLedger, items: payoffLedger.items.filter(item => visiblePayoffKeys.has(item.ledgerKey))}, chapter.order),
     storyModeBlock,
   });
 

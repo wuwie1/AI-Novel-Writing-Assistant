@@ -140,7 +140,7 @@ export class StateCommitService {
     const snapshot = await canonicalStateService.getSnapshot(input.novelId, {
       chapterId: input.chapterId ?? committed[0]?.chapterId ?? undefined,
       chapterOrder: input.chapterOrder ?? undefined,
-      includeCurrentChapterState: true,
+      purpose: "commit_history", includeCurrentChapterState: true,
     }, tx);
     const versionRecord = await stateVersionLog.createVersion({
       novelId: input.novelId,

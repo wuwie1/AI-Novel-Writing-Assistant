@@ -1,3 +1,4 @@
+import { readChapterStateSources, chapterBaselineCharacter, snapshotMatchesSource, payoffVisibleBeforeChapter } from "./context/ChapterStateBoundary";
 import type { Prisma } from "@prisma/client";
 import type {
   CanonicalStateSnapshot,
@@ -64,6 +65,8 @@ function buildNarrativePhase(input: {
 }
 
 export interface CanonicalStateScope {
+  /** Only atomic state/version writers may capture their not-yet-reconciled projection. */
+  purpose?: "chapter_context" | "commit_history";
   chapterId?: string;
   chapterOrder?: number;
   includeCurrentChapterState?: boolean;
@@ -84,23 +87,18 @@ export class CanonicalStateService {
   async getSnapshot(novelId: string, scope: CanonicalStateScope = {}, db: Prisma.TransactionClient = prisma): Promise<CanonicalStateSnapshot> {
     const chapterOrder = scope.chapterOrder ?? await this.resolveChapterOrder(novelId, scope.chapterId, db);
     const includeCurrent = scope.includeCurrentChapterState === true;
-    const snapshotWhere = typeof chapterOrder === "number"
-      ? {
-          novelId,
-          sourceChapter: {
-            is: {
-              order: includeCurrent ? { lte: chapterOrder } : { lt: chapterOrder },
-            },
-          },
-        }
-      : { novelId };
+    const sources = typeof chapterOrder === "number" && scope.purpose !== "commit_history" ? await readChapterStateSources(novelId, chapterOrder, db, includeCurrent) : null;
+    const sourceIds = sources?.map(source => source.id);
+    const sourceSet = sources ? new Set(sourceIds) : undefined;
+    const snapshotWhere = sourceIds ? {novelId, sourceChapterId: {in: sourceIds}}
+      : {novelId, ...(typeof chapterOrder === "number" ? {sourceChapter: {order: includeCurrent ? {lte: chapterOrder} : {lt: chapterOrder}}} : {})};
 
     const [
       novel,
-      latestSnapshot,
+      snapshots,
       relationStages,
       openConflicts,
-      payoffItems,
+      storedPayoffItems,
       characterResourceItems,
       timelineRows,
       currentChapter,
@@ -119,6 +117,7 @@ export class CanonicalStateService {
               role: true,
               currentGoal: true,
               currentState: true,
+              lastEvolvedAt: true,
               secret: true,
             },
           },
@@ -133,9 +132,9 @@ export class CanonicalStateService {
           },
         },
       }),
-      db.storyStateSnapshot.findFirst({
+      db.storyStateSnapshot.findMany({
         where: snapshotWhere,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{sourceChapter: {order: "desc"}}, {createdAt: "desc"}],
         include: {
           characterStates: true,
           informationStates: true,
@@ -147,12 +146,14 @@ export class CanonicalStateService {
         },
       }),
       db.characterRelationStage.findMany({
-        where: { novelId, isCurrent: true },
+        where: sourceIds ? {novelId, OR: [
+          {chapterId: {in: sourceIds}}, {chapterId: null, chapterOrder: null, sourceType: "manual", isCurrent: true},
+        ]} : { novelId, isCurrent: true },
         include: {
           sourceCharacter: { select: { name: true } },
           targetCharacter: { select: { name: true } },
         },
-        orderBy: [{ updatedAt: "desc" }],
+        orderBy: [{ chapterOrder: "desc" }, { updatedAt: "desc" }],
       }),
       db.openConflict.findMany({
         where: {
@@ -160,16 +161,8 @@ export class CanonicalStateService {
           status: "open",
           ...(typeof chapterOrder === "number"
             ? {
-                OR: [
-                  { chapter: { is: null } },
-                  {
-                    chapter: {
-                      is: {
-                        order: includeCurrent ? { lte: chapterOrder } : { lt: chapterOrder },
-                      },
-                    },
-                  },
-                ],
+                OR: sourceIds ? [{chapterId: {in: sourceIds}}, {chapterId: null, sourceType: "manual"}]
+                  : [{chapterId: null}, {chapter: {order: {lte: chapterOrder}}}],
               }
             : {}),
         },
@@ -185,7 +178,7 @@ export class CanonicalStateService {
         where: {
           novelId,
           ...(typeof chapterOrder === "number"
-            ? { order: includeCurrent ? { lte: chapterOrder } : { lt: chapterOrder } }
+            ? (sourceIds ? { id: {in: sourceIds} } : {order: includeCurrent ? {lte: chapterOrder} : {lt: chapterOrder}})
             : {}),
         },
         orderBy: { order: "desc" },
@@ -210,6 +203,9 @@ export class CanonicalStateService {
       throw new Error("小说不存在。");
     }
 
+    const latestSnapshot = snapshots.find(snapshot => !sources || snapshotMatchesSource(snapshot, sources)) ?? null;
+    const payoffItems = typeof chapterOrder === "number" ? storedPayoffItems.filter(item =>
+      payoffVisibleBeforeChapter(item, chapterOrder + (includeCurrent ? 1 : 0), sourceSet)) : storedPayoffItems;
     const activeVolume = typeof chapterOrder === "number"
       ? novel.volumePlans.find((volume) => volume.chapters.some((chapter) => chapter.chapterOrder === chapterOrder))
       : null;
@@ -231,20 +227,26 @@ export class CanonicalStateService {
       }
     }
 
-    const characters = novel.characters.map((character) => {
+    const characters = novel.characters.map((original) => {
+      const character = sourceIds ? chapterBaselineCharacter(original) : original;
       const state = snapshotCharacterStates.get(character.id);
-      const relatedStages = relationStages.filter((item) => (
-        item.sourceCharacterId === character.id || item.targetCharacterId === character.id
+      const relatedStages = relationStages.filter((item, index) => (
+        (item.sourceCharacterId === character.id || item.targetCharacterId === character.id)
+        && relationStages.findIndex(other => other.sourceCharacterId === item.sourceCharacterId
+          && other.targetCharacterId === item.targetCharacterId) === index
       ));
       const characterResources = characterResourceItems.filter((item) => (
-        item.holderCharacterId === character.id || item.ownerCharacterId === character.id
+        (item.holderCharacterId === character.id || item.ownerCharacterId === character.id)
+        && (!sourceSet || (!item.lastTouchedChapterId || sourceSet.has(item.lastTouchedChapterId)))
+        && (typeof chapterOrder !== "number" || item.lastTouchedChapterOrder == null || item.lastTouchedChapterOrder < chapterOrder + (includeCurrent ? 1 : 0))
       ));
       return {
         characterId: character.id,
         name: character.name,
         role: character.role,
         currentGoal: compactText(state?.currentGoal) || compactText(character.currentGoal) || null,
-        currentState: compactText(state?.summary) || compactText(character.currentState) || null,
+        currentState: takeUnique([state?.summary || character.currentState,
+          ...parseStringArray(state?.knownFactsJson).map(fact => `已知：${fact}`)], 6).join("；") || null,
         currentPressure: state?.stressLevel != null ? `stress=${state.stressLevel}` : null,
         currentSecret: compactText(character.secret) || compactText(state?.secretExposure) || null,
         emotion: compactText(state?.emotion) || null,

@@ -69,6 +69,7 @@ export class StyleBindingService {
         styleProfile: {
           include: {
             antiAiBindings: {
+              where: {enabled: true},
               include: { antiAiRule: true },
             },
           },
@@ -98,6 +99,7 @@ export class StyleBindingService {
         styleProfile: {
           include: {
             antiAiBindings: {
+              where: {enabled: true},
               include: { antiAiRule: true },
             },
           },

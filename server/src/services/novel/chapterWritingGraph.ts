@@ -19,7 +19,7 @@ import { assertChapterContentNotEmpty } from "./runtime/chapterEmptyContentError
 import { prisma } from "../../db/prisma";
 import type { WritingPlatformSnapshot } from "@ai-novel/shared/types/writingPlatform";
 import { toText } from "./novelP0Utils";
-import { buildContinuationBudget, type ContinuationBudget } from "./runtime/writing";
+import { buildContinuationBudget, validateContinuationNovelty, type ContinuationBudget } from "./runtime/writing";
 
 async function loadWritingPlatformBlock(novelId: string) {
   const novel = await prisma.novel.findUnique({
@@ -267,6 +267,14 @@ export class ChapterWritingGraph {
     }
     const appended = output.trim();
     if (!appended) {
+      input.onDraftProgress?.(input.content, "checking");
+      return input.content;
+    }
+    const novelty = validateContinuationNovelty(input.content, appended);
+    if (!novelty.accepted) {
+      this.deps.logWarn("Chapter continuation rejected: repeated existing prose", {
+        chapterOrder: input.chapter.order, repeatedCharacters: novelty.repeatedCharacters,
+      });
       input.onDraftProgress?.(input.content, "checking");
       return input.content;
     }

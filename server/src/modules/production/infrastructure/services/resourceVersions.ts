@@ -8,7 +8,7 @@ export function createResourceVersionRecorder(deps: {
 }): ResourcePersistenceDependencies {
   return { async recordVersion(tx, input) {
     const snapshot = await deps.canonical.getSnapshot(input.novelId, { chapterId: input.chapterId,
-      chapterOrder: input.chapterOrder, includeCurrentChapterState: true }, tx);
+      chapterOrder: input.chapterOrder, purpose: "commit_history", includeCurrentChapterState: true }, tx);
     return deps.versions.createVersion({ novelId: input.novelId, chapterId: input.chapterId,
       sourceType: "chapter_background_sync", sourceStage: "production_kernel",
       summary: `chapter ${input.chapterOrder} committed character_resource_update x${input.acceptedProposalIds.length}`,

@@ -22,7 +22,7 @@ export interface ChapterWriterPromptInput {
 
 export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, string> = {
   id: "novel.chapter.writer",
-  version: "v10",
+  version: "v11",
   cacheBoundary: {messageIndex:0,contentBlockIndex:0},
   taskType: "writer",
   mode: "text",
@@ -222,6 +222,7 @@ export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, 
           "当前任务不是从头重写，而是在已有正文基础上继续补写。",
           "必须无缝衔接现有结尾，延续同一叙事视角、时空位置、事件链和人物状态。",
           "禁止重写开头，禁止重复已经写出的事件，禁止把已有剧情换一种说法再说一遍。",
+          "先核对主事件、读者回报与收尾是否已经兑现；若没有可新增的有效动作或关系变化，只能重复解释或拖延结尾时，返回空字符串。宁可保留略短完整稿，也不要为字数复述结尾。",
           !input.continuationBudget && typeof input.missingWordGap === "number" && input.missingWordGap > 0
             ? `本次追加目标约 ${input.missingWordGap} 字的有效正文，补足后自然收束。`
             : "",

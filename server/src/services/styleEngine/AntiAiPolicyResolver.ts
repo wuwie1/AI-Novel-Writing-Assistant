@@ -60,12 +60,20 @@ export class AntiAiPolicyResolver {
     effectiveStyleProfileId?: string | null;
   }): Promise<AntiAiEffectiveRulesResult> {
     const baselineRules = await this.listGlobalBaselineRules();
-    // A disabled binding is an explicit exception for the selected style, never a global edit.
-    const disabled = input.effectiveStyleProfileId
-      ? await prisma.styleProfileAntiAiRule.findMany({
-          where: {styleProfileId: input.effectiveStyleProfileId, enabled: false}, select: {antiAiRuleId: true},
-        }) : [];
-    const excluded = new Set(disabled.map(item => item.antiAiRuleId));
+    // Each explicit selection is resolved by task > chapter > novel priority.
+    // A higher binding without a choice inherits the lower binding's exception.
+    const ordered = sortEffectiveBindings(input.matchedBindings.filter(binding => binding.enabled));
+    const choices = ordered.length ? await prisma.styleProfileAntiAiRule.findMany({
+      where: {styleProfileId: {in: ordered.map(binding => binding.styleProfileId)}},
+      select: {styleProfileId: true, antiAiRuleId: true, enabled: true},
+    }) : [];
+    const resolved = new Map<string, boolean>();
+    for (const binding of ordered) {
+      for (const choice of choices.filter(row => row.styleProfileId === binding.styleProfileId)) {
+        if (!resolved.has(choice.antiAiRuleId)) resolved.set(choice.antiAiRuleId, choice.enabled);
+      }
+    }
+    const excluded = new Set([...resolved].filter(([, enabled]) => !enabled).map(([id]) => id));
     const globalBaselineRules = baselineRules.filter(rule => !excluded.has(rule.id)).map((rule): AntiAiEffectiveRuleItem => ({
       rule,
       source: "global_baseline",
@@ -78,7 +86,7 @@ export class AntiAiPolicyResolver {
     }));
 
     const styleRulesById = new Map<string, AntiAiEffectiveRuleItem>();
-    for (const binding of sortEffectiveBindings(input.matchedBindings)) {
+    for (const binding of ordered) {
       const profile = binding.styleProfile;
       if (!profile) {
         continue;

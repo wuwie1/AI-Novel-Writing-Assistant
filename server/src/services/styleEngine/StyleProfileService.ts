@@ -286,12 +286,17 @@ export class StyleProfileService {
     });
 
     if (input.antiAiRuleIds) {
+      // Ordinary profile saves must retain explicit rule exceptions.
+      const excluded = await prisma.styleProfileAntiAiRule.findMany({
+        where: {styleProfileId: id, enabled: false}, select: {antiAiRuleId: true},
+      });
+      const excludedIds = new Set(excluded.map(row => row.antiAiRuleId));
       await prisma.styleProfileAntiAiRule.deleteMany({
-        where: { styleProfileId: id },
+        where: { styleProfileId: id, enabled: true },
       });
       if (input.antiAiRuleIds.length > 0) {
         await prisma.styleProfileAntiAiRule.createMany({
-          data: input.antiAiRuleIds.map((antiAiRuleId) => ({
+          data: input.antiAiRuleIds.filter(ruleId => !excludedIds.has(ruleId)).map((antiAiRuleId) => ({
             styleProfileId: id,
             antiAiRuleId,
             enabled: true,

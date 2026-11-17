@@ -22,7 +22,7 @@ export const chapterPatchRepairPrompt: PromptAsset<
   ChapterPatchRepairPlan
 > = {
   id: "novel.review.patch",
-  version: "v11",
+  version: "v12",
   taskType: "repair",
   mode: "structured",
   language: "zh",
@@ -71,7 +71,8 @@ export const chapterPatchRepairPrompt: PromptAsset<
         "",
         "【补丁原则】",
         "1. strategy 默认必须是 patch_first。",
-        "2. patches 中每个 targetExcerpt 必须逐字摘自当前正文，并且应足够长，确保在正文里只出现一次。",
+        "2. patches 中每个 targetExcerpt 必须逐字摘自当前正文，优先选择唯一的完整句段。",
+        "2b. 删除重复片段时可使用 location:{occurrence:2,expectedOccurrences:2} 表示原文中共出现两次、只改第二次；序号从1开始，次数和位置都按未修改的完整正文核对。仅在明确哪一次需要修复时提供 location；不得猜测位置或默认改第一处。",
         "2a. 所有 targetExcerpt 都定位于同一份当前正文，片段之间不得重叠或相互包含。多个问题落在同一片段时，合并为一条补丁，在 replacement 中一次完成全部修复，并合并 issueIds；不得假设前一条补丁的替换结果是后一条的目标。",
         "3. replacement 只替换 targetExcerpt 对应片段，不要改写无关段落；如果修复目标是删除重复片段，replacement 可以是空字符串。",
         "4. 优先修复问题清单中影响主线推进、连续性、人物动机、节奏和结尾钩子的关键问题。",
@@ -80,7 +81,7 @@ export const chapterPatchRepairPrompt: PromptAsset<
         "5. 不得新增重大设定、核心角色或与章节任务冲突的剧情转向。",
         "6. 局部补丁只处理正文中能定位到完整句段的问题；审校系统不可用、结构化判断缺失、评分不足等系统风险不属于正文片段修复。",
         "7. targetExcerpt 必须是正文里的完整短句或段落，不得是单个词语、称谓、标点或过短短语。",
-        "8. 如果找不到至少 6 个字符且在正文中唯一出现的原文片段，不要输出 patch；requiresFullRewrite 设为 true，并说明 escalationReason。",
+        "8. 如果找不到至少6个字符且唯一出现的原文片段，也不能通过 location 的出现序号和总次数明确定位，不要输出 patch；requiresFullRewrite 设为 true，并说明 escalationReason。",
         "9. 如果确实无法用局部补丁安全修复，requiresFullRewrite 设为 true，并说明 escalationReason。",
         "10. 问题清单包含 repairDirectives 时，只执行 mode=patch 的指令；mode=rewrite/manual 保留为未处理说明，不得用局部补丁强行完成。",
         "11. 未出场角色的目标变化不得靠新增场景、视角、远程消息或泄露秘密补齐。书级规则、文风、世界规则和保密约束均须保留；只修有正文证据且本章合同要求的缺口。",

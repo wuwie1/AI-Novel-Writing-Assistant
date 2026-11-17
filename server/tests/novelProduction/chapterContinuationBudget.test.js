@@ -39,7 +39,7 @@ function graphFixture(output, streaming = false) {
     './runtime/chapterEmptyContentError': {},
     '../../db/prisma': { prisma: { novel: { findUnique: async () => null } } },
     './novelP0Utils': { toText: value => value },
-    './runtime/writing': loadRuntimeSource('writing/ContinuationBudget.ts', {}),
+    './runtime/writing': {...loadRuntimeSource('writing/ContinuationBudget.ts', {}), ...loadRuntimeSource('writing/continuationNovelty.ts', {})},
   });
   const graph = new ChapterWritingGraph({ logInfo: () => {}, logWarn: (...args) => warnings.push(args) });
   const original = '字'.repeat(2315);
@@ -83,3 +83,29 @@ test('initial Writer request uses the resolved mission target even when chapter 
   assert.equal(h.calls[0].promptInput.minWordCount, 1530);
   assert.equal(h.calls[0].promptInput.maxWordCount, 2070);
 });
+
+for (const streaming of [false, true]) {
+  test('replayed suffix is rejected before save/review without another request; streaming=' + streaming, async () => {
+    const h = graphFixture('字'.repeat(349), streaming);
+    assert.equal(await h.run(), h.original);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.warnings[0][1].repeatedCharacters, 349);
+    if (streaming) assert.deepEqual(h.progress.at(-1), {content: h.original, state: 'checking'});
+  });
+}
+
+test('overlap guard catches whitespace-only replay and long repeated paragraphs but allows brief echoes', () => {
+  const {validateContinuationNovelty: check} = loadRuntimeSource('writing/continuationNovelty.ts', {});
+  const paragraph = '祖母收起短尺，母亲终于松开肩膀，哥哥把叠好的棉帕垫进父亲臂弯。'.repeat(4);
+  assert.equal(check('开场。'+paragraph, paragraph.split('').join(' ')).accepted, false);
+  assert.equal(check(paragraph+'原文另有收尾。', '新变化。\n\n'+paragraph).accepted, false);
+  assert.equal(check('他点了点头。', '他点了点头，伸手推开房门。').accepted, true);
+  assert.equal(check(paragraph, '他拉住哥哥衣袖，第一次笑出了声。').accepted, true);
+  assert.equal(check(paragraph, '').accepted, true);
+});
+
+ test('new introductory words cannot disguise a replay inside the same continuation paragraph', () => {
+  const {validateContinuationNovelty} = loadRuntimeSource('writing/continuationNovelty.ts', {});
+  const previous = '门外的脚步越来越近。他抓住窗沿，手指被碎木刺破，仍然没有松开。'.repeat(5);
+  assert.equal(validateContinuationNovelty(previous, '他又向前挪动。' + previous + '随后关上了门。').accepted, false);
+ });
