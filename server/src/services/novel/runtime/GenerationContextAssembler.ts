@@ -174,7 +174,7 @@ export class GenerationContextAssembler {
       this.worldContextGateway.getWorldContextBlock(novelId, { purpose: "chapter" }),
       pendingReviewProposalCountPromise,
       pendingCharacterHardFactReviewsPromise,
-      prisma.auditIssue.findMany({
+      chapter.content?.trim() ? prisma.auditIssue.findMany({
         where: {
           status: "open",
           report: {
@@ -185,7 +185,7 @@ export class GenerationContextAssembler {
           },
         },
         orderBy: [{ createdAt: "desc" }],
-      }),
+      }) : Promise.resolve([]),
       prisma.chapterSummary.findMany({
         where: {
           novelId,
@@ -208,7 +208,10 @@ export class GenerationContextAssembler {
       prisma.creativeDecision.findMany({
         where: {
           novelId,
-          OR: [{ expiresAt: null }, { expiresAt: { gte: chapter.order } }],
+          AND: [
+            {OR: [{ expiresAt: null }, { expiresAt: { gte: chapter.order } }]},
+            {OR: [{chapterId: null}, {chapterId: {in: sourceIds}}]},
+          ],
         },
         orderBy: [{ importance: "asc" }, { createdAt: "desc" }],
         take: 12,

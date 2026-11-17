@@ -32,6 +32,13 @@ export async function queueManualChapterSync(tx: Prisma.TransactionClient, chapt
       artifactType: CHAPTER_ARTIFACT_BOUNDARY_TYPE, status: "succeeded" },
     data: { status: "superseded" },
   });
+  if (!chapter.content?.trim()) {
+    // Clearing a draft is an explicit rewrite boundary. Keep plans as history,
+    // but do not reuse a plan compiled from the discarded prose/state.
+    await tx.storyPlan.updateMany({where: {novelId: chapter.novelId, level: "chapter", status: {not: "stale"},
+      OR: [{chapterId: chapter.id}, {sourceStateSnapshot: {sourceChapterId: chapter.id},
+        chapter: {OR: [{content: null}, {content: ""}]}}]}, data: {status: "stale"}});
+  }
   await new NovelSideEffectJobService({ db: tx }).enqueueJob({
     novelId: payload.novelId, jobType: "chapter.manualSync", payload,
     idempotencyKey: `chapter.manualSync:${payload.chapterId}:${payload.revision}`,
