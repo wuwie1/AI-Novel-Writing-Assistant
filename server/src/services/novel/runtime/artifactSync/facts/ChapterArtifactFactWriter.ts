@@ -31,7 +31,7 @@ export class ChapterArtifactFactWriter {
       if (!current || buildChapterArtifactContentHash(current.content ?? "") !== input.expectedContentHash) {
         throw new ChapterArtifactContentVersionError("章节正文版本已变化，已拒绝写入过期摘要与事实。");
       }
-      await tx.chapter.update({where: {id: input.chapterId}, data: {expectation: summary}});
+      // Observed events belong to ChapterSummary; expectation is the author's planning goal.
       await tx.chapterSummary.upsert({where: {chapterId: input.chapterId},
         update: {summary, keyEvents, characterStates},
         create: {novelId: input.novelId, chapterId: input.chapterId, summary, keyEvents, characterStates},

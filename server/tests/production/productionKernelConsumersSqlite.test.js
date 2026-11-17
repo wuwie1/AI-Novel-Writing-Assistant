@@ -113,8 +113,10 @@ test('a failed timeline check commits a degraded anchor under the same guarded r
 
 test('real summary, state, payoff, dynamics, knowledge, mind and projections persist with per-consumer receipts', async t => {
   const f = await consumerFixture(t); const previous = {};
+  await f.db.chapter.update({ where: { id: 'chapter-1' }, data: { expectation: '主角在城门完成交接，留下返回的动机。' } });
   for (const name of f.kernel.ARTIFACT_CONSUMERS) previous[name] = await f.apply(name, output(), previous);
   assert.equal((await f.db.chapterSummary.findFirst()).summary, '主角交出钥匙并约定返回');
+  assert.equal((await f.db.chapter.findUnique({ where: { id: 'chapter-1' } })).expectation, '主角在城门完成交接，留下返回的动机。');
   assert.equal(await f.db.novelFactEntry.count(), 1);
   assert.equal(await f.db.ragIndexJob.count(), 2);
   assert.equal(await f.db.storyStateSnapshot.count(), 1);

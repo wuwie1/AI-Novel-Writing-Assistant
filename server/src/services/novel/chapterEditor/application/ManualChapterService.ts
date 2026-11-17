@@ -18,7 +18,9 @@ export class ManualChapterService {
 
   async updateChapter(novelId: string, chapterId: string, input: Partial<ChapterInput>) {
     const chapter = await this.store.updateChapter(novelId, chapterId, input);
-    await this.synchronizeSavedChapter(chapter);
+    const planningChanged = (["title", "order", "expectation", "targetWordCount", "conflictLevel",
+      "revealLevel", "mustAvoid", "taskSheet", "sceneCards"] as const).some(key => input[key] !== undefined);
+    await this.synchronizeSavedChapter(chapter, planningChanged);
     return chapter;
   }
 
@@ -28,8 +30,8 @@ export class ManualChapterService {
     queueRagDelete("chapter_summary", chapterId);
   }
 
-  private async synchronizeSavedChapter(chapter: Chapter) {
-    await this.volumes.mirrorChapterIntoWorkspace(chapter.novelId, {
+  private async synchronizeSavedChapter(chapter: Chapter, mirrorPlanning = true) {
+    if (mirrorPlanning) await this.volumes.mirrorChapterIntoWorkspace(chapter.novelId, {
       id: chapter.id,
       order: chapter.order,
       title: chapter.title,

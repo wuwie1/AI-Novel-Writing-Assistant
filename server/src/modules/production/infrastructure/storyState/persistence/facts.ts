@@ -10,7 +10,7 @@ return async ({ tx, context, output }) => {
   const shortLines = (values: (string | null | undefined)[]) => [...new Set(values.map(compact).filter(Boolean))].slice(0, 3).join("；") || null;
   const data = { summary, keyEvents: shortLines(output.concreteFacts.filter(fact => fact.category !== "state_changed").map(fact => fact.text)),
     characterStates: shortLines(output.stateDeltas.characterStates.map(state => state.summary)) };
-  await tx.chapter.update({ where: { id: chapterId }, data: { expectation: summary } });
+  // Preserve the planning goal when reconciling observed events from the final manuscript.
   await tx.chapterSummary.upsert({ where: { chapterId }, create: { novelId, chapterId, ...data }, update: data });
   const existing = new Set((await tx.novelFactEntry.findMany({ where: { novelId, chapterOrder: order }, select: { text: true } })).map(row => row.text.trim()));
   let created = 0;

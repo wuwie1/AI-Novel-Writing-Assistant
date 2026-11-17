@@ -11,7 +11,7 @@ test('V2 summary and fact writes consume AI deltas rather than rerunning legacy 
   const facts=[];
   const queued=[];
   const content='甲交了三百两，肩伤加重。';
-  const prisma={chapter:{findFirst:async()=>({id:'c',order:2,content}),update:async()=>{}},
+  const prisma={chapter:{findFirst:async()=>({id:'c',order:2,content}),update:async()=>{throw Error('summary must not replace the chapter planning goal');}},
     chapterSummary:{upsert:async request=>{summaries.push(request.create);}},
     $transaction:async callback=>callback(prisma)};
   const p0={extractFacts:()=>{legacyExtractions++;return [{category:'plot',content:'旧关键词摘要'}];}};
@@ -35,7 +35,7 @@ test('V2 summary and fact writes consume AI deltas rather than rerunning legacy 
     '../state/stateProposalSourceQuality':{normalizeContentProvenance:()=> 'confirmed'},
     './artifactSync/ChapterArtifactSyncResult':{ChapterArtifactContentVersionError:class extends Error{}},
     './artifactSync/ChapterArtifactContentVersion':version,'./artifactSync/context':{},'./artifactSync/facts':writer,
-    '../characters/locations':{},
+    '../characters/locations':{},'../state/context/ChapterStateBoundary':{},
   });
   const result=await new ChapterArtifactDeltaService().applyChapterArtifactConsumer({novelId:'n',chapterId:'c',content,contentHash:version.buildChapterArtifactContentHash(content),consumer:'summary_facts',artifactSyncPolicy:'director_v2',
     output:{summary:'甲交易后负伤。',concreteFacts:[{text:'甲已支付三百两。',category:'completed'}],stateDeltas:{characterStates:[{summary:'肩伤加重'}]}}});
