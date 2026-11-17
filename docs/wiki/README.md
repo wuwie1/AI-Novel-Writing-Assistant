@@ -25,6 +25,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [本机模型代理与服务器任务边界](./architecture/local-model-proxy.md)
 - [Mac 桌面运行与呈现边界](./architecture/mac-desktop.md)
 - [API 访问令牌边界](./architecture/access-token-boundary.md)
+- [独立大纲工作台边界](./architecture/outline-workbench.md)
 
 ### Workflows
 
@@ -34,6 +35,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [章节生产链路](./workflows/chapter-production-chain.md)
 - [章节检查重试策略](./workflows/chapter-review-retry-policy.md)
 - [人工正文保存与时间线版本边界](./workflows/manual-chapter-timeline.md)
+- [小说删除的事务与外部资源边界](./workflows/novel-deletion.md)
 - [小说 AI 用量与调用日志边界](./workflows/novel-ai-usage.md)
 - [读者体验合同](./workflows/reader-experience-contract.md)
 - [Payoff Ledger 来源与同步合同](./workflows/payoff-ledger-contract.md)

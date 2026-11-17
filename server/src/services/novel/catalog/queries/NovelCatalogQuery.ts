@@ -32,6 +32,7 @@ export async function listNovels({ page, limit, search, status, narrativeForm, w
         directorVersion: true,
         directorEpoch: true,
         title: true,
+        penName: true,
         description: true,
         targetAudience: true,
         bookSellingPoint: true,
@@ -102,6 +103,8 @@ export async function listNovels({ page, limit, search, status, narrativeForm, w
     }),
     readNovelBookProgress(items),
   ]);
+  const manuscriptProjects = await prisma.manuscriptProject.findMany({where:{novelId:{in:novelIds}},select:{novelId:true,_count:{select:{units:{where:{status:"active"}}}}}});
+  const activeManuscriptCounts = new Map(manuscriptProjects.map(project=>[project.novelId,project._count.units]));
   const primaryCoverByNovelId = new Map<string, ReturnType<typeof toImageAsset>>();
   for (const asset of coverAssets) {
     if (asset.novelId && !primaryCoverByNovelId.has(asset.novelId)) {
@@ -115,7 +118,8 @@ export async function listNovels({ page, limit, search, status, narrativeForm, w
 
   return {
     items: items.map((item) => {
-      const normalized = normalizeNovelOutput(item);
+      const activeCount=activeManuscriptCounts.get(item.id);
+      const normalized = normalizeNovelOutput(activeCount===undefined?item:{...item,_count:{...item._count,chapters:activeCount}});
       const world = normalized.world ?? (normalized.novelWorld
         ? {
           id: normalized.novelWorld.sourceWorld?.id ?? normalized.novelWorld.id,

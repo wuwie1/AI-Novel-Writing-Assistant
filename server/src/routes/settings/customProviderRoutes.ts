@@ -1,5 +1,5 @@
 import { defaultTextModel, modelPurposeError } from "@ai-novel/shared/utils/modelConnection/index";
-import { probeIfEnabled } from "../../llm/compatibility/probing";
+import { probeIfEnabled, setAutoProbe } from "../../llm/compatibility/probing";
 import type { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import {
@@ -189,7 +189,7 @@ export function registerCustomProviderRoutes(router: Router): void {
           baseURL,
           authMode,
           isActive: body.isActive ?? true,
-          reasoningEnabled: body.reasoningEnabled ?? true,
+          reasoningEnabled: body.reasoningEnabled ?? false,
           reasoningEffort: normalizeReasoningEffort(body.reasoningEffort),
           hiddenModels: "[]",
           availableModels: serializeModelList(models),
@@ -207,6 +207,10 @@ export function registerCustomProviderRoutes(router: Router): void {
           concurrencyLimit: data.concurrencyLimit ?? 0,
           requestIntervalMs: data.requestIntervalMs ?? 0,
         } : null);
+        // New custom providers probe compatibility by default so structured calls
+        // can turn reasoning off from the first use. The per-provider switch in
+        // the compatibility section can turn this back off.
+        await setAutoProbe(provider, true).catch(() => undefined);
         void probeIfEnabled({ provider, model: data.model ?? undefined, baseURL: data.baseURL ?? undefined }).catch(() => undefined);
         const imageModel = await saveProviderImageModel(provider, body.imageModel);
         const imageModels = Array.from(new Set([

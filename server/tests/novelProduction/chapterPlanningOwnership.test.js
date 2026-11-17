@@ -9,6 +9,7 @@ test('generating a summary updates observed events without changing the approved
   const queued = [], facts = [];
   const { NovelChapterSummaryService } = loadRuntimeSource('../NovelChapterSummaryService.ts', {
     '../../db/prisma': { prisma: db },
+    '../../modules/planning/outline/feedback': { outlineFeedbackService: { notify: () => {} } },
     '../rag': { ragServices: { ragIndexService: { enqueueUpsert: async (...args) => queued.push(args) } } },
     '../../prompting/core/promptRunner': { runStructuredPrompt: async () => ({ output: {
       summary: '主角把铜钥匙交给守卫。', concreteFacts: [{ text: '钥匙已交付。', category: 'completed' }],

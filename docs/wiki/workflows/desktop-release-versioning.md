@@ -7,6 +7,8 @@
 ## Current Rule
 
 - `desktop/package.json` 的 `version` 是桌面客户端唯一版本源。
+- `docs/releases/release-notes.md` 是完整更新历史的唯一内容源；每个日期只保留一个 `### YYYY-MM-DD` 区块，合并同日分类并保留双方历史。上游桌面版本信息可保存在对应日期正文中，不能据此将本项目更新标识改成版本号。应用内说明优先读取正文包含当前 package version 的日期区块，无对应版本时读取最新日期；README 仅展示最新日期及完整历史链接。
+- 项目仍使用日期作为更新标识；尚未正式发布的版本必须明确标为候选，不能让候选号看起来像可下载版本。
 - 前端网页开发态从 Vite 注入的 `VITE_APP_VERSION` 读取该版本，桌面运行态优先读取 Electron runtime 提供的 `appVersion`。
 - 正式发布 tag 必须是 `vX.Y.Z`，并且 `X.Y.Z` 必须等于 `desktop/package.json` 的 `version`。
 - 不在 UI、README 或发布脚本中硬编码另一个客户端版本号。
@@ -30,11 +32,13 @@
 
 正式上传再次核对版本 tag 指向当前 HEAD，且提交属于 main；GitHub 必须提供匹配的 tag ref。不能将旧 SHA 的成功结果、任意环境布尔值、其他分支的验证或不干净工作区当作本次通过证据。
 
+PostgreSQL live gate proof (`.tmp/pg-live-gate.json`) is run-scoped release evidence. `pg-cloud-harness.cjs` invalidates its selected proof path before validating configuration, so an invalid invocation cannot leave a previous pass reusable. Tests and other intentional negative invocations must set `PG_LIVE_PROOF_PATH` to a dedicated temporary file; they must never run against the repository default path, which may contain the real proof downloaded by a release job. The override changes only the cleanup/write target and does not weaken proof validation or the production default.
+
 本地上传还须读取 origin 的已推送 tag（注解 tag 取 peeled commit）并与本次 HEAD 比较，避免发布器在远端缺少 tag 时替旧 main 自动创建发布标识。
 
-`run-electron-builder.cjs` 默认添加 `--publish never`，避免 CI 环境隐式上传。显式 `--publish`、`--publish=...` 与 `-p` 共用同一验证入口，失败不调用上传；重复 publish 参数被拒绝。两种既有发布脚本都经过此入口，不能另建绕过守卫的上传路径。
+`run-electron-builder.cjs` 默认添加 `--publish never`，避免 CI 环境隐式上传。显式 `--publish`、`--publish=...` 与 `-p` 共用同一验证入口，失败不调用上传；重复 publish 参数被拒绝。本地发布脚本仍经过此入口；CI 正式上传改走 `publish-artifacts.cjs`，只上传已校验的既有产物，不得再次 stage／重建。
 
-发布 workflow 仅允许 push 的版本 tag 进入上传任务。手动 workflow_dispatch 的 `target=mac` 从所选分支只构建 Apple Silicon（arm64）DMG，面向当前苹果芯片 Mac 的安装试用，避免重复构建不需要的 Intel 产物。以 Actions artifact 提供下载，名称绑定桌面版本、架构和完整提交 SHA，保留 14 天并附带 SHA-256 校验文件；`target=windows` 执行既有检查与目录打包。手动 Mac 任务只有 `contents: read`，不注入发布凭据，始终显式使用 `--publish never`。这是分支产物验证与安装试用入口，不能把它当作正式 GitHub Release 或绕过 main／版本 tag 守卫。正式发布的目标架构另由发布任务维护。构建使用已提交的图标；品牌图标应在开发时生成、审核并提交，避免发布检查期间改写受版本控制的素材。发布说明更新脚本也必须拒绝与 package 版本不符的 tag。
+发布 workflow 仅允许 push 的版本 tag 进入上传任务。手动 workflow_dispatch 的 `target=mac` 从所选分支只构建 Apple Silicon（arm64）DMG，面向当前苹果芯片 Mac 的安装试用，避免重复构建不需要的 Intel 产物。以 Actions artifact 提供下载，名称绑定桌面版本、架构和完整提交 SHA，保留 14 天并附带 SHA-256 校验文件；`target=windows` 执行既有检查与目录打包。手动 Mac 任务只有 `contents: read`，不注入发布凭据，始终显式使用 `--publish never`。这是分支产物验证与安装试用入口，不能把它当作正式 GitHub Release 或绕过 main／版本 tag 守卫。正式发布的目标架构另由发布任务维护。构建使用已提交的图标；品牌图标应在开发时生成、审核并提交，避免发布检查期间改写受版本控制的素材。发布说明更新脚本也必须拒绝与 package 版本不符的 tag。并行构建、双证明与构建清单规则见 [桌面发布检查证明边界](desktop-release-checks.md)。
 
 ## 平台与原生运行时
 
@@ -71,6 +75,7 @@ Mac 的完整性签名与 Apple 身份认证是两个边界。缺少 Developer I
 - 如果界面顶部显示版本和安装包文件名不一致，先检查打包所用 commit 的 `desktop/package.json`，不要在前端组件里补一个临时版本。
 - 如果 GitHub Release tag 已存在，不能复用同一个版本重新上传；应继续 bump 到新的 `X.Y.Z`。
 - 如果发版前只更新 release notes 但没有 bump 桌面版本，自动更新链路会把新包识别成旧版本，必须先修正版本源再发布。
+- 如果应用内没有显示对应更新，先核对完整更新历史是否存在当前版本的日期条目；不要再复制一份独立的应用内说明对象。
 - 如果 GitHub Actions 提示某个 action 仍在使用 Node 20，应优先升级该 action 的 major 版本，而不是重新加入强制运行时环境变量。
 - 如果 Mac 提示“应用已损坏”，先核对下载 SHA-256、CPU 架构及 `codesign --verify --deep --strict`。下载校验一致但出现 `code has no resources but signature indicates they must be present` 时，应修复打包签名并重新验证；不能仅凭 Actions 成功断言可安装，也不能把清除 quarantine 或关闭 Gatekeeper 当作签名修复。签名通过后的 `spctl` 拒绝可能仍来自缺少 Developer ID／公证，应单独说明，不与文件损坏混淆。
 

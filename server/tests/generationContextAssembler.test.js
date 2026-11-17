@@ -16,6 +16,7 @@ const { characterDynamicsQueryService } = require("../dist/services/novel/dynami
 const { payoffLedgerSyncService } = require("../dist/services/payoff/PayoffLedgerSyncService.js");
 const { characterResourceLedgerService } = require("../dist/services/novel/characterResource/CharacterResourceLedgerService.js");
 const { batchContextCache } = require("../dist/services/novel/runtime/BatchContextCache.js");
+const { stubDatabaseMethod } = require("./legacyDirector/databasePorts.js");
 
 test("blocking pending-review proposals are scoped to the current chapter plus global proposals", () => {
   const where = buildBlockingPendingReviewProposalWhere("novel-1", "chapter-2");
@@ -138,7 +139,10 @@ function createStoryWorldSlice() {
   };
 }
 
-test("assembler only reads planning artifacts prepared before context assembly", async () => {
+test("assembler only reads planning artifacts prepared before context assembly", async (t) => {
+  stubDatabaseMethod(t, prisma.manuscriptProject, "findUnique", async () => null);
+  t.mock.method(require("../dist/services/novel/state/context/ChapterStateBoundary"), "readChapterStateSources", async (_novelId, order) =>
+    [1, 9, 11].filter(prior => prior < order).map(prior => ({id: `prior-${prior}`, order: prior, contentHash: `hash-${prior}`})));
   const freshSceneCards = createSceneCards("新合同");
   const now = new Date();
   let chapterFindFirstCalls = 0;

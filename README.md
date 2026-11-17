@@ -8,8 +8,13 @@
 <p align="center"><sub>Open-source AI novel writing assistant and long-form production studio.</sub></p>
 
 <p align="center">
+  <a href="https://biznovelstudio.com"><strong>🌐 项目官网｜使用文档、下载安装与更新说明</strong></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest"><img src="https://img.shields.io/github/v/release/ExplosiveCoderflome/AI-Novel-Writing-Assistant?style=flat-square&amp;label=Windows%20%E6%A1%8C%E9%9D%A2%E7%89%88&amp;color=17556b" alt="最新桌面版本" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-17556b?style=flat-square" alt="AGPL-3.0 许可证" /></a>
+  <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA-FDD835?style=flat-square&amp;labelColor=222" alt="LINUX DO 社区" /></a>
   <a href="./package.json"><img src="https://img.shields.io/badge/Monorepo-pnpm%20workspace-3C873A?style=flat-square" alt="Monorepo · pnpm workspace" /></a>
 </p>
 
@@ -33,7 +38,7 @@
 
 <p align="center">
   <a href="https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest"><strong>下载 Windows 桌面版</strong></a> ·
-  <a href="https://explosivecoderflome.github.io/AI-Novel-Writing-Assistant/">项目介绍与文档</a> ·
+  <a href="https://biznovelstudio.com">项目官网与文档</a> ·
   <a href="#快速开始">第一次使用</a> ·
   <a href="#源码运行">源码运行</a> ·
   <a href="https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/issues">问题反馈</a>
@@ -45,7 +50,7 @@
 
 **桌面版适合直接开始写作；源码版适合开发和自行部署。** 模型需要使用你自己的 API 配置，知识库检索可按需启用。
 
-[最新更新](#最新更新) · [能做什么](#现在已经能做什么) · [导演版本与模式](#导演版本与运行模式) · [Token 缓存优化](#token-缓存与调用优化) · [功能预览](#功能预览) · [文档导航](#文档导航) · [参与项目](#参与项目)
+[最新更新](#最新更新) · [能做什么](#现在已经能做什么) · [导演版本与模式](#导演版本与运行模式) · [功能预览](#功能预览) · [文档导航](#文档导航) · [参与项目](#参与项目)
 
 ## 最新更新
 
@@ -165,36 +170,7 @@ V2 单章默认上限为 **100,000 Tokens**，累计包含该章的生成、检�
 
 [常见问题](./docs/public/faq.md) · [故障排查](./docs/public/troubleshooting.md)
 
-## Token 缓存与调用优化
-
-长篇创作会反复使用本书约定、写法与世界规则。工作台把可复用的规则和书级、卷级资料放在输入前部，再附上本章任务、当前状态与正文，为模型供应商复用相同前缀提供条件。缓存复用的是已处理过的输入，正文仍由模型基于本次任务生成。
-
-### 哪些部分做了优化
-
-- **稳定资料前置。** 表达规则、作品约定和适用的世界规则按复用范围组织；每次读取当前资料，修改设置后后续调用使用新内容。
-- **同章修文复用前缀。** 局部修文把本次修复重点放在同章资料和正文之后，资料与正文未变化时更容易复用前缀，同时保留写法、世界约束和秘密边界。
-- **有效审校结果复用。** 正文、创作约定、检查规则、模型与参数等相关条件一致时，复用有效的检查结果，减少相同请求的重复调用。这与厂商的输入缓存是两种机制。
-- **减少无效修文与复验。** 检查区分必须修复的缺口和普通表达建议，结合修改位置与实际效果处理局部问题，避免反复改整章；默认完成优先策略下，残余局部问题保留为质量提醒。
-
-### 不同步骤，复用空间不同
-
-| 步骤 | 可以复用的主要资料 | 必须随创作更新的内容 |
-| --- | --- | --- |
-| 章节规划 | 书级定位、作品约定、适用的卷级目标 | 本章任务、近期结果、人物状态 |
-| 正文生成 | 写法与表达规则、作品约定、适用的世界规则 | 上章接续、本章事件、场景和人物状态 |
-| 章节检查 | 检查标准、同章任务与约定 | 当前待检查正文与修文结果 |
-| 局部修文 | 本书写法、同章资料、未变化的正文 | 本次问题证据、修复重点和追加要求 |
-| 写后资料整理 | 抽取规则、确实未变化的相关资料 | 新正文、角色变化、资源与伏笔状态 |
-
-正文需要输入新的剧情和状态，这部分未命中是正常成本。首次调用、切换模型或通道、修改书级资料，也可能让命中量发生变化。优化效果应结合正文质量、输入命中与未命中 Tokens、输出 Tokens、调用次数和单章总用量一起判断。
-
-### 从哪里查看实际效果
-
-在本书 **“AI 用量”** 中筛选同一章节、步骤与模型，比较连续调用的输入、输出、命中和未命中 Tokens。也可以在 **AI 实况** 中查看正在执行的调用。
-
-**缓存命中与未命中都属于输入 Tokens，不在总用量之外重复相加。** 缓存统计以厂商实际返回为准，未提供的字段显示未知；缓存收益受厂商、模型与通道的机制影响，不能承诺固定命中率或节省比例。新建章节预算扣除已报告的有效命中量，原始调用总量仍完整保留，实际费用以厂商账单为准。
-
-面向开发者的详细边界见[模型输入缓存 Wiki](./docs/wiki/prompts/llm-input-cache.md)与[小说 AI 用量说明](./docs/wiki/workflows/novel-ai-usage.md)。
+模型、用量与写法等进阶配置可在作品创作过程中按需开启；具体操作见[模型设置](./docs/public/modules/system-settings.md)、[模型路由](./docs/public/modules/model-routing.md)与[项目文档站](https://explosivecoderflome.github.io/AI-Novel-Writing-Assistant/)。
 
 ## 功能预览
 
@@ -334,7 +310,7 @@ V1 与 V2 分别编排这条链，已保存的小说资料可以复用。章节�
 | 原理、模块边界与开发规范 | [开发 Wiki](./docs/wiki/README.md) · [文档目录](./docs/README.md) · [协作规则](./AGENTS.md) |
 | 历史更新与后续方向 | [完整更新记录](./docs/releases/release-notes.md) · [当前路线图](./TASK.md) |
 
-也可以在[在线文档站](https://explosivecoderflome.github.io/AI-Novel-Writing-Assistant/)搜索模块与使用问题。
+也可以在[在线文档站](https://biznovelstudio.com)搜索模块与使用问题。
 
 ## 源码运行
 
@@ -480,6 +456,18 @@ V2 内核位于 `server/src/modules/director/`，业务能力由应用层接入�
 
 提交贡献前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 与 [CLA.md](./CLA.md)，并说明第三方代码、素材及其许可证。感谢参与测试、提出建议和提交修复的朋友，也感谢贡献者 [@ystyleb](https://github.com/ystyleb)。
 
+### 友情链接
+
+<p align="center">
+  <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA-FDD835?style=flat-square&amp;labelColor=222" alt="LINUX DO 社区" /></a>
+</p>
+
+<p align="center">
+  <a href="https://linux.do/"><strong>LINUX DO</strong></a>
+  ·
+  <a href="https://linux.do/t/topic/2738271">本项目讨论帖</a>
+</p>
+
 ### 交流与支持
 
 <details>
@@ -505,4 +493,4 @@ V2 内核位于 `server/src/modules/director/`，业务能力由应用层接入�
 - 服务型商用：将本项目或其修改版本作为后端，以 SaaS、托管等形式向第三方提供服务，须通过作者获取商业授权许可。
 - 新贡献默认按 [CLA.md](./CLA.md) 提交，可随项目按 AGPL-3.0-only 分发，也可纳入维护者另行提供的商业授权。
 
-[贡献与授权说明](./CONTRIBUTING.md) · [LINUX DO](https://linux.do/)
+[贡献与授权说明](./CONTRIBUTING.md)

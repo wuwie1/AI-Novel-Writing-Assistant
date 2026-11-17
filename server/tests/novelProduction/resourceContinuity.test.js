@@ -20,6 +20,7 @@ const {loadRuntimeSource} = require(path.join(server, 'tests/novelProduction/sou
 const version = require(path.join(server, 'dist/services/novel/runtime/artifactSync/ChapterArtifactContentVersion'));
 const shared = require(path.join(server, 'dist/services/novel/characterResource/characterResourceShared'));
 const {CharacterResourceLedgerService} = loadRuntimeSource('../characterResource/CharacterResourceLedgerService.ts', {
+  '../state/context/ChapterStateBoundary': require(path.join(server, 'dist/services/novel/state/context/ChapterStateBoundary')),
   '../../../db/prisma': {prisma}, './characterResourceShared': shared,
   '../runtime/artifactSync/contracts': version,
 });

@@ -10,6 +10,13 @@ const { ChapterEmptyContentError } = require("../dist/services/novel/runtime/cha
 const { decoratePipelineJob, stringifyPipelinePayload, parsePipelinePayload } = require("../dist/services/novel/pipelineJobState.js");
 const { manualChapterSyncService } = require("../dist/services/novel/chapterEditor/synchronization/index.js");
 
+const { stubDatabaseMethod } = require("./legacyDirector/databasePorts.js");
+
+test.beforeEach((t) => {
+  stubDatabaseMethod(t, prisma.manuscriptProject, "findUnique", async () => null);
+  stubDatabaseMethod(t, prisma.chapter, "findFirst", async () => null);
+});
+
 const originalManualSync = {
   ensurePrevious: manualChapterSyncService.ensurePrevious,
   ensureCurrent: manualChapterSyncService.ensureCurrent,

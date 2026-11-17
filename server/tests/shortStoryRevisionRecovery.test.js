@@ -27,6 +27,8 @@ test.before(async () => {
   process.env.AI_NOVEL_APP_DATA_DIR = tempDir;
   process.env.DATABASE_URL = url;
   prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url }) });
+  await prisma.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS "AppSetting" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL)');
+  require("../dist/db/prisma").prisma = prisma;
 });
 test.after(async () => {
   await prisma?.$disconnect();

@@ -84,7 +84,7 @@ test("payoffLedgerSyncPrompt postValidate accepts paid_off items with payoffChap
       evidence: [],
       riskSignals: [],
     }],
-  }));
+  }, { latestWrittenChapterOrder: 33 }));
 });
 
 test("payoffLedgerSyncPrompt postValidate still rejects paid_off items without chapter locator", () => {
@@ -99,7 +99,7 @@ test("payoffLedgerSyncPrompt postValidate still rejects paid_off items without c
       evidence: [],
       riskSignals: [],
     }],
-  }), /payoffChapterOrder/);
+  }, { latestWrittenChapterOrder: 33 }), /payoffChapterOrder/);
 });
 
 test("payoffLedgerSyncPrompt requires every book contract payoff source and its deadline", () => {

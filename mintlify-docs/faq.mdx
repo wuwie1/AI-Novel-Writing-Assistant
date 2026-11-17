@@ -1,0 +1,73 @@
+---
+title: "常见问题"
+description: "数据存储、更新方式、全自动推进、导演版本选择和知识库等常见使用疑问"
+keywords:
+  - "常见问题"
+  - "FAQ"
+  - "数据备份"
+  - "导演 V1 V2"
+  - "暂停"
+---
+
+这里回答「是什么、怎么选、能不能」类的使用疑问。遇到报错、连接失败、生成卡住等异常，请直接看 [故障排查](/troubleshooting)。
+
+<CardGroup cols={2}>
+  <Card title="我遇到了报错或卡住" icon="screwdriver-wrench" href="/troubleshooting">
+    安装启动、模型连接、生成暂停、任务记录、知识库检索的排查步骤
+  </Card>
+
+  <Card title="我是第一次用" icon="route" href="/onboarding">
+    跟着创作向导，从配置模型走到第一章成稿
+  </Card>
+</CardGroup>
+
+## 安装与数据
+
+<AccordionGroup>
+  <Accordion title="数据存在哪里，怎么备份">
+    见 [安装下载](/installation) 中的「数据保存在哪里」。备份前先完全退出应用，再复制整个数据目录。
+  </Accordion>
+  <Accordion title="便携版和 Mac 版为什么不能自动更新">
+    只有 Windows 安装版支持应用内更新。便携版下载新版替换程序并保留 `-data` 文件夹；Mac 版下载新 `.dmg` 覆盖安装，数据不受影响。
+  </Accordion>
+  <Accordion title="需要自己准备模型吗">
+    需要。工作台不内置模型额度，使用你自己的 API 配置，也可以接本地模型。首次打开会弹出快捷配置，见 [模型配置](/model-configuration)。
+  </Accordion>
+</AccordionGroup>
+
+## 创作过程
+
+<AccordionGroup>
+  <Accordion title="全自动为什么也会停下">
+    全自动只执行你授权的范围。例如提交第 1 至 3 章，写完就停，不会擅自写第 4 章，需要你选择下一段。
+
+    另外，遇到模型不可用、需要重新规划、达到用量保护上限或数据完整性问题时也会暂停。暂停不等于失败，进度和已保存正文都会保留。怎么继续见 [故障排查](/troubleshooting)。
+  </Accordion>
+  <Accordion title="章节有质量提醒，要不要停下来修">
+    默认的「优先完成整本书」策略会把普通局部问题记录为章节提醒并继续写。想更严格，可以在 **设置 → 自动导演** 切换为「质量优先」，或只为某本书单独设置。
+  </Accordion>
+  <Accordion title="导演 V1 和 V2 选哪个">
+    新书推荐 V2。已有小说可以继续用原来的版本；切换前需要先结束当前创作，切换只保存选择，不会自动开始生成。对比见 [快速开始](/quickstart)。
+  </Accordion>
+  <Accordion title="单章用量上限是什么">
+    V2 单章默认上限是 100,000 Tokens，累计该章的生成、检查、修文和资料整理调用，用来防止单章消耗失控。达到上限会暂停并保留进度，可以追加额度继续。详见 [AI 用量](/features/token-usage)。
+  </Accordion>
+</AccordionGroup>
+
+## 知识库
+
+<AccordionGroup>
+  <Accordion title="不配 Qdrant 能用吗">
+    能。Qdrant 只用于知识库向量检索，不是开书和写第一章的前提。想先跑通主线，源码运行时设置 `RAG_ENABLED=false` 即可。
+  </Accordion>
+</AccordionGroup>
+
+## 反馈问题
+
+到 [GitHub Issues](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/issues) 提交时，尽量带上：
+
+- 应用版本（顶部栏版本号）和系统
+- 操作入口和步骤
+- 使用的模型供应商和模型名
+- 暂停原因或报错原文、截图
+- 桌面版日志包（在「版本与更新」中保存）

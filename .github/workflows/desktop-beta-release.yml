@@ -10,7 +10,35 @@ permissions:
   contents: write
 
 jobs:
+  pg-live-gate:
+    uses: ./.github/workflows/pg-live-gate.yml
+
+  release-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.6.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run portable release checks
+        run: node scripts/desktop-release/run.cjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/release-checks/release-checks-${{ github.run_id }}-${{ github.run_attempt }}.json
+          include-hidden-files: true
+          if-no-files-found: error
+
   publish-beta:
+    needs: [pg-live-gate, release-checks]
     runs-on: windows-latest
     env:
       AI_NOVEL_RELEASE_CHANNEL: beta
@@ -42,14 +70,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - uses: actions/download-artifact@v6
+        with:
+          name: pg-live-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/release-checks
+      - name: Verify release proofs
+        run: node scripts/desktop-release/verify-proof.cjs
+
       - name: Install desktop icon tooling
         run: python -m pip install --disable-pip-version-check pillow
 
       - name: Regenerate desktop icon assets
         run: python desktop/scripts/generate-desktop-icons.py
-
-      - name: Typecheck
-        run: pnpm typecheck
 
       - name: Build and stage desktop app
         run: pnpm stage:desktop

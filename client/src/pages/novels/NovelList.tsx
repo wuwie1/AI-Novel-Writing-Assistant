@@ -276,7 +276,7 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
 
   const handleDelete = (novelId: string, title: string, options?: { confirmed?: boolean }) => {
     if (!options?.confirmed) {
-      const confirmed = window.confirm(`确认删除《${title}》吗？本书的导演任务会停止，章节、时间线、知识索引和封面也会删除。`);
+      const confirmed = window.confirm(`确认删除《${title}》吗？本书的导演任务会停止，正文、章节与角色资料、任务及归档记录、AI 调用历史、时间线、诊断和知识索引，以及本书生成图片与封面会删除，共享文件保留。此操作不可恢复。独立的大纲项目、导入原稿、衍生或续写小说及全局素材会保留。`);
       if (!confirmed) {
         return;
       }
@@ -307,6 +307,7 @@ export default function NovelList({ render }: { render?: (model: NovelListPresen
     return {
       ...base,
       title: coverNovel.title,
+      penName: coverNovel.penName ?? "",
       description: coverNovel.description ?? "",
       targetAudience: coverNovel.targetAudience ?? "",
       bookSellingPoint: coverNovel.bookSellingPoint ?? "",

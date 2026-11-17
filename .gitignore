@@ -15,6 +15,7 @@ server/dev.db
 server/dev.db-shm
 server/dev.db-wal
 server/tmp_*.js
+/server/tmp/
 server/tmp/**/*.db
 server/tmp/**/*.db*
 server/tmp/**/*.db-*
@@ -38,6 +39,7 @@ server/.tmp/
 desktop/build/
 desktop/runtime-migration-smoke/
 server/prisma-diff-migrations-to-schema.sql
+/*-summary.md
 
 # AI tool artifacts
 .claude/plan/

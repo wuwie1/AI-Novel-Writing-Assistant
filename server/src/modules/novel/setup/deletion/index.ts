@@ -3,10 +3,10 @@ import type {Prisma} from "@prisma/client";
 import {prisma} from "../../../../db/prisma";
 import {cancelTaskExecutions} from "../../../../platform/runtime/execution";
 import {detachNovelIndex} from "../../../../services/rag/ownership";
-import {locateStoredNovelCover} from "../../../../services/image/imageAssetStorage";
+import {prepareNovelDeletion, finishNovelDeletion} from "../../../../services/novel/lifecycle";
 import {queueStoredAssetCleanup, STORED_ASSET_CLEANUP, type StoredAssetCleanup} from "../../../../events/sideEffects/StoredAssetCleanup";
 
-async function removeNovelTasks(tx: Prisma.TransactionClient, novelId: string): Promise<string[]> {
+async function removeNovelTasks(tx: Prisma.TransactionClient, novelId: string) {
   const where = {novelId};
   const select = {id: true} as const;
   const [workflow, agent, pipeline, image, director, revisions] = await Promise.all([
@@ -18,6 +18,8 @@ async function removeNovelTasks(tx: Prisma.TransactionClient, novelId: string): 
   const directorIds = ids(director);
   const workflowIds = ids(workflow);
   const followUpIds = [...workflowIds, ...directorIds];
+  // Capture execution IDs first; clean task-owned records before SetNull loses ownership.
+  const fileCleanup = await prepareNovelDeletion(tx, novelId);
   await tx.taskCenterArchive.deleteMany({where: {OR: [
     {taskKind: "novel_workflow", taskId: {in: workflowIds}}, {taskKind: "agent_run", taskId: {in: ids(agent)}},
     {taskKind: "novel_pipeline", taskId: {in: ids(pipeline)}}, {taskKind: "image_generation", taskId: {in: ids(image)}},
@@ -36,39 +38,42 @@ async function removeNovelTasks(tx: Prisma.TransactionClient, novelId: string): 
   await tx.shortStoryPlan.deleteMany({where});
   await tx.novelWorkflowTask.deleteMany({where});
   await tx.agentRun.deleteMany({where});
-  return [
+  return {fileCleanup, executionKeys: [
     ...directorIds.map(id => `director:${id}`), ...workflowIds.map(id => `workflow:${id}`),
     ...agent.map(({id}) => `agent:${id}`), ...revisions.map(({id}) => `revision:${id}`),
-  ];
+  ]};
 }
 
 export async function deleteNovel(novelId: string): Promise<void> {
-  const executionKeys = await prisma.$transaction(async tx => {
+  const {executionKeys, fileCleanup} = await prisma.$transaction(async tx => {
     // New director runs and asset publishers acquire the same book row before committing.
     await lockNovelRow(tx, novelId);
     const where = {novelId};
-    const executionKeys = await removeNovelTasks(tx, novelId);
+    // Preserve collection-aware receipts before relational ownership is removed.
     const cleanup: StoredAssetCleanup[] = await detachNovelIndex(tx, novelId);
-    const covers = await tx.imageAsset.findMany({
-      where: {sceneType: "novel_cover", OR: [{novelId}, {novelId: null, task: {novelId}}]},
-      select: {taskId: true, metadata: true, url: true},
-    });
-    for (const asset of covers) {
-      const cover = locateStoredNovelCover(novelId, asset);
-      if (cover) cleanup.push({cover});
-    }
+    const result = await removeNovelTasks(tx, novelId);
     await tx.novelSideEffectJob.updateMany({where: {novelId, jobType: STORED_ASSET_CLEANUP, status: "reserved"},
       data: {novelId: null, status: "pending", runAfter: new Date()},
     });
     if (cleanup.length) await queueStoredAssetCleanup(tx, cleanup);
+    await tx.outlineBookBinding.deleteMany({where: {novelId}});
+    await tx.outlineProject.updateMany({where: {boundNovelId: novelId}, data: {boundNovelId: null}});
     await tx.novel.delete({where: {id: novelId}});
     await tx.timelineCheckReport.deleteMany({where});
     await tx.timelineConstraint.deleteMany({where});
     await tx.timelineHook.deleteMany({where});
     await tx.chapterTimeAnchor.deleteMany({where});
     await tx.storyTimelineEvent.deleteMany({where});
-    return executionKeys;
+    return result;
   }, {timeout: 30_000});
   cancelTaskExecutions(`novel:${novelId}`);
   for (const key of executionKeys) cancelTaskExecutions(key);
+  if (fileCleanup) {
+    try {
+      await finishNovelDeletion(JSON.parse(fileCleanup.payloadJson));
+      await prisma.novelSideEffectJob.deleteMany({where: {id: fileCleanup.id}});
+    } catch {
+      // The committed receipt remains available to the side-effect worker.
+    }
+  }
 }

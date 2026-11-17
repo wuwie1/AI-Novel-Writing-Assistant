@@ -1,3 +1,4 @@
+import { retainedOutlineChapterFields } from "../../../../modules/planning/outline/constraints";
 import type {
   VolumeBeatSheet,
   VolumePlan,
@@ -89,6 +90,7 @@ export async function generateChapterTaskSheetDetail(params: {
   options: VolumeGenerateOptions;
 }): Promise<ContractResult> {
   const existingChapter = params.promptInput.targetChapter;
+  const retained = retainedOutlineChapterFields(existingChapter.id);
   if (
     !params.options.forceRegenerate &&
     !params.promptInput.guidance?.trim()
@@ -165,6 +167,8 @@ export async function generateChapterTaskSheetDetail(params: {
       for (const key of ["purpose", "exclusiveEvent", "endingState", "nextChapterEntryState", "mustAvoid"] as const) {
         if (existingChapter[key]?.trim()) generated.output[key] = existingChapter[key]!.trim();
       }
+      const purpose = retained?.purpose ?? generated.output.purpose;
+      const payoffRefs = retained ? [...new Set([...retained.payoffRefs, ...generated.output.payoffRefs])] : generated.output.payoffRefs;
       const scenePlan = normalizeChapterScenePlan(
         {
           scenes: generated.output.sceneCards,
@@ -183,7 +187,7 @@ export async function generateChapterTaskSheetDetail(params: {
         chapterOrder: promptInput.targetChapter.chapterOrder,
         title: promptInput.targetChapter.title,
         summary: promptInput.targetChapter.summary,
-        purpose: generated.output.purpose,
+        purpose,
         exclusiveEvent: generated.output.exclusiveEvent,
         endingState: generated.output.endingState,
         nextChapterEntryState: generated.output.nextChapterEntryState,
@@ -191,7 +195,7 @@ export async function generateChapterTaskSheetDetail(params: {
         revealLevel: generated.output.revealLevel,
         targetWordCount: generated.output.targetWordCount,
         mustAvoid: generated.output.mustAvoid,
-        payoffRefs: generated.output.payoffRefs,
+        payoffRefs,
         taskSheet: generated.output.taskSheet,
         sceneCards: serializeChapterScenePlan(scenePlan),
       }, {
@@ -206,7 +210,7 @@ export async function generateChapterTaskSheetDetail(params: {
       if (!quality.canEnterExecution) throw new ChapterTaskSheetQualityGateError(quality);
       const guidance = [...quality.repairGuidance, ...quality.issues.map(issue => issue.repairHint)].filter(Boolean);
       const value = {
-        purpose: generated.output.purpose.trim(),
+        purpose: purpose.trim(),
         exclusiveEvent: generated.output.exclusiveEvent.trim(),
         endingState: generated.output.endingState.trim(),
         nextChapterEntryState: generated.output.nextChapterEntryState.trim(),
@@ -214,7 +218,7 @@ export async function generateChapterTaskSheetDetail(params: {
         revealLevel: generated.output.revealLevel,
         targetWordCount: generated.output.targetWordCount,
         mustAvoid: generated.output.mustAvoid.trim(),
-        payoffRefs: generated.output.payoffRefs,
+        payoffRefs,
         taskSheet: [generated.output.taskSheet.trim(), ...(guidance.length ? [
           "本章规划核对指导（写作、审校与修文共同遵守；优先保持前文事实，不得为修复而提前越章）：",
           ...[...new Set(guidance)].map(item => `- ${item}`),

@@ -10,6 +10,7 @@ import { prisma } from "../../db/prisma";
 import { chapterTimelineFinalizationService } from "../../services/novel/runtime/ChapterTimelineFinalizationService";
 import { buildTimelineContentHash, TimelineContentVersionError } from "../../modules/timeline";
 import {directorV2CharacterEnrichmentService} from "../../services/novel/characterPrep/deferred";
+import { finishNovelDeletion } from "../../services/novel/lifecycle";
 import {
   type BookContractPayoffSyncPayload,
   type ChapterTimelineFinalizationPayload,
@@ -53,6 +54,11 @@ export class NovelSideEffectJobHandlers {
         const item = parsePayload<StoredAssetCleanup>(job);
         if ("cover" in item) await removeStoredNovelCover(item.cover);
         else await ragServices.vectorStoreService.deletePoints(item.points, item.collection);
+        return;
+      }
+      case "novel.deletedFiles": {
+        await finishNovelDeletion(parsePayload(job));
+        await prisma.novelSideEffectJob.updateMany({ where: { id: job.id }, data: { payloadJson: "{}" } });
         return;
       }
       case "chapter.manualSync": {
@@ -141,4 +147,3 @@ export class NovelSideEffectJobHandlers {
     }
   }
 }
-

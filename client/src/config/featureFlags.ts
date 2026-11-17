@@ -7,6 +7,8 @@ function isEnabled(rawValue: string | undefined, defaultValue: boolean): boolean
 }
 
 export const featureFlags = {
+  manuscriptRevisionEnabled: isEnabled(import.meta.env.VITE_MANUSCRIPT_REVISION_ENABLED, false),
+  outlineFeedbackEnabled: isEnabled(import.meta.env.VITE_OUTLINE_FEEDBACK_ENABLED, false),
   creationStudioEnabled: isEnabled(import.meta.env.VITE_CREATION_STUDIO_ENABLED, true),
   worldWizardEnabled: isEnabled(import.meta.env.VITE_WORLD_WIZARD_ENABLED, true),
   worldVisEnabled: isEnabled(import.meta.env.VITE_WORLD_VIS_ENABLED, true),

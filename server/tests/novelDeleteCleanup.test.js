@@ -23,7 +23,7 @@ const service = new NovelCoreCrudService();
 test.after(async () => {await prisma.$disconnect(); db.close(); fs.rmSync(root, {recursive: true});});
 
 test("unfinished short stories retain the correct deletion order in every workflow status", async t => {
-  for (const status of ["failed", "running", "waiting_approval", "succeeded"]) {
+  for (const status of ["queued", "running", "waiting_approval", "succeeded", "failed", "cancelled"]) {
     await t.test(status, async () => {
       db.exec(`
         INSERT INTO Novel(id, title, narrativeForm, updatedAt) VALUES ('story', 'Unfinished story', 'short_story', CURRENT_TIMESTAMP);

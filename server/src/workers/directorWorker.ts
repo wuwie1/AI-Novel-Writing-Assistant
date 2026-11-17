@@ -1,6 +1,7 @@
 import "dotenv/config";
 import {withExecutionSignal, registerTaskCancellation} from "../platform/runtime/execution";
 import { ensureRuntimeDatabaseReady } from "../db/runtimeMigrations";
+import { TimelineFinalizationStore } from "../modules/timeline";
 import { loadProviderApiKeys } from "../llm/factory";
 import { initializeRagSettingsCompatibility } from "../services/settings/RagCompatibilityBootstrapService";
 import { qualityDebtSettingsService } from "../services/settings/QualityDebtSettingsService";
@@ -139,6 +140,7 @@ export class DirectorWorker {
 
 async function bootstrap(): Promise<void> {
   await ensureRuntimeDatabaseReady();
+  await new TimelineFinalizationStore().markPreexistingRunningAsStale();
   await initializeRagSettingsCompatibility().catch((error) => {
     console.warn("[director.worker] failed to initialize RAG compatibility settings.", error);
   });

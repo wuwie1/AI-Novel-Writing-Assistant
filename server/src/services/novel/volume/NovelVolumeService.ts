@@ -1,4 +1,5 @@
 import {AppError} from "../../../middleware/errorHandler";
+import {currentOutlinePlanning, readPreservedChapterFields} from "../../../modules/planning/outline/constraints";
 import type {
   StorylineDiff,
   StorylineVersion,
@@ -129,6 +130,7 @@ export class NovelVolumeService {
 
     const chapterById = new Map(chapterRows.map((row) => [row.id, row] as const));
     const chapterByOrder = new Map(chapterRows.map((row) => [row.order, row] as const));
+    const preserved = await readPreservedChapterFields(prisma, novelId);
     let changed = false;
     const volumes = document.volumes.map((volume) => {
       const chapters = volume.chapters.map((chapter) => {
@@ -139,12 +141,13 @@ export class NovelVolumeService {
           return chapter;
         }
         const conflictLevelSource: VolumeChapterPlan["conflictLevelSource"] = chapter.conflictLevelSource === "user" ? "user" : "ai";
+        const skip = preserved.get(chapter.id);
         const nextChapter = {
           ...chapter,
           chapterId: row.id,
           chapterOrder: row.order,
-          title: row.title,
-          summary: row.expectation?.trim() || chapter.summary,
+          title: skip?.has("title") ? chapter.title : row.title,
+          summary: skip?.has("summary") ? chapter.summary : row.expectation?.trim() || chapter.summary,
           targetWordCount: row.targetWordCount ?? null,
           conflictLevel: chapter.conflictLevelSource === "user"
             ? chapter.conflictLevel ?? null
@@ -311,6 +314,8 @@ export class NovelVolumeService {
       novelId,
       getLegacySource: () => getLegacyVolumeSource(novelId),
     });
+    // A2 preparation owns only its authorized chapter; read paths must not backfill every other chapter.
+    if (currentOutlinePlanning()?.novelId === novelId) return document;
     const hydrated = await this.hydrateCanonicalChapterFields(novelId, document);
     if (!hydrated.changed) {
       return hydrated.document;

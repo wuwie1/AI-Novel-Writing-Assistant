@@ -64,6 +64,7 @@ function extractionFixture() {
   let resourceError;
   let currentResources = resources;
   const {ChapterArtifactDeltaService} = loadRuntimeSource('ChapterArtifactDeltaService.ts', {
+    '../state/context/ChapterStateBoundary': {...require('../../dist/services/novel/state/context/ChapterStateBoundary'), readChapterStateSources: async () => []},
     '../../../db/prisma': {prisma: {
       novel: {findUnique: async () => ({title: '本书'})},
       chapter: {findFirst: async () => ({id: 'c', order: 3, title: '本章', taskSheet: '入库房'})},

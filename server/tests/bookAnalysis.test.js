@@ -30,6 +30,7 @@ const {
 } = require("../dist/services/knowledge/DocumentChapterService.js");
 const { NovelReferenceService } = require("../dist/services/novel/NovelReferenceService.js");
 const { HybridRetrievalService } = require("../dist/services/rag/HybridRetrievalService.js");
+const { ragConfig } = require("../dist/config/rag.js");
 const {
   EMPTY_BOOK_ANALYSIS_RESULT_ERROR,
   reconcileBookAnalysisResultStatus,
@@ -1236,6 +1237,7 @@ test("BookAnalysisCharacterMediaService promotes a profile to BaseCharacter with
 test("NovelExportService exports generated chapters as a knowledge document for diagnosis", async () => {
   const original = {
     novelFindUnique: prisma.novel.findUnique,
+    manuscriptProjectFindUnique: prisma.manuscriptProject.findUnique,
   };
   const createdDocuments = [];
   prisma.novel.findUnique = async ({ where }) => {
@@ -1251,6 +1253,7 @@ test("NovelExportService exports generated chapters as a knowledge document for 
       ],
     };
   };
+  prisma.manuscriptProject.findUnique = async () => null;
 
   const service = new NovelExportService();
   service.knowledgeService = {
@@ -1283,6 +1286,7 @@ test("NovelExportService exports generated chapters as a knowledge document for 
     assert.match(createdDocuments[0].content, /同伴隐瞒关键证词/);
   } finally {
     prisma.novel.findUnique = original.novelFindUnique;
+    prisma.manuscriptProject.findUnique = original.manuscriptProjectFindUnique;
   }
 });
 
@@ -2888,9 +2892,12 @@ test("buildBookAnalysisRagPreChunks turns structured fields into facet chunks", 
 });
 
 test("HybridRetrievalService retrieveByFacet applies facet filters", async () => {
+  const originalEnabled = ragConfig.enabled;
   const originalFindMany = prisma.knowledgeChunk.findMany;
   const originalDocumentFindMany = prisma.knowledgeDocument.findMany;
   let capturedWhere = null;
+  // Facet retrieval short-circuits to [] when RAG is off; pin enabled for this assertion.
+  ragConfig.enabled = true;
   prisma.knowledgeDocument.findMany = async () => [{ id: "doc-1" }];
   prisma.knowledgeChunk.findMany = async ({ where }) => {
     capturedWhere = where;
@@ -2933,6 +2940,7 @@ test("HybridRetrievalService retrieveByFacet applies facet filters", async () =>
       OR: [{ facetKeys: { contains: "|sellingPointTags=身份反转|" } }],
     }]);
   } finally {
+    ragConfig.enabled = originalEnabled;
     prisma.knowledgeChunk.findMany = originalFindMany;
     prisma.knowledgeDocument.findMany = originalDocumentFindMany;
   }

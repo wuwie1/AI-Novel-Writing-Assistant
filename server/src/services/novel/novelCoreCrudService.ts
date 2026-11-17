@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { serializeCommercialTagsJson } from "@ai-novel/shared/types/novelFraming";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
@@ -21,6 +22,7 @@ import {
 import {deleteNovel} from "../../modules/novel/setup/deletion";
 import { queueRagUpsert } from "./novelCoreSupport";
 import { novelEventBus } from "../../events/publisher";
+import { readActiveManuscriptChapters, rejectLegacyManuscriptWrite } from "../../modules/novel/manuscript/application/ManuscriptIsolation";
 
 export class NovelCoreCrudService {
   private readonly novelContinuationService = new NovelContinuationService();
@@ -51,7 +53,7 @@ export class NovelCoreCrudService {
     return listNovels(input);
   }
 
-  async createNovel(input: CreateNovelInput) {
+  async createNovel(input: CreateNovelInput, tx?: Prisma.TransactionClient) {
     const writingMode = input.writingMode ?? "original";
     const sourceNovelId = input.sourceNovelId ?? null;
     const sourceKnowledgeDocumentId = input.sourceKnowledgeDocumentId ?? null;
@@ -76,10 +78,11 @@ export class NovelCoreCrudService {
     });
     await this.validateReferenceBookAnalysis(referenceBookAnalysisId);
 
-    const created = await prisma.novel.create({
+    const created = await (tx ?? prisma).novel.create({
       data: {
         id: input.id,
         title: input.title,
+        penName: normalizeOptionalTextForCreate(input.penName),
         directorVersion: input.directorVersion,
         description: input.description,
         targetAudience: normalizeOptionalTextForCreate(input.targetAudience),
@@ -125,6 +128,7 @@ export class NovelCoreCrudService {
       },
     });
 
+    if (tx) return normalizeNovelOutput(created);
     queueRagUpsert("novel", created.id);
     if (created.worldId) {
       queueRagUpsert("world", created.worldId);
@@ -150,7 +154,10 @@ export class NovelCoreCrudService {
     if (!row) {
       return null;
     }
-    return normalizeNovelOutput(row);
+    const activeChapters = await readActiveManuscriptChapters(prisma as never, id);
+    if (!activeChapters) return normalizeNovelOutput(row);
+    const summaries = new Map(row.chapters.map(chapter => [chapter.id, chapter.chapterSummary]));
+    return normalizeNovelOutput({ ...row, chapters: activeChapters.map(chapter => ({ ...chapter, chapterSummary: summaries.get(chapter.id) ?? null })) });
   }
 
   async updateNovel(id: string, input: UpdateNovelInput) {
@@ -171,7 +178,7 @@ export class NovelCoreCrudService {
       },
     });
     if (!existing) {
-      throw new Error("小说不存在");
+      throw new AppError("小说不存在。", 404);
     }
 
     const nextWritingMode = input.writingMode ?? (existing.writingMode === "continuation" ? "continuation" : "original");
@@ -218,6 +225,7 @@ export class NovelCoreCrudService {
     const {
       continuationBookAnalysisSections: _ignoreSectionPatch,
       referenceBookAnalysisSections: _ignoreReferenceSectionPatch,
+      penName: _ignorePenName,
       targetAudience: _ignoreTargetAudience,
       bookSellingPoint: _ignoreBookSellingPoint,
       competingFeel: _ignoreCompetingFeel,
@@ -238,6 +246,7 @@ export class NovelCoreCrudService {
       where: { id },
       data: {
         ...restInput,
+        penName: normalizeOptionalTextForUpdate(input.penName),
         sourceNovelId: nextWritingMode === "continuation" ? nextSourceNovelId : null,
         sourceKnowledgeDocumentId: nextWritingMode === "continuation" ? nextSourceKnowledgeDocumentId : null,
         continuationBookAnalysisId: normalizedNextContinuationBookAnalysisId,
@@ -286,6 +295,8 @@ export class NovelCoreCrudService {
   }
 
   async listChapters(novelId: string) {
+    const activeChapters = await readActiveManuscriptChapters(prisma as never, novelId);
+    if (activeChapters) return activeChapters;
     return prisma.chapter.findMany({
       where: { novelId },
       orderBy: { order: "asc" },
@@ -294,14 +305,14 @@ export class NovelCoreCrudService {
   }
 
   createChapter(novelId: string, input: ChapterInput) {
-    return this.manualChapters.createChapter(novelId, input);
+    return rejectLegacyManuscriptWrite(prisma as never, novelId).then(() => this.manualChapters.createChapter(novelId, input));
   }
 
   updateChapter(novelId: string, chapterId: string, input: Partial<ChapterInput>) {
-    return this.manualChapters.updateChapter(novelId, chapterId, input);
+    return rejectLegacyManuscriptWrite(prisma as never, novelId).then(() => this.manualChapters.updateChapter(novelId, chapterId, input));
   }
 
   deleteChapter(novelId: string, chapterId: string) {
-    return this.manualChapters.deleteChapter(novelId, chapterId);
+    return rejectLegacyManuscriptWrite(prisma as never, novelId).then(() => this.manualChapters.deleteChapter(novelId, chapterId));
   }
 }

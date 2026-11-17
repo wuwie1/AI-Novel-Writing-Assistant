@@ -1,4 +1,6 @@
 import type { Prisma } from "@prisma/client";
+import {takeManuscriptSnapshot} from "../../novel/manuscript/application/ManuscriptWorkspaceService";
+import {TimelineContentVersionError,type ManuscriptTimelineVersion} from "./chapterVersion";
 import { prisma } from "../../../db/prisma";
 import { PrismaTimelineRepository } from "../timeline.repository";
 import { StoryTimelineService } from "../timeline.service";
@@ -6,14 +8,37 @@ import { buildTimelineContentHash as hashContent, supersedeChapterTimeline, with
 import { TIMELINE_FINALIZATION_RUNNING_STALE_MS, type ChapterTimelineFinalizationMode } from "../domain/finalizationPolicy";
 
 type TimelineFinalizationClaimStatus = "claimed" | "already_done" | "running";
-type ContentVersion = { novelId: string; chapterId: string; content: string };
+type ContentVersion = { novelId: string; chapterId: string; content: string; manuscriptVersion?: ManuscriptTimelineVersion | null };
 type Checkpoint = {
   novelId: string; chapterId: string; contentHash: string;
   syncMode: ChapterTimelineFinalizationMode; sourceStage: string; metadata: Record<string, unknown>;
 };
 
+export const TIMELINE_FINALIZATION_STARTUP_STALE_REASON = "stale_running_at_process_start";
+
 /** Owns checkpoint claims and atomic, body-fenced timeline commits. Never invokes AI. */
 export class TimelineFinalizationStore {
+  async refreshRunningCheckpointLease(input: { novelId: string; chapterId: string; contentHash: string }): Promise<void> {
+    await prisma.chapterArtifactSyncCheckpoint.updateMany({
+      where: { ...input, artifactType: "timeline_finalization", status: "running" },
+      data: { updatedAt: new Date() },
+    });
+  }
+
+  async markPreexistingRunningAsStale(startedAt = new Date()): Promise<number> {
+    const result = await prisma.chapterArtifactSyncCheckpoint.updateMany({
+      where: { artifactType: "timeline_finalization", status: "running", updatedAt: { lt: startedAt } },
+      data: { status: "failed", sourceType: "chapter_runtime", sourceStage: "startup_recovery",
+        metadataJson: JSON.stringify({ reason: TIMELINE_FINALIZATION_STARTUP_STALE_REASON }), updatedAt: new Date() },
+    });
+    return result.count;
+  }
+  async captureManuscriptVersion(novelId:string,chapterId:string):Promise<ManuscriptTimelineVersion|null>{
+    const project=await prisma.manuscriptProject.findUnique({where:{novelId}});if(!project)return null;
+    const unit=await prisma.manuscriptUnit.findFirst({where:{projectId:project.id,chapterId,status:"active"}});
+    if(!unit)throw new TimelineContentVersionError();
+    return {projectId:project.id,snapshot:await takeManuscriptSnapshot(prisma,project.id,unit.id)};
+  }
   findChapter(novelId: string, chapterId: string) {
     return prisma.chapter.findFirst({
       where: { id: chapterId, novelId }, select: { id: true, content: true, order: true },

@@ -18,6 +18,7 @@ import {
   chapterGoalFromContext, fallbackTimeLabel, openHookIds, plannedEventIds, forbiddenEventIds,
   type ChapterTimelineFinalizationMode,
 } from "../../../modules/timeline";
+import { AppError } from "../../../middleware/errorHandler";
 
 export type { ChapterTimelineFinalizationMode } from "../../../modules/timeline";
 
@@ -49,6 +50,7 @@ interface TimelineFinalizationRequestOptions {
 }
 
 interface FinalizeCurrentContentInput {
+  manuscriptVersion?: import("../../../modules/timeline/persistence/chapterVersion").ManuscriptTimelineVersion | null;
   novelId: string;
   chapterId: string;
   content: string;
@@ -95,12 +97,15 @@ export class ChapterTimelineFinalizationService {
     for (;;) {
       try {
         const result = await operation();
+        // A running background finalizer reports checkpointWritten=false; preflight must
+        // wait and retry until it finishes, not fail the pipeline immediately.
         if (!result || result.checkpointWritten) return;
       } catch (error) {
+        if (error instanceof AppError) throw error;
         // A concurrent edit is reloaded on the next attempt, never committed as old context.
         if (!(error instanceof TimelineContentVersionError)) throw error;
       }
-      if (Date.now() >= deadline) throw new Error("前文时间线同步未能完成，请稍后从章节页继续写作。");
+      if (Date.now() >= deadline) throw new AppError("前文时间线同步未能完成，请稍后从章节页继续写作。", 409);
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
     }
   }
@@ -160,6 +165,7 @@ export class ChapterTimelineFinalizationService {
   }
 
   async finalizeCurrentContent(input: FinalizeCurrentContentInput): Promise<ChapterTimelineFinalizationResult> {
+    input={...input,manuscriptVersion:await this.store.captureManuscriptVersion?.(input.novelId,input.chapterId)};
     const content = input.content.trim();
     const contentHash = hashContent(content);
     const existingMode = await this.store.findCurrentFinalizationMode({
@@ -246,7 +252,9 @@ export class ChapterTimelineFinalizationService {
       };
     }
 
-    const gate = input.timelineGate ?? await this.extractAndCheck({
+    const gate = input.timelineGate ?? await this.withLeaseHeartbeat({
+      novelId: input.novelId, chapterId: input.chapterId, contentHash,
+    }, () => this.extractAndCheck({
       novelId: input.novelId,
       chapterId: input.chapterId,
       chapterIndex,
@@ -256,7 +264,7 @@ export class ChapterTimelineFinalizationService {
       content,
       timelineContext,
       request: input.request,
-    });
+    }));
 
     if (!gate.timelineContext || !gate.extractorSucceeded || gate.result.status === "failed") {
       await this.store.markCheckpointFailed({
@@ -351,6 +359,21 @@ export class ChapterTimelineFinalizationService {
       hookCount: gate.extractedHooks.length,
       checkpointWritten: true,
     };
+  }
+
+  private async withLeaseHeartbeat<T>(
+    input: { novelId: string; chapterId: string; contentHash: string },
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const timer = setInterval(() => {
+      void this.store.refreshRunningCheckpointLease(input).catch(() => undefined);
+    }, Math.max(1000, Math.floor(TIMELINE_FINALIZATION_RUNNING_STALE_MS / 3)));
+    timer.unref?.();
+    try {
+      return await operation();
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   private async extractAndCheck(input: {
