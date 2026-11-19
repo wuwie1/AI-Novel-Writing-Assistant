@@ -11,20 +11,28 @@ function status(value: unknown): number | null {
   return typeof value === "number" && value >= 100 && value <= 599 ? value : null;
 }
 
-export function emptyResponseEvidence(maxTokens?: number): StructuredResponseEvidence {
+export function emptyResponseEvidence(
+  maxTokens?: number, budgetTrace?: StructuredResponseEvidence["budgetTrace"],
+): StructuredResponseEvidence {
   return { failureReason: null, finishReason: null, refused: false, contentChars: 0, reasoningChars: 0,
     httpStatus: null, providerCode: null, retryAfterMs: null, durationMs: 0,
-    maxTokens: maxTokens ?? null, tokenUsage: null, errorChain: [] };
+    maxTokens: maxTokens ?? null, ...(budgetTrace ? { budgetTrace } : {}), tokenUsage: null, errorChain: [] };
 }
 
 export function observeStructuredChunk(evidence: StructuredResponseEvidence, chunk: unknown): void {
   const source = record(chunk);
   const metadata = record(source.response_metadata);
   const extra = record(source.additional_kwargs);
-  evidence.finishReason = token(metadata.finish_reason ?? metadata.stop_reason ?? extra.finish_reason) ?? evidence.finishReason;
+  evidence.finishReason = readResponseFinishReason(chunk) ?? evidence.finishReason;
   evidence.refused ||= Boolean(extra.refusal || metadata.refusal || metadata.blocked);
   const usage = extractLlmTokenUsage(chunk);
   evidence.tokenUsage = mergeStreamTokenUsage(evidence.tokenUsage, usage);
+}
+
+export function readResponseFinishReason(chunk: unknown): string | null {
+  const source = record(chunk);
+  const metadata = record(source.response_metadata);
+  return token(metadata.finish_reason ?? metadata.stop_reason ?? record(source.additional_kwargs).finish_reason);
 }
 
 export function classifyResponseEvidence(

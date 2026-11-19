@@ -16,7 +16,7 @@ import { readProcessArgv } from '../../infrastructure/processes/argv.mjs';
 import { nativeSocketPath, requestOwnedWindowClose, sendNativeCommand } from '../../infrastructure/processes/native-socket.mjs';
 import { backendIdentity as makeBackendIdentity } from '../../infrastructure/processes/identity.mjs';
 import { inspectSqliteQuiescence, resolveLocalDatabasePath } from '../../infrastructure/processes/quiescence.mjs';
-import { selectServerNode } from '../../infrastructure/processes/launchers/server-node.mjs';
+import { isLocalApiEntry, selectServerNode } from '../../infrastructure/processes/launchers/server-node.mjs';
 import { tunnelMatches } from '../../infrastructure/transport/ssh-identity.mjs';
 
 const exec = promisify(execFile);
@@ -133,7 +133,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
     return false;
   }
 
-  /** ts-node-dev respawns the API with a new PID; the listener still belongs to our launchd supervisor. */
+  /** The source watcher restarts the API with a new PID; the listener still belongs to our launchd supervisor. */
   async function adoptOwnAgentForListener(role, mode, listenerPid) {
     const label = launchdLabel({ repoRealPath: repoRoot, mode, role });
     const agent = await inspectOwnAgent(label, role);
@@ -252,7 +252,7 @@ export function createRuntimeAdapters(config, measure = runUntimed) {
             if (adopted) processes['local-api'] = { ...adopted, databaseIdentity: backendIdentity, databasePath: localDbPath };
             else {
               const info = await inspectProcess(pid); const cwd = await workingDirectory(pid);
-              const verifiedEntry = info && (/(?:@ai-novel\/server|server\/(?:src|dist)|dev:api)/.test(info.command) || info.command.includes('ts-node-dev') && info.command.includes('src/app.ts'));
+              const verifiedEntry = info && isLocalApiEntry(info.command, await readProcessArgv(pid));
               if (!info || cwd !== path.join(repoRoot, 'server') || !verifiedEntry) throw internalError(`Port ${config.localApiPort} belongs to an unverified process (pid ${pid}); stop or inspect it manually`, 4);
               processes['local-api'] = { ownership: 'borrowed', role: 'local-api', mode, repoRealPath: repoRoot, pid, startTime: info.startTime, command: info.command, commandIdentity: stableHash(info.command), cwd, databaseIdentity: backendIdentity, databasePath: localDbPath };
             }

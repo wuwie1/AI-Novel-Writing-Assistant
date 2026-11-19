@@ -115,7 +115,7 @@ Mac 界面只请求同源 `/api`。本机代理验证回环 Host/Origin 后，�
 
 排查启动慢时，在 `.logs/desktop_mac/lifecycle.log` 按命令名和 PID 查看本次构建、窗口确认、服务注销、连接和页面就绪耗时。总耗时包含各子阶段，回滚也经过相同的计时入口。日志仅记录阶段、结果及耗时，作品内容和连接凭据留在各自的数据边界内。
 
-本机服务直接运行原 ts-node-dev 入口，不能调用会隐式 `prisma db push` 的 `server dev`。Node 选择只加载 Prisma 导出并打开内存 SQLite 验证 ABI，不导入后端 bootstrap。启动时将已校验的数据库绝对路径传入服务，避免继承环境变量改变数据源。
+Mac 本机服务从 server 工作区解析 `tsx/cli`，以 `watch` 启动 API。直接运行监听器可避开开发脚本中的数据库准备步骤。Node 选择只加载 Prisma 导出并打开内存 SQLite 验证 ABI，不导入后端 bootstrap。启动时将已校验的数据库绝对路径传入服务，避免继承环境变量改变数据源。
 
 新窗口启动后如果健康检查失败，必须先走同一个正常关闭协议；取消或超时则保留整套进程及身份记录，不能拆掉窗口依赖或再打开回滚窗口。重启及回滚全过程持有同一生命周期锁。
 
@@ -139,7 +139,7 @@ Mac 界面只请求同源 `/api`。本机代理验证回环 Host/Origin 后，�
 
 - 状态记录的 PID 被系统复用后，记录与进程不再匹配。此时改为检查该角色的仓库专属 launchd label：label 未加载即视为已停止；label 仍在运行本仓库 `supervisor.mjs` 且 argv 角色一致时，按 label 卸载；运行其他程序时以退出码 4 拒绝，不发送信号。
 - 启动保存新状态后、停止保存剩余状态后，都会清理未被状态记录引用、但仍由本仓库 supervisor 运行的 mac-proxy/vite/native-watcher label。这样上一次失败留下的 15175 代理不会长期占端口。
-- `ts-node-dev --respawn` 改代码后会换出新的 API 子进程。端口监听者若是本仓库 `local-api` label 的后代，应重新登记为 owned（记录 supervisor PID），不能降级为 borrowed；否则 `stop_app` 永远不会关闭自己启动的服务。
+- `tsx watch` 在源码变化时会启动新的 API 子进程。端口监听者若是本仓库 `local-api` label 的后代，应重新登记为 owned（记录 supervisor PID），不能降级为 borrowed；否则 `stop_app` 永远不会关闭自己启动的服务。
 - 生命周期锁记录 `machineId`（IOPlatformUUID）。macOS 的 `os.hostname()` 会随网络变成 `bogon` 等值，不能用来判断“同一台机器”。仅当锁来自本机、同一仓库且持有 PID 已不存在时自动回收（先原子 rename 再删除）；PID 仍存活、锁不可读、来自其他机器或旧版锁缺少 machineId 时保持拒绝，由人工确认后处理。
 - 锁冲突与归属无法确认是两类失败：`make` 输出需分别提示“另一个启动或关闭命令正在运行”与“无法确认进程归属”，不能共用退出码 4 的同一句提示。
 

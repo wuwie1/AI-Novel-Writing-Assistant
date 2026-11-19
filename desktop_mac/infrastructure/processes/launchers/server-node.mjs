@@ -1,6 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
+/** Borrow only the server entry after the caller verifies its repository working directory. */
+export function isLocalApiEntry(command, argv) {
+  if (/(?:@ai-novel\/server|server\/(?:src|dist)|dev:api)/.test(command)) return true;
+  if (command.includes('ts-node-dev') && command.includes('src/app.ts')) return true;
+  return argv?.at(-1) === 'src/app.ts'
+    && argv.some((arg, index) => argv[index - 1] === '--require' && arg.endsWith('/tsx/dist/preflight.cjs'));
+}
+
 /** Probe only an in-memory DB. Never import the server bootstrap or open user data. */
 export function selectServerNode(repoRoot, { explicit = process.env.MAC_SERVER_NODE, run = spawnSync } = {}) {
   const candidates = explicit ? [explicit] : [process.execPath, '/opt/homebrew/opt/node@22/bin/node', '/usr/local/opt/node@22/bin/node', '/opt/homebrew/opt/node@24/bin/node', '/usr/local/opt/node@24/bin/node'];

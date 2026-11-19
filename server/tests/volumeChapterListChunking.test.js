@@ -291,7 +291,7 @@ test('V2 saves initial cast schedules in the existing beat calls without a separ
 });
 
 test("V2 large beats receive enough output capacity for complete chapter plans", async (t) => {
-  for (const chapterCount of [45, 75]) {
+  for (const chapterCount of [45, 75, 90]) {
     await t.test(`${chapterCount} chapters`, async (t) => {
       const document = createDocument();
       document.volumes[0].chapters = [];
@@ -303,8 +303,8 @@ test("V2 large beats receive enough output capacity for complete chapter plans",
         requestCount += 1;
         // The production failure exhausted 6400 tokens for 45 chapters. Leave
         // headroom for summaries and cast IDs without sending unbounded requests.
-        assert.ok(options.maxTokens >= chapterCount * 200 + 900);
-        assert.ok(options.maxTokens <= 32_768);
+        assert.equal(options.maxTokens, undefined, "the saved model route retains priority");
+        assert.equal(options.automaticMaxTokens, Math.min(32_768, 900 + chapterCount * 380));
         assert.equal(promptInput.targetBeatChapterCount, chapterCount);
         return { output: asset.outputSchema.parse({
           beatKey: "open_hook", beatLabel: "开卷抓手", chapterCount,

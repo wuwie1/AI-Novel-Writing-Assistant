@@ -151,6 +151,7 @@
 - Prompt Workbench 预览提示缺少 required context：先检查该 group 是否注册在默认 Context Broker，以及 Workbench 样本是否通过 `extraContextBlocks` 提供了手动预览所需的示例块；不要通过放宽 required context 或让用户手动关闭缺失项来掩盖契约缺口。
 - Prompt Workbench 测试产出失败：先判断是模型配置不可用、上下文缺失、结构化 schema 校验失败，还是草稿模板编译失败。不要因为测试入口报错就退回直接调用裸 LLM；修复方向应仍然落在模型路由、Context Broker、PromptAsset schema、slot/template 草稿或 repair/semantic retry 合同上。
 - `novel.chapter.writer` 预览缺少 `book_contract`、`chapter_mission`、`timeline_context`、`previous_chapter_hook`、`character_hard_facts`、`obligation_contract`、`volume_window`、`participant_subset`、`local_state` 或 `style_contract`：优先检查 Workbench 是否为所选小说章节装配了 `metadata.chapterWriteContext`，而不是删 required group、改前端标签或用示例 `promptInput` 冒充运行时上下文。
+- 工作台能列出模板，但按版本预览提示找不到时，先核对请求中的版本、惰性加载清单的 key 和资产导出的 id/version。目录读取会加载资产并按实际版本缓存，因此能在目录中看到模板也可能掩盖清单版本过期。合并时以保留的模板合同为准同步登记和精确版本测试。
 - Prompt Workbench 恢复官方默认后仍使用全局坏值：检查本书层是否写入了 `official_default`，以及运行时解析是否仍按“本书 > 全局 > 官方默认”的顺序合并。
 - Reconcile 面板一直提示同一个槽位漂移：检查用户是否选择了“保留我的设置”并更新 `baseHash`，或选择了“恢复官方当前版”并清除了旧覆盖 / 写入了 `official_default`。
 - 正文写作高级模板预览失败并提示未知 token：检查模板中是否存在未通过 `@` 菜单插入的 `{{...}}`，尤其是拼错的 context group、运行变量或 slot key。修复模板 token，而不是在后端新增别名绕过校验。

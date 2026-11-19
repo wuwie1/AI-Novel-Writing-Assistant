@@ -9,10 +9,10 @@ export interface PromptAssetLoaderEntry {
 }
 
 export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
-  { key: "manuscript.chapter.extract@v1", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptExtractPrompt as UnknownPromptAsset },
-  { key: "manuscript.outline.merge@v1", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptMergePrompt as UnknownPromptAsset },
-  { key: "manuscript.outline.verify@v1", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptVerifyPrompt as UnknownPromptAsset },
-  { key: "manuscript.chapter.diagnose@v1", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptDiagnosePrompt as UnknownPromptAsset },
+  { key: "manuscript.chapter.extract@v2", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptExtractPrompt as UnknownPromptAsset },
+  { key: "manuscript.outline.merge@v2", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptMergePrompt as UnknownPromptAsset },
+  { key: "manuscript.outline.verify@v2", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptVerifyPrompt as UnknownPromptAsset },
+  { key: "manuscript.chapter.diagnose@v2", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptDiagnosePrompt as UnknownPromptAsset },
   { key: "outline.initial_generate@v1", load: () => require("../prompts/outline/outline.prompts").outlineInitialGeneratePrompt as UnknownPromptAsset },
   { key: "outline.edit_proposal@v2", load: () => require("../prompts/outline/outline.prompts").outlineEditProposalPrompt as UnknownPromptAsset },
   { key: "outline.text_feedback@v1", load: () => require("../prompts/outline/feedback.prompts").outlineFeedbackPrompt as UnknownPromptAsset },
@@ -442,7 +442,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/review.prompts").chapterSummaryPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.chapter.writer@v10",
+    key: "novel.chapter.writer@v11",
     load: () => require("../prompts/novel/chapterWriter.prompts").chapterWriterPrompt as UnknownPromptAsset,
   },
   {
@@ -474,7 +474,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/review.prompts").chapterRepairPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.review.patch@v11",
+    key: "novel.review.patch@v12",
     load: () => require("../prompts/novel/chapterPatchRepair.prompts").chapterPatchRepairPrompt as UnknownPromptAsset,
   },
   {

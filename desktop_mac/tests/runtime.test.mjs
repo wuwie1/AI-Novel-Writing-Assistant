@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { selectServerNode } from '../infrastructure/processes/launchers/server-node.mjs';
+import { isLocalApiEntry, selectServerNode } from '../infrastructure/processes/launchers/server-node.mjs';
 import { appendLogChunk } from '../infrastructure/processes/logging.mjs';
 import { createLaunchdPlist, launchAgent, stopAgent } from '../infrastructure/processes/launchd.mjs';
 import { createStageTimer, timeLifecycleAdapters } from '../application/lifecycle/timings.mjs';
@@ -21,6 +21,15 @@ test('runtime selection validates the native SQLite ABI without opening a persis
   assert.equal(seen[0], process.execPath);
   assert.equal(seen.length, 2);
   assert.throws(() => selectServerNode('/repo', { explicit: '/chosen/node', run: () => ({ status: 1 }) }), { exitCode: 2 });
+});
+
+test('the local API can borrow the server watched by tsx or its previous runner', () => {
+  const args = ['/node', '--require', '/repo/node_modules/tsx/dist/preflight.cjs', '--import', 'file:///repo/node_modules/tsx/dist/loader.mjs', 'src/app.ts'];
+  assert.equal(isLocalApiEntry(args.join(' '), args), true);
+  assert.equal(isLocalApiEntry('node ts-node-dev src/app.ts', null), true);
+  const other = [...args.slice(0, -1), 'src/other.ts'];
+  assert.equal(isLocalApiEntry(other.join(' '), other), false);
+  assert.equal(isLocalApiEntry('node src/app.ts', ['/node', 'src/app.ts']), false);
 });
 
 test('helper output remains private and bounded while the process is running', async (t) => {
