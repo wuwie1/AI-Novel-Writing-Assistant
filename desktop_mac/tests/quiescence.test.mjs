@@ -54,6 +54,22 @@ test('quiescence scan accepts a complete read-only schema with only manual appro
   assert.equal(result.checkedTables.length, Object.keys(QUIESCENCE_TABLE_SCHEMA).length);
 });
 
+test('outline feedback blocks shutdown while dispatchable or running and preserves manual retry', async t => {
+  const { dbPath } = await fixture(t);
+  for (const [status, blocker] of [
+    ['pending', 'active_task'], ['running', 'active_task'], ['paused', 'unknown_status'],
+    ['completed', null], ['failed', null],
+  ]) {
+    const seed = spawnSync('python3', ['-c', `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("INSERT OR REPLACE INTO OutlineFeedbackRun(rowid,status,attempt) VALUES (1,?,1)", (sys.argv[2],))`, dbPath, status]);
+    assert.equal(seed.status, 0);
+    const result = await inspectSqliteQuiescence({dbPath});
+    assert.equal(result.safeToStop, !blocker, JSON.stringify(result));
+    if (blocker) assert.ok(result.blockers.some(item => item.table === 'OutlineFeedbackRun' && item.kind === blocker));
+  }
+});
+
 test('completed creation handoffs are quiescent without changing the confirmation record', async (t) => {
   const { dbPath } = await fixture(t);
   const seeded = spawnSync('python3', ['-c', `import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute("INSERT INTO CreationStudioConfirmation(status) VALUES ('handed_off')"); c.commit(); c.close()`, dbPath]);

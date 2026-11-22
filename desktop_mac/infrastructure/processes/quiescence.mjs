@@ -33,6 +33,7 @@ export const QUIESCENCE_TABLE_SCHEMA = Object.freeze({
   DramaBatchJob: ['status'],
   ComicBatchJob: ['status'],
   MarketScanRun: ['status'],
+  OutlineFeedbackRun: ['status', 'attempt'],
   ChapterArtifactSyncCheckpoint: ['status'],
 });
 
@@ -49,7 +50,7 @@ required=payload['schema']
 known_non_queue=set(payload['knownNonQueue'])
 active={'queued','running','processing','retrying','leased','waiting_worker','waiting_llm_resource','waiting_retry','failed_recoverable','claimed','in_progress','sending','building','generating','reconciling'}
 manual={'waiting_approval','waiting_gate','paused','pending_manual_recovery','needs_approval','awaiting_user','waiting_review','blocked','interrupted','cancelled_by_user','failed_hard','stale','pending'}
-pending_queues={'NovelSideEffectJob','ComicExportJob','DramaBatchJob','ComicBatchJob'}
+pending_queues={'NovelSideEffectJob','ComicExportJob','DramaBatchJob','ComicBatchJob','OutlineFeedbackRun'}
 terminal={'succeeded','success','completed','complete','done','failed','cancelled','canceled','rejected','expired','archived','published','skipped','confirmed','failed_hard','delivered','sent','idle','ready'}
 # A completed creation handoff leaves the successor workflow/director responsible for active work.
 # Side-effect workers only lease pending/failed jobs; dead jobs retain failure history.
@@ -107,6 +108,8 @@ def main():
             for status_key in ('status','latestIndexStatus'):
                 if status_key not in values: continue
                 status=values[status_key]
+                if table=='OutlineFeedbackRun' and status not in ('pending','running','completed','failed'):
+                    blockers.append({'kind':'unknown_status','table':table,'count':1}); break
                 if not isinstance(status,str) or (status not in status_known and status not in table_terminal.get(table,set())):
                     blockers.append({'kind':'unknown_status','table':table,'count':1}); break
                 if status in active or status=='pending' and table in pending_queues:
