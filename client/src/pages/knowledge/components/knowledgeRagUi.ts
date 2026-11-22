@@ -1,4 +1,11 @@
 import type { RagJobSummary } from "@/api/knowledge";
+import type { KnowledgeDocument, KnowledgeIndexStatus } from "@ai-novel/shared/types/knowledge";
+
+export function getDocumentIndexStatus(document: KnowledgeDocument): KnowledgeIndexStatus {
+  return document.status === "archived" && document.latestIndexStatus === "succeeded"
+    ? "idle"
+    : document.latestIndexStatus;
+}
 
 export function formatStatus(status: string): string {
   switch (status) {

@@ -252,6 +252,8 @@ test("legacy RAG env bootstrap preserves the historical default collection when 
       QDRANT_API_KEY: "legacy-qdrant-key",
       QDRANT_COLLECTION: "ai_novel_chunks_v1",
       RAG_CHUNK_SIZE: "777",
+      RAG_CHUNK_OVERLAP: "0",
+      RAG_WORKER_MAX_ATTEMPTS: "   ",
     },
     { addLegacyKnowledgeMarker: true },
     async (result) => {
@@ -263,6 +265,9 @@ test("legacy RAG env bootstrap preserves the historical default collection when 
       assert.equal(result.embedding.collectionName, "ai_novel_chunks_v1");
       assert.equal(result.runtime.qdrantUrl, "http://legacy-qdrant:6333");
       assert.equal(result.runtime.chunkSize, 777);
+      assert.equal(result.runtime.chunkOverlap, 0);
+      assert.equal(result.runtime.workerMaxAttempts, 5);
+      assert.equal(result.runtime.qdrantTimeoutMs, 30000);
 
       const collectionNameSetting = result.settings.find((item) => item.key === "rag.embeddingCollectionName");
       assert.deepEqual(collectionNameSetting, {
@@ -283,6 +288,8 @@ test("legacy provider-specific embedding env is imported when generic embedding 
       SILICONFLOW_MODEL: "Qwen/Qwen2.5-7B-Instruct",
       SILICONFLOW_EMBEDDING_MODEL: "BAAI/bge-m3",
       QDRANT_URL: "http://legacy-qdrant:6333",
+      QDRANT_TIMEOUT_MS: " ",
+      RAG_HTTP_TIMEOUT_MS: "45000",
     },
     {},
     async (result) => {
@@ -291,6 +298,7 @@ test("legacy provider-specific embedding env is imported when generic embedding 
       assert.ok(result.report.importedProviderRecords.includes("siliconflow"));
       assert.equal(result.embedding.embeddingProvider, "siliconflow");
       assert.equal(result.embedding.embeddingModel, "BAAI/bge-m3");
+      assert.equal(result.runtime.qdrantTimeoutMs, 45000);
 
       const siliconflowProvider = result.providers.find((item) => item.provider === "siliconflow");
       assert.ok(siliconflowProvider);
@@ -330,11 +338,15 @@ test("packaged desktop preserves a user-saved RAG pause", async () => {
       runtimeSettings: [
         { key: "rag.enabled", value: "false" },
         { key: "rag.qdrantUrl", value: "http://user-qdrant:6333" },
+        { key: "rag.qdrantTimeoutMs", value: "1000" },
+        { key: "rag.workerMaxAttempts", value: "1" },
       ],
     },
     async (result) => {
       assert.equal(result.report.restoredLegacyPackagedDesktopRagDefault, false);
       assert.equal(result.runtime.enabled, false);
+      assert.equal(result.runtime.qdrantTimeoutMs, 1000);
+      assert.equal(result.runtime.workerMaxAttempts, 1);
       assert.deepEqual(result.settings.find((item) => item.key === "rag.enabled"), {
         key: "rag.enabled",
         value: "false",

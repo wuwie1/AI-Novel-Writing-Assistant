@@ -16,6 +16,7 @@ import type { RagJobSummary } from "@/api/knowledge";
 import {
   formatRagJobMeta,
   formatStatus,
+  getDocumentIndexStatus,
   getRagJobProgressPercent,
   getRagJobProgressWidth,
 } from "./knowledgeRagUi";
@@ -140,9 +141,7 @@ export default function KnowledgeDocumentsTab({
     const documentJob = latestKnowledgeDocumentJobs.get(document.id);
     const displayIndexStatus = documentJob && (documentJob.status === "queued" || documentJob.status === "running")
       ? documentJob.status
-      : document.status === "archived"
-        ? "idle"
-      : document.latestIndexStatus;
+      : getDocumentIndexStatus(document);
 
     return (
       <article

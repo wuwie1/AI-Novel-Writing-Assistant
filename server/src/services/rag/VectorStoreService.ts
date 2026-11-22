@@ -66,6 +66,8 @@ function estimateJsonBytes(value: unknown): number {
 
 import {protectRagRead, ragReadOnlyExecution, RagIndexUnavailableError} from "./execution";
 
+class QdrantConnectionError extends Error {}
+
 export class VectorStoreService {
   private ensuredDimension = 0;
   private ensuredCollection?: string;
@@ -95,19 +97,23 @@ export class VectorStoreService {
     console.warn(`${VectorStoreService.logPrefix} ${message}`);
   }
 
-  private async fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  private async fetchWithTimeout(url: string, init?: RequestInit) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ragConfig.qdrantTimeoutMs);
+    let response: Response | undefined;
     try {
-      return await fetch(url, {
+      response = await fetch(url, {
         ...init,
         signal: controller.signal,
       });
+      return { ok: response.ok, status: response.status, body: await response.text() };
     } catch (error) {
+      // A known HTTP rejection keeps its status even if its diagnostic body is truncated.
+      if (response && !response.ok) return { ok: false, status: response.status, body: "" };
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Qdrant 请求超时（>${ragConfig.qdrantTimeoutMs}ms）。`);
       }
-      throw new Error(
+      throw new QdrantConnectionError(
         "无法连接向量数据库（Qdrant）。请确认 Qdrant 服务已启动，并在「知识库 → 检索设置」核对向量库 URL。",
         { cause: error },
       );
@@ -125,17 +131,25 @@ export class VectorStoreService {
       },
     });
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Qdrant 请求失败(${response.status})：${text}`);
+      throw new Error(`Qdrant 请求失败(${response.status})：${response.body}`);
     }
-    return await response.json() as T;
+    return JSON.parse(response.body) as T;
   }
 
   private async upsertPointBatch(points: QdrantPoint[], collection: string): Promise<void> {
-    await this.request(toCollectionUrl("/points?wait=true", collection), {
+    const url = toCollectionUrl("/points?wait=true", collection);
+    const request = {
       method: "PUT",
       body: JSON.stringify({ points }),
-    });
+    };
+    try {
+      await this.request(url, request);
+    } catch (error) {
+      if (!(error instanceof QdrantConnectionError)) throw error;
+      // Replaying the same point IDs is safe even if the first write reached Qdrant.
+      this.logWarn("Connection failed during upsert; retrying the same batch once.", { collection, points: points.length });
+      await this.request(url, request);
+    }
   }
 
   private async upsertPointBatchAdaptive(
@@ -269,10 +283,9 @@ export class VectorStoreService {
       return;
     }
     if (!getResponse.ok) {
-      const text = await getResponse.text();
-      throw new Error(`Qdrant 集合检查失败(${getResponse.status})：${text}`);
+      throw new Error(`Qdrant 集合检查失败(${getResponse.status})：${getResponse.body}`);
     }
-    const payload = await getResponse.json() as {
+    const payload = JSON.parse(getResponse.body) as {
       result?: {
         config?: {
           params?: {
@@ -302,7 +315,7 @@ export class VectorStoreService {
       try {
       const response = await this.fetchWithTimeout(toCollectionUrl(""), {headers: buildHeaders()});
       if (!response.ok) throw new RagIndexUnavailableError();
-      const value = await response.json() as {result?: {config?: {params?: {vectors?: {size?: number}}};
+      const value = JSON.parse(response.body) as {result?: {config?: {params?: {vectors?: {size?: number}}};
         payload_schema?: Record<string, {data_type?: string}>}};
       const actual = value.result?.config?.params?.vectors?.size;
       if (!Number.isSafeInteger(actual) || actual! < 1 || dimension !== undefined && dimension !== actual
@@ -353,7 +366,7 @@ export class VectorStoreService {
       }),
     });
     if (response.status === 404) return;
-    if (!response.ok) throw new Error(`Qdrant 请求失败(${response.status})：${await response.text()}`);
+    if (!response.ok) throw new Error(`Qdrant 请求失败(${response.status})：${response.body}`);
     this.logInfo("Delete points finished.", {
       points: pointIds.length,
       elapsedMs: Date.now() - startedAt,
@@ -433,8 +446,7 @@ export class VectorStoreService {
         headers: buildHeaders(),
       });
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Qdrant health check failed(${response.status})：${text}`);
+        throw new Error(`Qdrant health check failed(${response.status})：${response.body}`);
       }
       return { ok: true };
     } catch (error) {

@@ -25,7 +25,7 @@ function isEnabled(rawValue: string | undefined, defaultValue: boolean): boolean
 }
 
 function asInt(rawValue: string | undefined, fallback: number, min: number, max: number): number {
-  const parsed = Number(rawValue ?? "");
+  const parsed = Number(normalizeOptionalText(rawValue));
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
@@ -34,7 +34,7 @@ function asInt(rawValue: string | undefined, fallback: number, min: number, max:
 }
 
 function asFloat(rawValue: string | undefined, fallback: number, min: number, max: number): number {
-  const parsed = Number(rawValue ?? "");
+  const parsed = Number(normalizeOptionalText(rawValue));
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
@@ -104,13 +104,13 @@ export const ragConfig = {
   embeddingBatchSize: asInt(process.env.EMBEDDING_BATCH_SIZE, 64, 1, 256),
   // 不允许 env 读取：通过知识库设置面板管理（RagEmbeddingSettings.embeddingConcurrency）
   embeddingConcurrency: 4,
-  embeddingTimeoutMs: asInt(process.env.RAG_EMBEDDING_TIMEOUT_MS ?? process.env.RAG_HTTP_TIMEOUT_MS, 30000, 5000, 300000),
+  embeddingTimeoutMs: asInt(normalizeOptionalText(process.env.RAG_EMBEDDING_TIMEOUT_MS) ?? process.env.RAG_HTTP_TIMEOUT_MS, 30000, 5000, 300000),
   embeddingMaxRetries: asInt(process.env.RAG_EMBEDDING_MAX_RETRIES, 2, 0, 8),
   embeddingRetryBaseMs: asInt(process.env.RAG_EMBEDDING_RETRY_BASE_MS, 500, 100, 10000),
   qdrantUrl: (process.env.QDRANT_URL ?? "http://127.0.0.1:6333").replace(/\/+$/, ""),
   qdrantApiKey: process.env.QDRANT_API_KEY ?? "",
   qdrantCollection: process.env.QDRANT_COLLECTION ?? "ai_novel_chunks_v1",
-  qdrantTimeoutMs: asInt(process.env.QDRANT_TIMEOUT_MS ?? process.env.RAG_HTTP_TIMEOUT_MS, 30000, 1000, 300000),
+  qdrantTimeoutMs: asInt(normalizeOptionalText(process.env.QDRANT_TIMEOUT_MS) ?? process.env.RAG_HTTP_TIMEOUT_MS, 30000, 1000, 300000),
   qdrantUpsertMaxBytes: asInt(process.env.QDRANT_UPSERT_MAX_BYTES, 24 * 1024 * 1024, 1024 * 1024, 64 * 1024 * 1024),
   // 不允许 env 读取：通过知识库设置面板管理（RagRuntimeSettings.qdrantUpsertConcurrency）
   qdrantUpsertConcurrency: 3,

@@ -16,6 +16,54 @@ test('indexing and health identify an unreachable vector database without exposi
   assert.doesNotMatch(health.detail, /fetch failed|private connection details/);
   await assert.rejects(store.ensureCollection(3), error => error.message === health.detail && error.cause === failure);
 });
+test('a connection failure replays the same vector batch once', async t => {
+  const writes = [];
+  t.mock.method(global, 'fetch', async (url, request) => {
+    writes.push({url, body: request.body});
+    if (writes.length === 1) throw new TypeError('fetch failed');
+    return Response.json({status: 'ok'});
+  });
+  await new VectorStoreService().upsertPoints([{id: 'point', vector: [1], payload: {}}], 'collection');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[0], writes[1]);
+});
+test('a persistent connection failure returns to the job after the batch retry', async t => {
+  const send = t.mock.method(global, 'fetch', async () => { throw new TypeError('fetch failed'); });
+  await assert.rejects(new VectorStoreService().upsertPoints([{id: 'point', vector: [1], payload: {}}]), /无法连接向量数据库/);
+  assert.equal(send.mock.callCount(), 2);
+});
+test('a dropped success response body replays the same upsert', async t => {
+  const writes = [];
+  t.mock.method(global, 'fetch', async (_url, request) => {
+    writes.push(request.body);
+    return writes.length === 1
+      ? new Response(new ReadableStream({start(controller) { controller.error(new TypeError('connection closed')); }}))
+      : Response.json({status: 'ok'});
+  });
+  await new VectorStoreService().upsertPoints([{id: 'point', vector: [1], payload: {}}]);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0], writes[1]);
+});
+test('the vector timeout covers the body after headers arrive', {timeout: 1500}, async t => {
+  const previousTimeout = ragConfig.qdrantTimeoutMs;
+  t.after(() => { ragConfig.qdrantTimeoutMs = previousTimeout; });
+  ragConfig.qdrantTimeoutMs = 20;
+  const send = t.mock.method(global, 'fetch', async (_url, {signal}) => new Response(new ReadableStream({
+    start(controller) {
+      signal.addEventListener('abort', () => controller.error(signal.reason), {once: true});
+    },
+  })));
+  await assert.rejects(new VectorStoreService().upsertPoints([{id: 'point', vector: [1], payload: {}}]), /Qdrant 请求超时/);
+  assert.equal(send.mock.callCount(), 1);
+});
+test('a rejected vector payload does not trigger a connection retry', async t => {
+  const send = t.mock.method(global, 'fetch', async () => new Response(
+    new ReadableStream({start(controller) { controller.error(new TypeError('connection closed')); }}),
+    {status: 400},
+  ));
+  await assert.rejects(new VectorStoreService().upsertPoints([{id: 'point', vector: [1], payload: {}}]), /400/);
+  assert.equal(send.mock.callCount(), 1);
+});
 test('point cleanup uses the stored collection and tolerates a collection already removed',async t=>{
  const calls=[];
  t.mock.method(global,'fetch',async(url,options)=>{
