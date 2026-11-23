@@ -12,6 +12,7 @@ export const QUIESCENCE_TABLE_SCHEMA = Object.freeze({
   ImageGenerationTask: ['status', 'pendingManualRecovery', 'retryCount', 'maxRetries', 'heartbeatAt'],
   StyleExtractionTask: ['status', 'pendingManualRecovery', 'retryCount', 'maxRetries', 'heartbeatAt'],
   AgentRun: ['status'],
+  AgentConversationTurn: ['status', 'activeSlot'],
   CreativeHubThread: ['status'],
   AgentApproval: ['status', 'expiresAt'],
   DirectorRunCommand: ['status', 'leaseOwner', 'leaseExpiresAt', 'runAfter', 'attempt'],
@@ -39,14 +40,13 @@ export const QUIESCENCE_TABLE_SCHEMA = Object.freeze({
 
 const KNOWN_NON_QUEUE_TABLES = new Set([
   'ChapterAutomaticAttempt', 'DirectorRun', 'DirectorRuntimeCheckpoint', 'DirectorRuntimeEvent',
-  'DirectorNextRun', 'DirectorNextCommand', 'ReplanRun', 'TaskCenterArchive', 'CreativeHubCheckpoint',
+  'DirectorFinalApproval', 'DirectorNextRun', 'DirectorNextCommand', 'ReplanRun', 'TaskCenterArchive', 'CreativeHubCheckpoint',
 ]);
 
 const SQLITE_INSPECTOR = String.raw`
 import json, sqlite3, sys, urllib.parse, datetime, re
 payload=json.load(sys.stdin)
 db=payload['dbPath']
-required=payload['schema']
 known_non_queue=set(payload['knownNonQueue'])
 active={'queued','running','processing','retrying','leased','waiting_worker','waiting_llm_resource','waiting_retry','failed_recoverable','claimed','in_progress','sending','building','generating','reconciling'}
 manual={'waiting_approval','waiting_gate','paused','pending_manual_recovery','needs_approval','awaiting_user','waiting_review','blocked','interrupted','cancelled_by_user','failed_hard','stale','pending'}
@@ -73,12 +73,19 @@ def parse_time(value):
 def reject(reason, blockers=None, checked=None):
     print(json.dumps({'safeToStop':False,'reason':reason,'blockers':blockers or [],'checkedTables':checked or []}))
 def main():
+    required=payload['schema']
     uri='file:'+urllib.parse.quote(db,safe='/')+'?mode=ro'
     conn=sqlite3.connect(uri,uri=True,timeout=2.0)
     conn.row_factory=sqlite3.Row
     conn.execute('PRAGMA query_only=ON')
     conn.execute('PRAGMA busy_timeout=2000')
     tables={row['name'] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+    # During an upgrade the running API still uses its recorded pre-discussion schema.
+    if 'AgentConversationTurn' not in tables and '_prisma_migrations' in tables and not tables.intersection({'OpeningCandidateProposal', 'DirectorFinalApproval'}):
+        applied=conn.execute("SELECT 1 FROM _prisma_migrations WHERE migration_name >= ? LIMIT 1", ('20261121150000_agent_conversation_turn',)).fetchone()
+        baseline=conn.execute("SELECT 1 FROM _prisma_migrations WHERE migration_name=? AND finished_at IS NOT NULL AND rolled_back_at IS NULL", ('20261116135000_invocation_output_budget',)).fetchone()
+        if baseline and not applied:
+            required={table:columns for table,columns in required.items() if table!='AgentConversationTurn'}
     missing=sorted(set(required)-tables)
     if missing:
         reject('database schema does not contain all covered task tables', [{'kind':'missing_tables','count':len(missing),'tables':missing}]); return
@@ -104,6 +111,12 @@ def main():
                 stage=values.get('activeStage'); key=values.get('activeRequestKey')
                 if bool(stage)!=bool(key): blockers.append({'kind':'invalid_active_request','table':table,'count':1})
                 elif key: blockers.append({'kind':'active_production_request','table':table,'count':1})
+                continue
+            if table=='AgentConversationTurn':
+                if values['status']=='running' or values['activeSlot'] is not None:
+                    blockers.append({'kind':'active_conversation','table':table,'count':1})
+                elif values['status'] not in ('completed','failed','interrupted'):
+                    blockers.append({'kind':'unknown_status','table':table,'count':1})
                 continue
             for status_key in ('status','latestIndexStatus'):
                 if status_key not in values: continue

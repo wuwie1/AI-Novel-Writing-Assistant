@@ -1,5 +1,5 @@
 import { EntityDirectory, useDirectorySelection, useEntityListHost, useRouteFields, useDocumentGuard } from "@/platform";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -284,7 +284,20 @@ function QualityFlags({ episode }: { episode: DramaEpisode }) {
   );
 }
 
+function episodeFields(episode?: DramaEpisode) {
+  return {
+    title: episode?.title ?? "",
+    hookOpening: episode?.hookOpening ?? "",
+    cliffhanger: episode?.cliffhanger ?? "",
+    content: episode?.content ?? "",
+    durationSec: episode?.durationSec != null ? String(episode.durationSec) : "",
+  };
+}
+type EpisodeFields = ReturnType<typeof episodeFields>;
+
 function EpisodesPanel(props: {
+  drafts: Record<string, EpisodeFields>;
+  onEdit: (episode: DramaEpisode, fields: EpisodeFields) => void;
   project: DramaProjectDetail;
   selectedOrder: number | null;
   onSelectOrder: (order: number) => void;
@@ -293,30 +306,20 @@ function EpisodesPanel(props: {
   onGenerateScript: (order: number) => void;
   onReview: (order: number) => void;
   onRepair: (order: number) => void;
-  onSave: (order: number, input: { title: string; hookOpening: string; cliffhanger: string; content: string; durationSec: string }) => unknown;
+  onSave: (order: number, input: EpisodeFields) => unknown;
   busy: boolean;
 }) {
   const episodes = props.project.episodes ?? [];
   const host = useEntityListHost();
-  const selectedEpisode = episodes.find(episode => episode.order === props.selectedOrder);
-  const [draft, setDraft] = useState({
-    title: "",
-    hookOpening: "",
-    cliffhanger: "",
-    content: "",
-    durationSec: "",
-  });
-
-  const savedDraft = {
-    title: selectedEpisode?.title ?? "", hookOpening: selectedEpisode?.hookOpening ?? "",
-    cliffhanger: selectedEpisode?.cliffhanger ?? "", content: selectedEpisode?.content ?? "",
-    durationSec: selectedEpisode?.durationSec != null ? String(selectedEpisode.durationSec) : "",
+  const selectedEpisode = episodes.find((episode) => episode.order === props.selectedOrder);
+  const unsaved = selectedEpisode && props.drafts[selectedEpisode.id];
+  const draft = unsaved ?? episodeFields(selectedEpisode);
+  const setDraft = (update: (current: EpisodeFields) => EpisodeFields) => {
+    if (selectedEpisode) props.onEdit(selectedEpisode, update(draft));
   };
-  const savedKey = JSON.stringify(savedDraft);
-  useEffect(() => { setDraft(savedDraft); }, [selectedEpisode?.id, savedKey]);
-  useDocumentGuard({label: "短剧分集台本", dirty: Boolean(selectedEpisode) && JSON.stringify(draft) !== savedKey, busy: props.busy,
+  useDocumentGuard({label: "短剧分集台本", dirty: Boolean(unsaved), busy: props.busy,
     save: async () => { if (!selectedEpisode || !draft.title.trim()) throw Error("请填写本集标题。"); await props.onSave(selectedEpisode.order, draft); },
-    discard: () => setDraft(savedDraft)});
+    discard: () => { if (selectedEpisode) props.onEdit(selectedEpisode, episodeFields(selectedEpisode)); }});
 
   if (episodes.length === 0) {
     return <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">还没有分集大纲。先生成前 12 集分集。</div>;
@@ -339,6 +342,7 @@ function EpisodesPanel(props: {
           <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <CardTitle className="text-lg">第 {selectedEpisode.order} 集：{selectedEpisode.title}</CardTitle>
+              {unsaved ? <p role="status" className="text-sm text-warning">本集有未保存的修改。切换分集或标签后可以回来继续编辑。</p> : null}
               <CardDescription>{selectedEpisode.hookOpening || "本集尚未写入开场钩子。"}</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -354,7 +358,7 @@ function EpisodesPanel(props: {
                 <RefreshCw className="h-4 w-4" />
                 修复
               </Button>
-              <Button size="sm" type="button" variant="outline" disabled={props.busy} onClick={() => props.onSave(selectedEpisode.order, draft)}>
+              <Button size="sm" type="button" variant="outline" disabled={props.busy} onClick={() => void Promise.resolve(props.onSave(selectedEpisode.order, draft)).catch(() => {})}>
                 <Save className="h-4 w-4" />
                 保存编辑
               </Button>
@@ -417,6 +421,11 @@ function EpisodesPanel(props: {
 
 export default function DramaProjectPage() {
   const { id } = useParams();
+  return <DramaProjectWorkspace key={id} id={id} />;
+}
+
+function DramaProjectWorkspace({ id }: { id?: string }) {
+  const [drafts, setDrafts] = useState<Record<string, EpisodeFields>>({});
   const queryClient = useQueryClient();
   const [route, update] = useRouteFields();
   const activeTab = TABS.find(item => item.key === route.get("tab"))?.key ?? "source";
@@ -497,13 +506,7 @@ export default function DramaProjectPage() {
     downloadBlob(blob, `${project.title}-E${order}.${suffix}`);
   };
 
-  const handleSaveEpisode = (order: number, input: {
-    title: string;
-    hookOpening: string;
-    cliffhanger: string;
-    content: string;
-    durationSec: string;
-  }) => {
+  const handleSaveEpisode = (order: number, input: EpisodeFields) => {
     if (!project) {
       return;
     }
@@ -512,6 +515,8 @@ export default function DramaProjectPage() {
       toast.error("请填写本集标题。");
       return;
     }
+    const episode = project.episodes?.find(item => item.order === order);
+    if (!episode) return;
     return runAction(
       () => updateDramaEpisode(project.id, order, {
         title: input.title.trim(),
@@ -521,7 +526,28 @@ export default function DramaProjectPage() {
         durationSec: durationSec !== undefined && Number.isFinite(durationSec) ? durationSec : null,
       }),
       `第 ${order} 集已保存。`,
-    );
+    ).then(() => {
+      setDrafts(current => {
+        if (current[episode.id] !== input) return current;
+        const next = { ...current };
+        delete next[episode.id];
+        return next;
+      });
+    });
+  };
+
+  const changeEpisodeScript = (order: number, repair: boolean) => {
+    const episode = project?.episodes?.find(item => item.order === order);
+    if (!episode || !project) return;
+    if (drafts[episode.id]) {
+      setSelectedOrder(order);
+      setActiveTab("episodes");
+      toast.info("请先保存本集手改，再让 AI 修改台本。");
+      return;
+    }
+    return repair
+      ? runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)
+      : runAction(() => generateDramaEpisodeScript(project.id, order), `第 ${order} 集台本已生成。`);
   };
 
   if (projectQuery.isLoading) {
@@ -577,10 +603,19 @@ export default function DramaProjectPage() {
         onSetTab={setActiveTab}
         onAssembleSource={() => runAction(() => assembleDramaSourceBundle(project.id), "短剧素材已整理。")}
         onGenerateStrategy={() => runAction(() => generateDramaStrategy(project.id), "短剧策略已生成。")}
-        onGenerateOutline={() => runAction(() => generateDramaOutline(project.id, { startOrder: 1, count: 12 }), "前 12 集分集已生成。")}
-        onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order), `第 ${order} 集台本已生成。`)}
+        onGenerateOutline={() => {
+          const unsaved = project.episodes?.find(episode => episode.order <= 12 && drafts[episode.id]);
+          if (unsaved) {
+            setSelectedOrder(unsaved.order);
+            setActiveTab("episodes");
+            toast.info(`请先保存第 ${unsaved.order} 集的修改，再生成前 12 集分集。`);
+            return;
+          }
+          return runAction(() => generateDramaOutline(project.id, { startOrder: 1, count: 12 }), "前 12 集分集已生成。");
+        }}
+        onGenerateScript={order => changeEpisodeScript(order, false)}
         onReviewEpisode={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
-        onRepairEpisode={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
+        onRepairEpisode={order => changeEpisodeScript(order, true)}
         onGenerateStoryboard={(order) => runAction(() => generateDramaStoryboard(project.id, order), `第 ${order} 集分镜已生成。`)}
         onGenerateVideoPrompt={(shot) => runAction(() => generateDramaVideoPrompt(project.id, shot.id), `镜头 ${shot.order} 的视频提示词已生成。`)}
         onCreateProviderTask={(prompt) => runAction(() => createDramaVideoProviderTask(prompt.id, activeVideoProvider), "视频任务已创建。")}
@@ -605,15 +640,22 @@ export default function DramaProjectPage() {
       {activeTab === "strategy" ? <StrategyPanel project={project} /> : null}
       {activeTab === "episodes" ? (
         <EpisodesPanel
+          drafts={drafts}
+          onEdit={(episode, fields) => setDrafts(current => {
+            const next = { ...current };
+            if (JSON.stringify(fields) === JSON.stringify(episodeFields(episode))) delete next[episode.id];
+            else next[episode.id] = fields;
+            return next;
+          })}
           project={project}
           selectedOrder={selectedOrderValue}
           onSelectOrder={setSelectedOrder}
           ttsProviders={ttsProviders}
           onBatchJob={(order, input) => runAction(() => createDramaEpisodeBatchJob(project.id, order, input), "配音任务已创建。")}
           busy={actionMutation.isPending}
-          onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order), `第 ${order} 集台本已生成。`)}
+          onGenerateScript={order => changeEpisodeScript(order, false)}
           onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
-          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
+          onRepair={order => changeEpisodeScript(order, true)}
           onSave={handleSaveEpisode}
         />
       ) : null}
@@ -625,7 +667,7 @@ export default function DramaProjectPage() {
           onOpenEpisodes={order => setActiveTab("episodes", order)}
           onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
           onComplianceAll={() => runAction(() => checkDramaProjectCompliance(project.id), "合规预检完成。")}
-          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
+          onRepair={order => changeEpisodeScript(order, true)}
         />
       ) : null}
       {activeTab === "characters" ? (

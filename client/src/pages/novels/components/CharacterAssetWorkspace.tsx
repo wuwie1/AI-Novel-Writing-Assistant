@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Activity, Brain, Clock3, Eye, Network, Package, ScrollText, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { WorkspaceColumns } from "@/components/layout/resizableWorkspace";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CharacterAssetSidebar from "./CharacterAssetSidebar";
 import CharacterDynamicsSection from "./CharacterDynamicsSection";
@@ -111,7 +112,8 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
           </div>
         </div>
       </CardHeader>
-      <CardContent className={host ? "p-4" : "grid gap-4 bg-[linear-gradient(90deg,hsl(var(--muted)/0.18)_0%,hsl(var(--background))_38%)] p-4 xl:grid-cols-[280px_minmax(0,1fr)]"}>
+      <WorkspaceColumns layoutId="character-assets" className="grid gap-4 bg-[linear-gradient(90deg,hsl(var(--muted)/0.18)_0%,hsl(var(--background))_38%)] p-4 xl:workspace-split" minCenter={440}
+        left={host ? undefined : { label: "调整角色阵容宽度", initial: "280px", min: 160 }}>
         <EntityList collection={`characters:${novelId}`} title="本书角色" selection={selectedCharacterId}>
         <aside className="xl:max-h-[calc(100dvh-220px)] xl:overflow-y-auto xl:pr-1">
           <CharacterAssetSidebar
@@ -241,7 +243,7 @@ export default function CharacterAssetWorkspace(props: CharacterAssetWorkspacePr
             </Tabs>
           </div>
         )}
-      </CardContent>
+      </WorkspaceColumns>
     </Card>
   );
 }

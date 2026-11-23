@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { DEFAULT_MODEL_OUTPUT_TOKENS } = require("@ai-novel/shared/types/llm");
 
 const { prisma } = require("../dist/db/prisma.js");
 const { setPromptRunnerStructuredInvokerForTests } = require("../dist/prompting/core/promptRunner.js");
@@ -45,7 +46,10 @@ test("generating a novel world keeps the selected model instead of forcing DeepS
     assert.equal(captured[0].provider, "ollama");
     assert.equal(captured[0].model, "qwen3:8b");
     assert.equal(captured[0].temperature, 0.35);
-    assert.equal(captured[0].maxTokens, 4_800);
+    assert.equal(captured[0].maxTokens, DEFAULT_MODEL_OUTPUT_TOKENS);
+    assert.equal(captured[0].automaticMaxTokens, undefined);
+    assert.equal(captured[0].reasoningEnabled, false);
+    assert.equal(captured[0].transportRetryCount, 0);
     assert.equal(captured[0].timeoutMs, 120_000);
     assert.equal(captured[0].maxRepairAttempts, 0);
   } finally {
@@ -74,8 +78,8 @@ test("novel theme world prompt stays within a one-shot JSON budget", () => {
     estimatedInputTokens: 0,
   });
 
-  assert.equal(novelThemeWorldGenerationPrompt.version, "v3");
+  assert.equal(novelThemeWorldGenerationPrompt.version, "v4");
   assert.equal(novelThemeWorldGenerationPrompt.repairPolicy.maxAttempts, 0);
   assert.match(String(messages[0].content), /输出容量硬约束/);
-  assert.match(String(messages[0].content), /1,800 个汉字以内/);
+  assert.match(String(messages[0].content), /整书基础按成长阶段保留规则和组织职责/);
 });

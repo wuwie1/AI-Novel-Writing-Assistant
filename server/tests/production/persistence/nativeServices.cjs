@@ -31,7 +31,10 @@ function resources() {
   const ledger = native('services/novel/characterResource/CharacterResourceLedgerService.ts', {
     '../../../db/prisma': { prisma: {} }, '../runtime/artifactSync/contracts': {}, './characterResourceShared': shared, '../state/context/ChapterStateBoundary': boundary,
   });
-  const canonical = native('services/novel/state/CanonicalStateService.ts', { '../../../db/prisma': { prisma: {} }, '../characterResource/CharacterResourceLedgerService': ledger, './context/ChapterStateBoundary': boundary });
+  const canonical = native('services/novel/state/CanonicalStateService.ts', {
+    '../../../db/prisma': { prisma: {} }, '../characterResource/CharacterResourceLedgerService': ledger, './context/ChapterStateBoundary': boundary,
+    '../characters/forwardAdjustments/chapterFields': fromServer('./dist/services/novel/characters/forwardAdjustments/chapterFields'),
+  });
   const versions = native('services/novel/state/StateVersionLog.ts', { '../../../db/prisma': { prisma: {} } });
   return { canonical: new canonical.CanonicalStateService(), versions: new versions.StateVersionLog() };
 }

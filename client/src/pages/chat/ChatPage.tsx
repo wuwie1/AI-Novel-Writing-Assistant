@@ -1,4 +1,5 @@
 import { EntityDirectory, useEntityListHost, useRouteFields, useDocumentGuard } from "@/platform";
+import { WorkspaceColumns } from "@/components/layout/resizableWorkspace";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SSEFrame } from "@ai-novel/shared/types/api";
@@ -496,7 +497,9 @@ function ChatSessionPage() {
     tools={<Button disabled={isStreaming} onClick={() => void createSession()}>新建对话</Button>}/>;
   if (host && requestedSessionId && chatStore.hydrated && !currentSession) return <>{directory}<p>这段对话不可用，请在会话目录选择其他对话。</p></>;
   return (
-    <div className={host ? "grid min-h-[70vh] gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : "grid min-h-[70vh] gap-4 lg:grid-cols-[240px_minmax(0,1fr)_360px]"}>
+    <WorkspaceColumns layoutId="chat" className="grid min-h-[70vh] gap-4 lg:workspace-split"
+      left={host ? undefined : { label: "调整会话列表宽度", initial: "240px", min: 144 }}
+      right={{ label: "调整运行详情宽度", initial: "360px", min: 212 }}>
       {directory}
       {!host && <Card>
         <CardHeader>
@@ -630,6 +633,6 @@ function ChatSessionPage() {
         safePreview={safePreview}
         stepTitle={stepTitle}
       />
-    </div>
+    </WorkspaceColumns>
   );
 }

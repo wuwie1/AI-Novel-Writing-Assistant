@@ -4,9 +4,20 @@ import { enrichStoryPlan } from "../plannerPlanMetadata";
 import { buildPlanTaskSheet,buildPlanSceneCards,buildChapterExecutionContractHash,sanitizePlanText,type PersistPlanInput } from "./contract";
 
 type Reader=Pick<Prisma.TransactionClient,"storyPlan">;
+export function matchesStoryPlanProjection(raw: string | null, saved: {taskSheet: string | null; sceneCards: string | null},
+  approved: {taskSheet: string | null; sceneCards: string | null}): boolean {
+  if (!raw) return false;
+  try {
+    const input = JSON.parse(raw) as PersistPlanInput;
+    return (saved.taskSheet === approved.taskSheet || saved.taskSheet === buildPlanTaskSheet(input))
+      && (saved.sceneCards === approved.sceneCards || saved.sceneCards === buildPlanSceneCards(input));
+  } catch {
+    return false;
+  }
+}
 export function prepareStoryPlanRecord(input:PersistPlanInput) {
-  const taskSheet = input.baseExecutionContract?.taskSheet?.trim() || buildPlanTaskSheet(input);
-  const sceneCards = input.baseExecutionContract?.sceneCards?.trim() || buildPlanSceneCards(input);
+  const taskSheet = input.preserveExecutionContract ? undefined : input.baseExecutionContract?.taskSheet?.trim() || buildPlanTaskSheet(input);
+  const sceneCards = input.preserveExecutionContract ? undefined : input.baseExecutionContract?.sceneCards?.trim() || buildPlanSceneCards(input);
   const expectation = input.baseExecutionContract?.expectation?.trim() || sanitizePlanText(input.objective);
   const hook = input.baseExecutionContract?.hook?.trim() || sanitizePlanText(input.hookTarget);
   const executionContractHash = input.level === "chapter"

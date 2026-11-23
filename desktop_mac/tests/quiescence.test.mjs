@@ -54,6 +54,38 @@ test('quiescence scan accepts a complete read-only schema with only manual appro
   assert.equal(result.checkedTables.length, Object.keys(QUIESCENCE_TABLE_SCHEMA).length);
 });
 
+test('a verified pre-discussion database can drain, but a missing migrated table blocks shutdown', async t => {
+  const {dbPath} = await fixture(t);
+  const prepare = spawnSync('python3', ['-c', `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+    for name in ('AgentConversationTurn', 'OpeningCandidateProposal', 'DirectorFinalApproval'):
+        db.execute('ALTER TABLE '+name+' RENAME TO fixture_'+name+'_unused')
+    db.execute('CREATE TABLE _prisma_migrations (migration_name TEXT, finished_at TEXT, rolled_back_at TEXT)')
+    db.execute("INSERT INTO _prisma_migrations VALUES ('20261116135000_invocation_output_budget','done',NULL)")`, dbPath]);
+  assert.equal(prepare.status, 0);
+  assert.equal((await inspectSqliteQuiescence({dbPath})).safeToStop, true);
+  const migrated = spawnSync('python3', ['-c', `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("INSERT INTO _prisma_migrations VALUES ('20261121150000_agent_conversation_turn','done',NULL)")`, dbPath]);
+  assert.equal(migrated.status, 0);
+  assert.equal((await inspectSqliteQuiescence({dbPath})).safeToStop, false);
+});
+
+test('discussion turns block shutdown until their active slot is released and their status is final', async t => {
+  const { dbPath } = await fixture(t);
+  for (const [status, slot, safe] of [
+    ['running', 'running', false], ['running', '', false], ['completed', 'running', false],
+    ['pending', '', false], ['completed', '', true], ['interrupted', '', true], ['failed', '', true],
+  ]) {
+    const seed = spawnSync('python3', ['-c', `import sqlite3,sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("INSERT OR REPLACE INTO AgentConversationTurn(rowid,status,activeSlot) VALUES (1,?,?)", (sys.argv[2],sys.argv[3] or None))`, dbPath, status, slot]);
+    assert.equal(seed.status, 0);
+    const result = await inspectSqliteQuiescence({dbPath});
+    assert.equal(result.safeToStop, safe, JSON.stringify(result));
+  }
+});
+
 test('outline feedback blocks shutdown while dispatchable or running and preserves manual retry', async t => {
   const { dbPath } = await fixture(t);
   for (const [status, blocker] of [

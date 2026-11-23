@@ -1,6 +1,7 @@
 import { assertModelPurpose, usesLocalProxy } from "@ai-novel/shared/utils/modelConnection/index";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
+import { prisma } from "../db/prisma";
 import type { LLMProvider, ProviderAuthMode } from "@ai-novel/shared/types/llm";
 import type {
   ModelRouteRequestProtocol,
@@ -14,7 +15,6 @@ import {
   MODEL_ROUTE_TASK_TYPES,
   resolveModel,
   toStructuredOutputStrategy,
-  upsertModelRouteConfig,
 } from "./modelRouter";
 import { invokeStructuredLlmDetailed, summarizeStructuredOutputFailure } from "./structuredInvoke";
 import { toText } from "../services/novel/novelP0Utils";
@@ -57,6 +57,9 @@ export interface LLMConnectivityStatus extends ConnectivityProbeStatus {
 }
 
 export interface ModelRouteConnectivityStatus extends LLMConnectivityStatus {
+  testedProtocol: ModelRouteRequestProtocol;
+  testedFormat: ModelRouteStructuredResponseFormat;
+  recommendation: { requestProtocol: ModelRouteRequestProtocol; structuredResponseFormat: ModelRouteStructuredResponseFormat } | null;
   taskType: ModelRouteTaskType;
 }
 
@@ -254,10 +257,19 @@ async function testConnection(input: {
   };
 }
 
-async function testModelRoutes(taskTypes: readonly ModelRouteTaskType[] = MODEL_ROUTE_TASK_TYPES): Promise<{
+interface ModelRouteReport {
   testedAt: string;
   statuses: ModelRouteConnectivityStatus[];
-}> {
+}
+
+const reportKey = "llm.modelRoutes.lastConnectivityReport";
+
+async function getModelRouteReport(): Promise<ModelRouteReport | null> {
+  const row = await prisma.appSetting.findUnique({ where: { key: reportKey } });
+  return row ? JSON.parse(row.value) as ModelRouteReport : null;
+}
+
+async function testModelRoutes(taskTypes: readonly ModelRouteTaskType[] = MODEL_ROUTE_TASK_TYPES): Promise<ModelRouteReport> {
   const resolvedRoutes = await Promise.all(taskTypes.map(async (taskType) => ({
     taskType,
     ...(await resolveModel(taskType)),
@@ -298,20 +310,15 @@ async function testModelRoutes(taskTypes: readonly ModelRouteTaskType[] = MODEL_
     )
       ? result.structured.strategy
       : route.structuredResponseFormat;
-    const shouldPersistProbeResult = result.structured?.ok === true
-      && (effectiveProtocol !== route.requestProtocol || effectiveFormat !== route.structuredResponseFormat);
-    if (shouldPersistProbeResult) {
-      await upsertModelRouteConfig(route.taskType, {
-        provider: route.provider,
-        model: route.model,
-        temperature: route.temperature,
-        maxTokens: route.maxTokens,
-        requestProtocol: effectiveProtocol,
-        structuredResponseFormat: effectiveFormat,
-      });
-    }
+    const recommendation = result.structured?.ok && !result.structured.fallbackUsed
+      && (effectiveProtocol !== route.requestProtocol || effectiveFormat !== route.structuredResponseFormat)
+      ? { requestProtocol: effectiveProtocol, structuredResponseFormat: effectiveFormat }
+      : null;
     return {
       taskType: route.taskType,
+      testedProtocol: route.requestProtocol,
+      testedFormat: route.structuredResponseFormat,
+      recommendation,
       provider: route.provider,
       model: route.model,
       ok: result.ok,
@@ -323,13 +330,14 @@ async function testModelRoutes(taskTypes: readonly ModelRouteTaskType[] = MODEL_
     };
   }));
 
-  return {
-    testedAt: new Date().toISOString(),
-    statuses,
-  };
+  const report = { testedAt: new Date().toISOString(), statuses };
+  const value = JSON.stringify(report);
+  await prisma.appSetting.upsert({ where: { key: reportKey }, create: { key: reportKey, value }, update: { value } });
+  return report;
 }
 
 export const llmConnectivityService = {
   testConnection,
+  getModelRouteReport,
   testModelRoutes,
 };

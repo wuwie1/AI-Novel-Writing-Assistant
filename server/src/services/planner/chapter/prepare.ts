@@ -113,7 +113,7 @@ export async function prepareChapterPlan(novelId: string, chapterId: string, opt
   });
   const characters = originalCharacters.map(item => {
     const state = resolvedStateDrivenContext.snapshot.characters.find(row => row.characterId === item.id);
-    return {...item, currentGoal: state?.currentGoal ?? null, currentState: state?.currentState ?? null};
+    return {...item, ...state?.forwardAdjustment, currentGoal: state?.currentGoal ?? null, currentState: state?.currentState ?? null};
   });
   const visiblePayoffKeys = new Set([...resolvedStateDrivenContext.snapshot.narrative.pendingPayoffs, ...resolvedStateDrivenContext.snapshot.narrative.overduePayoffs].map(item => item.ledgerKey));
   const plannerStateGoalText = buildPlannerStateGoalText({
@@ -184,7 +184,10 @@ export async function prepareChapterPlan(novelId: string, chapterId: string, opt
     arcPlans: arcPlans.length > 0
       ? arcPlans.map((plan) => `${plan.externalRef ?? "-"} ${plan.title} | ${plan.objective}${plan.phaseLabel ? ` | 阶段=${plan.phaseLabel}` : ""}`).join("\n")
       : "无",
-    characters: characters.map((item) => `${item.id}|${item.name}|${item.role}|goal=${item.currentGoal ?? ""}|state=${item.currentState ?? ""}`).join("\n") || "无",
+    characters: characters.map((item) => [
+      `${item.id}|${item.name}|${item.role}|goal=${item.currentGoal ?? ""}|state=${item.currentState ?? ""}`,
+      item.development ? `成长方向=${item.development.slice(0, 480)}` : "",
+    ].filter(Boolean).join("|")).join("\n") || "无",
     recentSummaries: summaries.map((item) => `${item.summary}`).join("\n") || "无",
     plotBeats: plotBeats.map((item) => `${item.chapterOrder ?? "-"} ${item.title} ${item.content}`).join("\n") || "无",
     stateSnapshot: buildStateContextBlockFromCanonical(resolvedStateDrivenContext.snapshot),
@@ -216,6 +219,7 @@ export async function prepareChapterPlan(novelId: string, chapterId: string, opt
   });
 
   return {request:buildPlannerPromptRequest({options,scopeLabel:`章节规划：第${chapter.order}章《${chapter.title}》`,novelId,chapterId,planLevel:"chapter",contextBlocks}),
-    projection:{novelId,chapter:{...chapter,updatedAt:chapter.updatedAt.toISOString()},defaultMetadata,characters,characterDynamicsOverview,resolvedStateDrivenContext,anchoredVolumeChapter:anchoredVolumeChapter ?? null,replanContext:options.replanContext}};
+    projection:{novelId,chapter:{...chapter,updatedAt:chapter.updatedAt.toISOString()},defaultMetadata,characters,characterDynamicsOverview,resolvedStateDrivenContext,anchoredVolumeChapter:anchoredVolumeChapter ?? null,replanContext:options.replanContext,
+      ...(options.preserveExecutionContract ? {preserveExecutionContract: true} : {})}};
 }
 export type PreparedChapterPlan=Awaited<ReturnType<typeof prepareChapterPlan>>;

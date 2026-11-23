@@ -1,4 +1,7 @@
 import { EntityList, useClientPlatform, useEntityListHost, useRouteFields } from "@/platform";
+import { WorkspaceColumns } from "@/components/layout/resizableWorkspace";
+import { GitBranch, LibraryBig } from "lucide-react";
+import CreationFlow from "./creationFlow/CreationFlow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -33,6 +36,35 @@ export default function PromptWorkbenchPage() {
 }
 
 function PromptWorkbench() {
+  const [params, updateRoute] = useRouteFields();
+  const [view, setView] = useState<"flow" | "catalog">(params.has("key") ? "catalog" : "flow");
+  const [visitedCatalog, setVisitedCatalog] = useState(params.has("key"));
+  const [requestedPrompt, setRequestedPrompt] = useState<{ id: string; version: string }>();
+  if (params.get("experience") === "writing") return <PromptCatalogWorkspace />;
+  function openCatalog(prompt?: { id: string; version: string }) {
+    if (prompt) {
+      setRequestedPrompt(prompt);
+      updateRoute({key: `${prompt.id}@${prompt.version}`});
+    }
+    setVisitedCatalog(true);
+    setView("catalog");
+  }
+  return <div className="prompt-management">
+    <header className="prompt-management-bar">
+      <h1>提示词管理</h1>
+      <nav className="prompt-view-switch" aria-label="提示词管理视图">
+        <button type="button" aria-pressed={view === "flow"} onClick={() => setView("flow")}><GitBranch size={15} />创作流程</button>
+        <button type="button" aria-pressed={view === "catalog"} onClick={() => openCatalog()}><LibraryBig size={15} />全部提示词</button>
+      </nav>
+    </header>
+    <div className="management-view" hidden={view !== "flow"}><CreationFlow onOpenCatalog={openCatalog} /></div>
+    {visitedCatalog && <div className="management-view" hidden={view !== "catalog"}>
+      <PromptCatalogWorkspace requestedPrompt={requestedPrompt} />
+    </div>}
+  </div>;
+}
+
+function PromptCatalogWorkspace({ requestedPrompt }: { requestedPrompt?: { id: string; version: string } }) {
   const [searchParams] = useSearchParams();
   const writingLab = searchParams.get("experience") === "writing";
   const requestedNovelId = searchParams.get("novelId")?.trim() ?? "";
@@ -43,6 +75,9 @@ function PromptWorkbench() {
   const writingLabSetupRef = useRef(false);
   const [keyword, setKeyword] = useState(() => writingLab ? "novel.chapter.writer" : "");
   const selectedKey = searchParams.get("key");
+  useEffect(() => {
+    if (requestedPrompt) setKeyword(requestedPrompt.id);
+  }, [requestedPrompt]);
   const [entrypoint, setEntrypoint] = useState("manual_test");
   const [selectedContextBlockId, setSelectedContextBlockId] = useState<string | null>(null);
   const [immersiveMode, setImmersiveMode] = useState(false);
@@ -244,14 +279,15 @@ function PromptWorkbench() {
     : !selectedPrompt?.slotSupported || slotState.isNovelScopeDisabled;
 
   return (
-    <div
+    <WorkspaceColumns layoutId="prompt-workbench" gap={0} minCenter={440}
+      left={!host && !immersiveMode && !writingLab ? { label: "调整提示词目录宽度", initial: "260px", min: 160 } : undefined}
       className={cn(
-        "prompt-workbench-theme flex h-full min-h-0 overflow-hidden bg-background text-foreground",
+        "prompt-workbench-theme flex h-full min-h-0 overflow-hidden bg-background text-foreground lg:workspace-split",
         immersiveMode && "fixed inset-0 z-50 h-screen bg-background",
       )}
     >
       {!immersiveMode && !writingLab ? (
-        <EntityList title="提示词目录" collection="prompt-catalog" selection={selectedPrompt?.key ?? null}><div className={host ? "min-h-0" : "flex h-full min-h-0 w-[260px] min-w-[220px] max-w-[300px] shrink-0 overflow-hidden"}>
+        <EntityList title="提示词目录" collection="prompt-catalog" selection={selectedPrompt?.key ?? null}><div className={host ? "min-h-0" : "flex h-full min-h-0 w-[260px] shrink-0 overflow-hidden lg:w-auto"}>
           {catalog.query.isError && <p role="alert">提示词目录读取失败。 <button onClick={() => void catalog.refetch()}>重新读取</button></p>}
           <PromptCatalogSidebar
             keyword={keyword}
@@ -457,6 +493,6 @@ function PromptWorkbench() {
         </AppDialogContent>
       </Dialog>
       <WritingPlatformProfileManager open={platformManagerOpen} onOpenChange={setPlatformManagerOpen} />
-    </div>
+    </WorkspaceColumns>
   );
 }
