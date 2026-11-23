@@ -24,7 +24,7 @@ const {createDirectorNextServices, FactIntegrityError} = require('../../../../di
 const {PrismaArtifactLedger} = require('../../../../dist/modules/director/infrastructure');
 const {createDirectorNextRouter} = require('../../../../dist/modules/director/http');
 const {errorHandler} = require('../../../../dist/middleware/errorHandler');
-const {DIRECTOR_PLANNED_VOLUME_STATUSES} = require('../../../../dist/app/director/planning');
+const {NovelVolumeService} = require('../../../../dist/services/novel/volume/NovelVolumeService');
 
 const outline = new OutlineOpenBookService(prisma, async () => {});
 const options = createDirectorProductionOptions();
@@ -157,7 +157,6 @@ async function assertGateRemainsBlocked(f) {
 for (const [name, count] of [['partial-outline', 2], ['full-outline', 3]]) {
   test(`${name} exposes the saved chapter gate, confirms it and supplies the next execution plan`, async () => {
     const f = await atSavedGate(name, count);
-    assert.ok(DIRECTOR_PLANNED_VOLUME_STATUSES.includes(f.volume.status));
     await prisma.volumePlan.create({data: {id: `archived-${name}`, novelId: f.novelId, sortOrder: 9, title: '归档卷', status: 'archived',
       chapters: {create: {id: `archived-plan-${name}`, chapterOrder: 1, title: '旧章', summary: '过期路线'}}}});
     const before = await gateFacts(f);
@@ -195,6 +194,57 @@ test('ordinary automatic director active volumes remain eligible for unique chap
   const accepted = await confirm(f, 'complete');
   assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
   assert.equal((await runs.getControl(f.contract.runId)).status, 'running');
+});
+
+test('continuing chapters 4–6 reads legacy planned volumes only from this book’s active version', async () => {
+  const novelId = 'legacy-continuation', volumeId = 'legacy-volume';
+  const orders = [4, 5, 6];
+  const chapters = orders.map(chapterOrder => ({
+    id: `legacy-plan-${chapterOrder}`, volumeId, chapterOrder, title: `第${chapterOrder}章`, summary: '章节路线',
+  }));
+  const snapshot = {volumes: [{id: volumeId, sortOrder: 1, title: '第一卷', status: 'planned', chapters}]};
+  await prisma.novel.create({data: {id: novelId, title: '续写旧卷', directorVersion: 'v2'}});
+  const active = await prisma.volumePlanVersion.create({data: {novelId, version: 2, status: 'active', contentJson: JSON.stringify(snapshot)}});
+  const frozen = await prisma.volumePlanVersion.create({data: {novelId, version: 1, status: 'frozen', contentJson: '{}'}});
+  const otherBook = await prisma.novel.create({data: {title: '另一本书'}});
+  const other = await prisma.volumePlanVersion.create({data: {novelId: otherBook.id, version: 1, status: 'active', contentJson: '{}'}});
+  await prisma.volumePlan.create({data: {id: volumeId, novelId, sortOrder: 1, title: '第一卷', status: 'planned', sourceVersionId: active.id}});
+  await prisma.volumeChapterPlan.createMany({data: chapters.map(chapter => ({
+    ...chapter, taskSheet: `任务${chapter.chapterOrder}`, sceneCards: `场景${chapter.chapterOrder}`,
+  }))});
+
+  const planning = await new NovelVolumeService().getVolumes(novelId, {hydrateCanonical: false});
+  const context = {contract: {novelId, chapterRange: {from: 4, to: 6}}};
+  for (const status of ['planned', 'chapter_list_partial:planned']) {
+    await prisma.volumePlan.update({where: {id: volumeId}, data: {status, sourceVersionId: active.id}});
+    const result = await readExecutionWindow(context, planning);
+    assert.deepEqual(result.executionRange, {startOrder: 4, endOrder: 6});
+    assert.deepEqual(result.workspace.volumes[0].chapters.map(c => [c.id, c.taskSheet, c.sceneCards]),
+      orders.map(n => [`legacy-plan-${n}`, `任务${n}`, `场景${n}`]));
+    for (const sourceVersionId of [frozen.id, other.id, null]) {
+      await prisma.volumePlan.update({where: {id: volumeId}, data: {sourceVersionId}});
+      await assert.rejects(() => readExecutionWindow(context, planning),
+        error => error.statusCode === 409 && /第 4 章/.test(error.message));
+    }
+  }
+
+  await prisma.volumePlan.update({where: {id: volumeId}, data: {status: 'planned', sourceVersionId: active.id}});
+  const reordered = structuredClone(planning);
+  const [fourth, fifth] = reordered.volumes[0].chapters;
+  [fourth.id, fifth.id] = [fifth.id, fourth.id];
+  await assert.rejects(() => readExecutionWindow(context, reordered),
+    error => error.statusCode === 409 && /第 4 章/.test(error.message));
+
+  // The same chapter IDs may survive a version switch after the workspace was read.
+  await prisma.$transaction([
+    prisma.volumePlanVersion.update({where: {id: active.id}, data: {status: 'frozen'}}),
+    prisma.volumePlanVersion.update({where: {id: frozen.id}, data: {status: 'active', contentJson: JSON.stringify(snapshot)}}),
+    prisma.volumePlan.update({where: {id: volumeId}, data: {sourceVersionId: frozen.id}}),
+  ]);
+  await assert.rejects(() => readExecutionWindow(context, planning),
+    error => error.statusCode === 409 && /第 4 章/.test(error.message));
+  const current = await new NovelVolumeService().getVolumes(novelId, {hydrateCanonical: false});
+  assert.deepEqual((await readExecutionWindow(context, current)).executionRange, {startOrder: 4, endOrder: 6});
 });
 
 test('partial routes that preserve an active or generated base status remain eligible', async () => {

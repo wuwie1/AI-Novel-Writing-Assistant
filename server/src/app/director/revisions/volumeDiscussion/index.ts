@@ -7,7 +7,7 @@ import { runStructuredPrompt } from "../../../../prompting/core/promptRunner";
 import { volumeReviewDialoguePrompt } from "../../../../prompting/prompts/novel/volume/reviewDialogue.prompt";
 import { getActiveVersionRow } from "../../../../services/novel/volume/volumeWorkspacePersistence";
 import { normalizeVolumeDraftInput } from "../../../../services/novel/volume/volumePlanUtils";
-import { DIRECTOR_PLANNED_VOLUME_STATUSES } from "../../planning";
+import { directorVolumeChapterPlanFilter } from "../../planning";
 import { reviewConversationRouter, type Address } from "../discussion";
 
 async function read(db: Prisma.TransactionClient, { novelId, resourceId, planVersionId }: Address) {
@@ -20,7 +20,7 @@ async function read(db: Prisma.TransactionClient, { novelId, resourceId, planVer
   const volume = volumes[index];
   if (!volume) throw new AppError("在这份卷纲中找不到所选分卷。", 404);
   const base = { summary: volume.summary ?? "", mainPromise: volume.mainPromise ?? "", climax: volume.climax ?? "", nextVolumeHook: volume.nextVolumeHook ?? "" };
-  const row = await db.volumePlan.findFirst({ where: { id: resourceId, novelId, status: { in: [...DIRECTOR_PLANNED_VOLUME_STATUSES] } },
+  const row = await db.volumePlan.findFirst({ where: { id: resourceId, ...directorVolumeChapterPlanFilter(novelId) },
     select: { sourceVersionId: true, summary: true, mainPromise: true, climax: true, nextVolumeHook: true } });
   // Legacy books can keep the entire plan in the active version without relational rows.
   const inconsistent = row

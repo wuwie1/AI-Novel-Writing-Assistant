@@ -90,13 +90,15 @@ export function applySavedChapterPlanFields(workspace: VolumePlanDocument, saved
 export async function readExecutionWindow(context: StepContext, workspace: VolumePlanDocument) {
   const {targets, executionRange} = executionWindow(context, workspace);
   const {novelId, launchInput} = context.contract;
-  const orders = new Map(workspace.volumes.flatMap(volume => volume.chapters.map(chapter => [chapter.id, chapter.chapterOrder] as const)));
-  const rows = await prisma.volumeChapterPlan.findMany({where: {volume: directorVolumeChapterPlanFilter(novelId), chapterOrder: {gte: executionRange.startOrder, lte: executionRange.endOrder}}});
+  const rows = await prisma.volumeChapterPlan.findMany({where: {
+    volume: directorVolumeChapterPlanFilter(novelId, workspace.activeVersionId),
+    chapterOrder: {gte: executionRange.startOrder, lte: executionRange.endOrder},
+  }});
   const matched = new Set<string>();
   let hydrated = workspace;
-  for (const target of targets) {
-    const order = orders.get(target.chapterId) ?? executionRange.startOrder;
-    const candidates = rows.filter(row => row.id === target.chapterId && row.volumeId === target.volumeId);
+  for (const [index, target] of targets.entries()) {
+    const order = executionRange.startOrder + index;
+    const candidates = rows.filter(row => row.id === target.chapterId && row.volumeId === target.volumeId && row.chapterOrder === order);
     const saved = candidates[0];
     if (candidates.length !== 1 || (launchInput?.targetVolumeId && saved.volumeId !== launchInput.targetVolumeId)) {
       throw new AppError(`无法定位第 ${order} 章的已保存计划，请重新读取本书。`, 409);

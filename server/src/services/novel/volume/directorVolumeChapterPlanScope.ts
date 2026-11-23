@@ -1,14 +1,24 @@
 import type { Prisma } from "@prisma/client";
 
-/** Persisted chapter routes belong to one of these saved, writable volume states. */
-export const DIRECTOR_PLANNED_VOLUME_STATUSES = [
+const chapterPlanStatuses = [
   "active",
   "chapter_list_partial",
   "chapter_list_generated",
   "chapter_list_partial:active",
   "chapter_list_partial:chapter_list_generated",
-] as const;
+];
 
-export function directorVolumeChapterPlanFilter(novelId: string): Prisma.VolumePlanWhereInput {
-  return { novelId, status: { in: [...DIRECTOR_PLANNED_VOLUME_STATUSES] } };
+export function directorVolumeChapterPlanFilter(novelId: string, activeVersionId?: string | null): Prisma.VolumePlanWhereInput {
+  return {
+    novelId,
+    OR: [
+      { status: { in: chapterPlanStatuses } },
+      // A legacy volume's label alone does not identify which version owns it.
+      {
+        status: { in: ["planned", "chapter_list_partial:planned"] },
+        sourceVersionId: activeVersionId,
+        sourceVersion: { is: { novelId, status: "active" } },
+      },
+    ],
+  };
 }

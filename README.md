@@ -63,6 +63,7 @@
 #### 修复
 
 - 停用图片厂商后，漫画页和生图确认窗会自动选择其他可用连接，避免使用停用厂商生成三视图时报错。
+- 导演 V2 续写旧书时能读取当前卷已保存的章节任务和场景。因“无法定位已保存计划”暂停的旧卷，可在导演台从保存进度继续。
 
 [Mac 源码启动说明](./desktop_mac/README.md) · [查看完整更新历史](docs/releases/release-notes.md) · [查看已发布的桌面安装包](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest)
 

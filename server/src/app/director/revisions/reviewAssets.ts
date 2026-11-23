@@ -6,7 +6,7 @@ import {AppError} from "../../../middleware/errorHandler";
 import {assertOutlineWorkspaceWrite} from "../../../modules/planning/outline/constraints";
 import {normalizeVolumeWorkspaceDocument} from "../../../services/novel/volume/volumeWorkspaceDocument";
 import {getActiveVersionRow, syncVolumeArc} from "../../../services/novel/volume/volumeWorkspacePersistence";
-import {DIRECTOR_PLANNED_VOLUME_STATUSES} from "../planning";
+import {directorVolumeChapterPlanFilter} from "../planning";
 
 function changed(): never {
   throw new AppError("资料与打开编辑时不同，请关闭编辑窗口，重新读取后再修改。", 409);
@@ -45,7 +45,7 @@ export async function saveReviewAssetEdit(novelId: string, raw: ReviewAssetEdit,
     matches[0][field] = after || null;
     // Older workspaces can store their entire plan in the active version alone.
     if (hasRows) {
-      const row = await tx.volumePlan.findFirst({where: {id, novelId, status: {in: [...DIRECTOR_PLANNED_VOLUME_STATUSES]}}});
+      const row = await tx.volumePlan.findFirst({where: {id, ...directorVolumeChapterPlanFilter(novelId)}});
       if (!row || (row[field]?.trim() ?? "") !== before || (row.sourceVersionId && row.sourceVersionId !== version.id)) changed();
       const saved = await tx.volumePlan.updateMany({where: {id, novelId, updatedAt: row.updatedAt, [field]: row[field]}, data: {[field]: after || null}});
       if (!saved.count) changed();
