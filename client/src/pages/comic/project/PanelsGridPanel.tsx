@@ -117,7 +117,7 @@ function BatchBar({
   const { data: estimate } = useQuery({
     queryKey: ["comic", "batch-estimate", episodeId, provider],
     queryFn: () => estimateBatchCost(episodeId, provider || undefined),
-    enabled: Boolean(episodeId),
+    enabled: Boolean(episodeId && provider),
     staleTime: 30_000,
   });
 
@@ -171,7 +171,7 @@ function BatchBar({
         <Button
           type="button"
           size="sm"
-          disabled={isRunning || pendingCount === 0}
+          disabled={!provider || isRunning || pendingCount === 0}
           onClick={() => startMut.mutate()}
         >
           {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
@@ -183,7 +183,7 @@ function BatchBar({
             type="button"
             size="sm"
             variant="destructive"
-            disabled={retryMut.isPending}
+            disabled={!provider || retryMut.isPending}
             onClick={() => retryMut.mutate()}
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -676,7 +676,7 @@ export function PanelsGridPanel({ projectId, provider, episodes, controlledId }:
 
   return (
     <div className="space-y-4">
-      <ImageGenerationConfirmDialog {...imageFlow.dialogProps} />
+      <ImageGenerationConfirmDialog {...imageFlow.dialogProps} preferredProvider={provider} />
       {episodes.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {controlledId === undefined && <div className="flex flex-1 flex-wrap gap-1.5">

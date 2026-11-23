@@ -13,7 +13,8 @@ import {
   optimizeCharacterImagePrompt,
   type ImagePromptOutputLanguage,
 } from "@/api/images";
-import { getAPIKeySettings } from "@/api/settings";
+import { useImageProviders } from "@/components/image/useImageProviders";
+import { selectImageProvider } from "@/components/image/imageProviderSelection";
 import { queryKeys } from "@/api/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -57,22 +58,8 @@ export function CharacterImageDialog({
     count: 2,
   });
 
-  const apiKeySettingsQuery = useQuery({
-    queryKey: queryKeys.settings.apiKeys,
-    queryFn: getAPIKeySettings,
-    enabled: open,
-  });
-
-  const imageProviderOptions = useMemo(
-    () => (apiKeySettingsQuery.data?.data ?? [])
-      .filter((item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel)
-      .map((item) => ({
-        provider: item.provider,
-        name: item.name,
-        imageModel: item.currentImageModel ?? "",
-      })),
-    [apiKeySettingsQuery.data?.data],
-  );
+  const imageProviderOptions = useImageProviders(open);
+  const provider = selectImageProvider(imageProviderOptions, imageForm.provider);
 
   useEffect(() => {
     if (!open || !character) {
@@ -85,25 +72,6 @@ export function CharacterImageDialog({
     setDirectPromptSource(null);
     setOptimizedPromptLanguage("zh");
   }, [open, character]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    if (imageProviderOptions.length === 0) {
-      if (imageForm.provider) {
-        setImageForm((prev) => ({ ...prev, provider: "" }));
-      }
-      return;
-    }
-    const currentStillAvailable = imageProviderOptions.some((item) => item.provider === imageForm.provider);
-    if (!currentStillAvailable) {
-      setImageForm((prev) => ({
-        ...prev,
-        provider: imageProviderOptions[0]?.provider ?? "",
-      }));
-    }
-  }, [imageForm.provider, imageProviderOptions, open]);
 
   const originalPromptPreview = useMemo(() => {
     if (!character) {
@@ -206,7 +174,7 @@ export function CharacterImageDialog({
       if (!character) {
         throw new Error("请先选择角色。");
       }
-      if (!imageForm.provider) {
+      if (!provider) {
         throw new Error("请先在系统设置中为一个厂商填写图像模型。");
       }
       return generateCharacterImages({
@@ -216,7 +184,7 @@ export function CharacterImageDialog({
         promptMode,
         stylePreset: imageForm.stylePreset,
         negativePrompt: imageForm.negativePrompt,
-        provider: imageForm.provider,
+        provider,
         size: imageForm.size,
         count: imageForm.count,
       });
@@ -355,7 +323,7 @@ export function CharacterImageDialog({
               <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">模型厂商</div>
               <SelectControl
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                value={imageForm.provider}
+                value={provider}
                 disabled={imageProviderOptions.length === 0}
                 onChange={(event) =>
                   setImageForm((prev) => ({
@@ -368,7 +336,7 @@ export function CharacterImageDialog({
                 ) : null}
                 {imageProviderOptions.map((item) => (
                   <option key={item.provider} value={item.provider}>
-                    {item.name} · {item.imageModel}
+                    {item.name} · {item.currentImageModel}
                   </option>
                 ))}
               </SelectControl>
@@ -425,7 +393,7 @@ export function CharacterImageDialog({
           <Button
             className="h-11 rounded-xl px-6"
             onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending || !finalPromptPreview.trim() || !imageForm.provider || Boolean(activeTaskId)}
+            disabled={generateMutation.isPending || !finalPromptPreview.trim() || !provider || Boolean(activeTaskId)}
           >
             {generateMutation.isPending ? "提交任务中..." : "开始生成"}
           </Button>

@@ -1,5 +1,5 @@
 import { useEntityListHost } from "@/platform";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Film, ImageIcon, RefreshCw, Sparkles, Video } from "lucide-react";
 import {
@@ -18,7 +18,8 @@ import {
   type DramaVideoProvider,
 } from "@/api/drama";
 import type { ImageGenerationOverrides } from "@/api/comic";
-import { getAPIKeySettings } from "@/api/settings";
+import { useImageProviders } from "@/components/image/useImageProviders";
+import { selectImageProvider } from "@/components/image/imageProviderSelection";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Button } from "@/components/ui/button";
@@ -55,26 +56,9 @@ export function DramaVisualPanel(props: {
   const [selectedImageProvider, setSelectedImageProvider] = useState("");
   const [useCharacterRefImages, setUseCharacterRefImages] = useState(false);
   const keyframeFlow = useImageGenerationFlow();
-  const apiKeyQuery = useQuery({
-    queryKey: ["api-key-settings"],
-    queryFn: getAPIKeySettings,
-    staleTime: 60_000,
-  });
-  const imageProviders = useMemo(
-    () =>
-      (apiKeyQuery.data?.data ?? []).filter(
-        (item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel,
-      ),
-    [apiKeyQuery.data?.data],
-  );
-  useEffect(() => {
-    if (imageProviders.length > 0 && !selectedImageProvider) {
-      setSelectedImageProvider(imageProviders[0]!.provider);
-    }
-  }, [imageProviders, selectedImageProvider]);
-  const activeImageProvider = imageProviders.some((provider) => provider.provider === selectedImageProvider)
-    ? selectedImageProvider
-    : imageProviders[0]?.provider ?? "";
+  const imageProviders = useImageProviders();
+  const activeImageProvider = selectImageProvider(imageProviders, selectedImageProvider);
+
   const promptStats = {
     prompted: activeVideoPrompts.length,
     withTask: activeVideoPrompts.filter((prompt) => Boolean(prompt.providerTaskId)).length,
@@ -142,7 +126,7 @@ export function DramaVisualPanel(props: {
 
   return (
     <div className="space-y-4">
-      <ImageGenerationConfirmDialog {...keyframeFlow.dialogProps} />
+      <ImageGenerationConfirmDialog {...keyframeFlow.dialogProps} preferredProvider={activeImageProvider} />
       <div className="grid gap-3 md:grid-cols-6">
         <div className="rounded-md border p-3 text-sm">
           <div className="text-xs text-muted-foreground">当前提示词</div>

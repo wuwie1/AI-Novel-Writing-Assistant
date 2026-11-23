@@ -571,8 +571,8 @@ function CharacterDetail({
 
   return (
     <>
-      <ImageGenerationConfirmDialog {...sheetFlow.dialogProps} />
-      <ImageGenerationConfirmDialog {...expressionFlow.dialogProps} />
+      <ImageGenerationConfirmDialog {...sheetFlow.dialogProps} preferredProvider={provider} />
+      <ImageGenerationConfirmDialog {...expressionFlow.dialogProps} preferredProvider={provider} />
       <section className="min-w-0 overflow-hidden rounded-lg border bg-background">
       <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
@@ -921,7 +921,7 @@ function AssetCard({
 
   return (
     <>
-      <ImageGenerationConfirmDialog {...flow.dialogProps} />
+      <ImageGenerationConfirmDialog {...flow.dialogProps} preferredProvider={provider} />
       <GeneratedImageCard
         status={status}
         imageUrl={status === "done" ? characterAssetImageUrl(asset.id) : undefined}

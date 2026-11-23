@@ -6,12 +6,12 @@
  * 用户可临时修改 prompt / provider / size，确认后才发起生图。
  */
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Image as ImageIcon, Info, Loader2, Sparkles, Wand2, X } from "lucide-react";
 
 import { Dialog, AppDialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { getAPIKeySettings } from "@/api/settings";
+import { useImageProviders } from "@/components/image/useImageProviders";
+import { selectImageProvider } from "@/components/image/imageProviderSelection";
 import type { ImageGenerationOverrides, ImageGenerationPreview } from "@/api/comic";
 import { assistImageGenerationPrompt, resolveImageAssetUrl, type ImagePromptAssistResult } from "@/api/images";
 import { toast } from "@/components/ui/toast";
@@ -46,6 +46,7 @@ type PromptAssistAction = "explain" | "optimize";
 interface Props {
   open: boolean;
   preview: ImageGenerationPreview | null;
+  preferredProvider?: string;
   loading?: boolean;          // prepare 中
   submitting?: boolean;       // generate 中
   onCancel: () => void;
@@ -55,6 +56,7 @@ interface Props {
 export function ImageGenerationConfirmDialog({
   open,
   preview,
+  preferredProvider,
   loading,
   submitting,
   onCancel,
@@ -64,7 +66,7 @@ export function ImageGenerationConfirmDialog({
   const [negativePrompt, setNegativePrompt] = useState("");
   const [optimizationInstruction, setOptimizationInstruction] = useState("");
   const [includedReferenceImageUrls, setIncludedReferenceImageUrls] = useState<string[]>([]);
-  const [provider, setProvider] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("");
   const [size, setSize] = useState("");
   const [promptAssistAction, setPromptAssistAction] = useState<PromptAssistAction | null>(null);
   const [promptAssistLoading, setPromptAssistLoading] = useState<PromptAssistAction | null>(null);
@@ -78,7 +80,7 @@ export function ImageGenerationConfirmDialog({
       setNegativePrompt(preview.negativePrompt ?? "");
       setOptimizationInstruction("");
       setIncludedReferenceImageUrls(preview.referenceImages.map((ref) => ref.url));
-      setProvider(preview.provider);
+      setSelectedProvider("");
       setSize(preview.size);
       setPromptAssistAction(null);
       setPromptAssistLoading(null);
@@ -87,22 +89,8 @@ export function ImageGenerationConfirmDialog({
     }
   }, [preview]);
 
-  // 可用 provider 列表（图像生成 + 已配置）
-  const { data: providerOptions = [] } = useQuery({
-    queryKey: ["settings", "api-keys"],
-    queryFn: getAPIKeySettings,
-    select: (res) =>
-      (res.data ?? [])
-        .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
-  });
-
-  // 当前 provider 不在可用列表里时，临时追加为选项（不丢失数据）
-  const providerChoices = useMemo(() => {
-    if (!provider) return providerOptions;
-    if (providerOptions.some((p) => p.value === provider)) return providerOptions;
-    return [...providerOptions, { value: provider, label: provider }];
-  }, [provider, providerOptions]);
+  const providerChoices = useImageProviders(open);
+  const provider = selectImageProvider(providerChoices, selectedProvider || preferredProvider);
 
   // size 也保证当前值在列表里
   const sizeChoices = useMemo(() => {
@@ -113,7 +101,7 @@ export function ImageGenerationConfirmDialog({
 
   const promptDirty = preview ? prompt.trim() !== preview.prompt.trim() : false;
   const negativePromptDirty = preview ? negativePrompt.trim() !== (preview.negativePrompt ?? "").trim() : false;
-  const providerDirty = preview ? provider !== preview.provider : false;
+  const providerDirty = Boolean(selectedProvider && provider !== selectImageProvider(providerChoices, preferredProvider));
   const sizeDirty = preview ? size !== preview.size : false;
   const referenceImages = useMemo(
     () => preview?.referenceImages.filter((ref) => includedReferenceImageUrls.includes(ref.url)) ?? [],
@@ -129,11 +117,11 @@ export function ImageGenerationConfirmDialog({
   const anyDirty = promptDirty || negativePromptDirty || providerDirty || sizeDirty || referenceDirty;
 
   const handleConfirm = () => {
-    if (!preview) return;
+    if (!preview || !provider) return;
     onConfirm({
       promptOverride: promptDirty ? prompt.trim() : undefined,
       negativePromptOverride: negativePromptDirty ? negativePrompt.trim() : undefined,
-      providerOverride: providerDirty ? provider : undefined,
+      providerOverride: provider,
       sizeOverride: sizeDirty ? size : undefined,
       excludedReferenceImageUrls: referenceDirty ? excludedReferenceImageUrls : undefined,
     });
@@ -190,7 +178,7 @@ export function ImageGenerationConfirmDialog({
         <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={submitting}>
           取消
         </Button>
-        <Button type="button" size="sm" onClick={handleConfirm} disabled={submitting || !prompt.trim()}>
+        <Button type="button" size="sm" onClick={handleConfirm} disabled={submitting || !provider || !prompt.trim()}>
           {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
           {submitting ? "生成中..." : "开始生图"}
         </Button>
@@ -471,7 +459,7 @@ export function ImageGenerationConfirmDialog({
                   className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                   value={provider}
                   onChange={(e) => {
-                    setProvider(e.target.value);
+                    setSelectedProvider(e.target.value);
                     clearPromptAssistResult();
                   }}
                   disabled={submitting || !!promptAssistLoading}
@@ -480,7 +468,7 @@ export function ImageGenerationConfirmDialog({
                     <option value="">无可用图片服务，请先在系统设置配置</option>
                   ) : (
                     providerChoices.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
+                      <option key={p.provider} value={p.provider}>{p.displayName ?? p.name}</option>
                     ))
                   )}
                 </SelectControl>

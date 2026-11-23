@@ -30,7 +30,8 @@ import { CharactersPanel } from "@/pages/comic/project/CharactersPanel";
 import { ScenesPanel } from "@/pages/comic/project/ScenesPanel";
 import { EpisodeListPanel } from "@/pages/comic/project/EpisodeListPanel";
 import { PanelsGridPanel } from "@/pages/comic/project/PanelsGridPanel";
-import { getAPIKeySettings } from "@/api/settings";
+import { useImageProviders } from "@/components/image/useImageProviders";
+import { selectImageProvider } from "@/components/image/imageProviderSelection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -135,19 +136,8 @@ export default function ComicProjectPage() {
   const tab = route.get("tab") ?? "outline";
   const directory = useDirectorySelection("itemId", episodes);
   const selectedEpisodeId = directory.host ? episodes.find(ep => ep.id === directory.selection)?.id ?? null : undefined;
-  const { data: providerOptions = [] } = useQuery({
-    queryKey: ["settings", "api-keys"],
-    queryFn: getAPIKeySettings,
-    select: (res) =>
-      (res.data ?? [])
-        .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
-  });
-  // 缓存的 provider 仍存在于可用列表才用，否则回退到第一个（避免引用已失效的 provider 配置）
-  const resolvedProvider =
-    (selectedProvider && providerOptions.some((p) => p.value === selectedProvider))
-      ? selectedProvider
-      : providerOptions[0]?.value || "";
+  const providerOptions = useImageProviders();
+  const resolvedProvider = selectImageProvider(providerOptions, selectedProvider);
 
   const presetMut = useMutation({
     mutationFn: (payload: Parameters<typeof updateComicPreset>[1]) => updateComicPreset(id!, payload),
@@ -366,7 +356,7 @@ export default function ComicProjectPage() {
                 onChange={(e) => handleProviderChange(e.target.value)}
               >
                 {providerOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option key={opt.provider} value={opt.provider}>{opt.displayName ?? opt.name}</option>
                 ))}
               </SelectControl>
             )}

@@ -171,7 +171,7 @@ function SceneDetail({
 
   return (
     <>
-      <ImageGenerationConfirmDialog {...flow.dialogProps} />
+      <ImageGenerationConfirmDialog {...flow.dialogProps} preferredProvider={provider} />
       <section className="min-w-0 overflow-hidden rounded-lg border bg-background">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
         <div className="min-w-0 flex-1 space-y-2">

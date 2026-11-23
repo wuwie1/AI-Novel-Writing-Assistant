@@ -1,6 +1,5 @@
 import { EntityDirectory, useDirectorySelection, useDocumentGuard } from "@/platform";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Download, ImageIcon, Loader2, Mic2, Save, UserRound, Video } from "lucide-react";
 import type {
   DramaCharacter,
@@ -12,7 +11,8 @@ import {
   generateDramaCharacterPortrait,
   prepareDramaCharacterSheet,
 } from "@/api/drama";
-import { getAPIKeySettings } from "@/api/settings";
+import { useImageProviders } from "@/components/image/useImageProviders";
+import { selectImageProvider } from "@/components/image/imageProviderSelection";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Badge } from "@/components/ui/badge";
@@ -103,28 +103,11 @@ function CharacterImagesBlock(props: {
     parsePortrait(props.character.portraitData),
   );
   const [busy, setBusy] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState("");
+  const [preferredProvider, setSelectedProvider] = useState("");
   const imageFlow = useImageGenerationFlow();
 
-  const apiKeyQuery = useQuery({
-    queryKey: ["api-key-settings"],
-    queryFn: getAPIKeySettings,
-    staleTime: 60_000,
-  });
-
-  const imageProviders = useMemo(
-    () =>
-      (apiKeyQuery.data?.data ?? []).filter(
-        (item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel,
-      ),
-    [apiKeyQuery.data?.data],
-  );
-
-  useEffect(() => {
-    if (imageProviders.length > 0 && !selectedProvider) {
-      setSelectedProvider(imageProviders[0]!.provider);
-    }
-  }, [imageProviders, selectedProvider]);
+  const imageProviders = useImageProviders();
+  const selectedProvider = selectImageProvider(imageProviders, preferredProvider);
 
   useEffect(() => {
     setSheet(parsePortrait(props.character.portraitData));
@@ -168,7 +151,7 @@ function CharacterImagesBlock(props: {
 
   return (
     <div className="space-y-3 border-t pt-3">
-      <ImageGenerationConfirmDialog {...imageFlow.dialogProps} />
+      <ImageGenerationConfirmDialog {...imageFlow.dialogProps} preferredProvider={selectedProvider} />
       {/* 标题行 + Provider 选择器 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
