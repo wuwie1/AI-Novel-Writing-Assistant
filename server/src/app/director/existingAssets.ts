@@ -1,5 +1,5 @@
 import {prisma} from "../../db/prisma";
-import {isSavedVolumeChapterListComplete, type ExistingNovelAsset, type RunContract} from "../../modules/director";
+import {isSavedVolumeChapterListComplete, savedExecutionContract, type ExistingNovelAsset, type RunContract} from "../../modules/director";
 import {normalizeVolumeWorkspaceDocument} from "../../services/novel/volume/volumeWorkspaceDocument";
 import {isDecompositionComplete} from "../../services/novel/storyMacro/storyMacroPlanUtils";
 import {StoryMacroPlanService} from "../../services/novel/storyMacro/StoryMacroPlanService";
@@ -78,8 +78,7 @@ export async function readExistingAssets(contract: RunContract): Promise<Existin
         if (saved.length === planned.length && saved.every((item, i) => item.order === planned[i].chapterOrder
           && (!planned[i].chapterId || item.id === planned[i].chapterId)
           && contractFields.every(key => (item[key] ?? null) === (planned[i][key] ?? null)))) {
-          add("chapter_execution_contract", saved.map(({ id, order, taskSheet, sceneCards, targetWordCount, mustAvoid, conflictLevel, revealLevel }) =>
-            ({ id, order, taskSheet, sceneCards, targetWordCount, mustAvoid, conflictLevel, revealLevel })));
+          add("chapter_execution_contract", saved.map(savedExecutionContract));
         }
       }
     }

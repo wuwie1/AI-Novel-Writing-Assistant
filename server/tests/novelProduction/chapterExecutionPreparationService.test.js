@@ -118,3 +118,39 @@ test('selected director ranges reconcile their chapter contracts without extendi
   assert.equal(calls[0].prepareRouteWindow, false);
   assert.equal(result.mode, 'director_execution');
 });
+
+test('old takeover receipts verify the exact batch, with every execution field and chapter identity', async () => {
+  const {artifactContentHash} = require("../../dist/modules/director");
+  const chapters = [1, 2, 3].map(order => ({
+    id: "c" + order, order, taskSheet: "调查" + order, sceneCards: "取证" + order,
+    targetWordCount: 2600, mustAvoid: null, conflictLevel: order, revealLevel: null,
+  }));
+  // Recreate the historical writer's wire shape independently of the current serializer.
+  const receipt = {version: 1, status: "confirmed", contentRef: "chapter_execution_contract:n",
+    contentHash: artifactContentHash(chapters)};
+  const run = {novelId: "n", scope: "chapters:1-3", chapterRange: {from: 1, to: 3}};
+  const db = {
+    directorNextRun: {findFirst: async () => ({contractJson: JSON.stringify(run)})},
+    directorNextArtifact: {findFirst: async () => receipt},
+    chapter: {findMany: async () => chapters},
+    volumeChapterPlan: {findMany: async () => []},
+    $transaction: callback => callback(db),
+  };
+  const verify = chapterId => hasConfirmedExecutionContract(db, "n", "run", chapterId);
+  assert.equal(await verify("c2"), true);
+  await assert.rejects(() => verify("outside"), /与确认稿不符/);
+  for (const [field, changed] of Object.entries({
+    id: "other", taskSheet: "改任务", sceneCards: "改场景", targetWordCount: 2400,
+    mustAvoid: "新增限制", conflictLevel: 5, revealLevel: 1,
+  })) {
+    const previous = chapters[2][field];
+    chapters[2][field] = changed;
+    await assert.rejects(() => verify("c1"), /与确认稿不符/, field);
+    chapters[2][field] = previous;
+  }
+  receipt.contentRef = "chapter_execution_contract:n:chapters:1-3:1-3";
+  await assert.rejects(() => verify("c2"), /与确认稿不符/);
+  receipt.contentRef = "chapter_execution_contract:n";
+  receipt.status = "user_edited";
+  await assert.rejects(() => verify("c2"), /与确认稿不符/);
+});

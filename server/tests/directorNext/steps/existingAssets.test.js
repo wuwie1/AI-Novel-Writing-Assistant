@@ -61,3 +61,37 @@ test('a cleared chapter supersedes old protected completion facts and reaches wr
   assert.equal(old[0].status,'user_edited');
  }finally{methods.forEach(([owner,key],i)=>{owner[key]=originals[i];});}
 });
+
+test('takeover and writer verification share a receipt for all saved chapters in the range', async (t) => {
+  const {artifactContentHash, savedExecutionContract, verifyConfirmedExecutionContract} = require('../../../dist/modules/director');
+  const chapters = [1, 2, 3].map(order => ({
+    id: 'c' + order, order, taskSheet: '取证' + order, sceneCards: '核对' + order,
+    targetWordCount: 2400, conflictLevel: order, revealLevel: null, mustAvoid: '勿提前揭示', content: '',
+  }));
+  const planned = chapters.map(({id, order, ...fields}) => ({
+    ...fields, id: 'p' + order, chapterId: id, chapterOrder: order, title: '章节' + order, summary: '逐份取证',
+  }));
+  const version = {volumes: [{id: 'v', sortOrder: 1, title: '首卷', chapters: planned}]};
+  // Prisma delegates expose their methods through a proxy.
+  const mockMethod = (owner, key, implementation) => {
+    const original = owner[key];
+    owner[key] = implementation;
+    t.after(() => { owner[key] = original; });
+  };
+  mockMethod(prisma.novel, 'findUniqueOrThrow', async () => ({worldId: null}));
+  mockMethod(prisma.bookContract, 'findUnique', async () => null);
+  mockMethod(prisma.character, 'findMany', async () => []);
+  mockMethod(prisma.volumePlanVersion, 'findFirst', async () => ({id: 'version', contentJson: JSON.stringify(version)}));
+  mockMethod(prisma.chapter, 'findMany', async () => chapters);
+  mockMethod(StoryMacroPlanService.prototype, 'getPlan', async () => null);
+  const run = {...contract, scope: 'chapters:1-3', chapterRange: {from: 1, to: 3},
+    launchInput: {...contract.launchInput, targetVolumeId: 'v'}};
+  const receipts = await inferExistingAssets(run, {read: readExistingAssets, contentHash: artifactContentHash});
+  const receipt = receipts.find(item => item.type === 'chapter_execution_contract');
+  assert.equal(receipt?.status, 'confirmed');
+  assert.equal(receipt.contentHash, artifactContentHash(chapters.map(savedExecutionContract)));
+  const db = {chapter: prisma.chapter,
+    directorNextRun: {findFirst: async () => ({contractJson: JSON.stringify(run)})},
+    directorNextArtifact: {findFirst: async () => receipt}};
+  assert.equal(await verifyConfirmedExecutionContract(() => false, db, run.novelId, run.runId, 'c2'), true);
+});

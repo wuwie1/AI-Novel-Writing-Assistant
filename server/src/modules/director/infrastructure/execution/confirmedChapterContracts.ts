@@ -4,7 +4,20 @@ import { artifactContentHash } from "../artifactContentHash";
 
 type Database = Pick<PrismaClient, "directorNextRun" | "directorNextArtifact" | "chapter" | "$transaction">;
 
-type ContractText = Pick<ReturnType<typeof savedExecutionContract>, "taskSheet" | "sceneCards">;
+type SavedContract = ReturnType<typeof savedExecutionContract>;
+type ContractText = Pick<SavedContract, "taskSheet" | "sceneCards">;
+type Approval = {status: string; contentRef: string; contentHash: string | null};
+
+function matchesBatchApproval(novelId: string, saved: SavedContract[], approval: Approval) {
+  if (artifactContentHash(saved) === approval.contentHash) return true;
+  // Existing-book takeover used Chapter field names and a different key order in its original receipts.
+  if (approval.status !== "confirmed" || approval.contentRef !== `chapter_execution_contract:${novelId}`) return false;
+  const takeoverBatch = saved.map(row => ({
+    id: row.chapterId, order: row.chapterOrder, taskSheet: row.taskSheet, sceneCards: row.sceneCards,
+    targetWordCount: row.targetWordCount, mustAvoid: row.mustAvoid, conflictLevel: row.conflictLevel, revealLevel: row.revealLevel,
+  }));
+  return artifactContentHash(takeoverBatch) === approval.contentHash;
+}
 
 export async function readExecutionContracts(db: Pick<Database, "chapter">, contract: RunContract) {
   const range = contract.chapterRange;
@@ -36,14 +49,14 @@ export async function verifyConfirmedExecutionContract(
   const contract = JSON.parse(run.contractJson) as RunContract;
   const selectApproval = {
     where: {novelId, scope: contract.scope, type: "chapter_execution_contract"},
-    orderBy: {version: "desc" as const}, select: {status: true, contentHash: true, version: true},
+    orderBy: {version: "desc" as const}, select: {status: true, contentRef: true, contentHash: true, version: true},
   };
   const approval = await db.directorNextArtifact.findFirst(selectApproval);
   if (!approval || !["confirmed", "user_edited"].includes(approval.status)) return false;
   const saved = await readExecutionContracts(db, contract);
   const mismatch = () => new Error("本批章节任务或场景与确认稿不符，请返回导演台重新核对。");
   if (!saved.some(row => row.chapterId === chapterId)) throw mismatch();
-  if (artifactContentHash(saved) === approval.contentHash) return true;
+  if (matchesBatchApproval(novelId, saved, approval)) return true;
   if (approval.status === "user_edited") {
     // Earlier edit receipts recorded only the first chapter. A multi-chapter receipt still
     // needs its preceding whole-batch sync as evidence for the other chapters.
@@ -54,7 +67,7 @@ export async function verifyConfirmedExecutionContract(
       if (saved.length === 1) return true;
       const prior = await db.directorNextArtifact.findFirst({...selectApproval,
         where: {...selectApproval.where, version: {lt: approval.version}}});
-      if (prior?.contentHash === artifactContentHash(saved)) return true;
+      if (prior && matchesBatchApproval(novelId, saved, prior)) return true;
     }
   }
 
@@ -62,7 +75,7 @@ export async function verifyConfirmedExecutionContract(
   // projection from the author-approved source. Any unrelated edit aborts the entire transaction.
   await db.$transaction(async tx => {
     const active = await tx.directorNextArtifact.findFirst(selectApproval);
-    if (active?.version !== approval.version || active?.status !== approval.status || active?.contentHash !== approval.contentHash) throw mismatch();
+    if (active?.version !== approval.version || active?.status !== approval.status || active?.contentHash !== approval.contentHash || active.contentRef !== approval.contentRef) throw mismatch();
     const current = await readExecutionContracts(tx, contract);
     const source = await tx.volumeChapterPlan.findMany({where: {volume: {novelId},
       chapterId: {in: current.map(row => row.chapterId)}}, select: {chapterId: true, taskSheet: true, sceneCards: true}});
@@ -72,7 +85,7 @@ export async function verifyConfirmedExecutionContract(
       if (!plan) throw mismatch();
       return {...row, taskSheet: plan.taskSheet, sceneCards: plan.sceneCards};
     });
-    if (source.length !== current.length || artifactContentHash(approved) !== approval.contentHash) throw mismatch();
+    if (source.length !== current.length || !matchesBatchApproval(novelId, approved, approval)) throw mismatch();
     for (const [i, row] of current.entries()) {
       const target = approved[i];
       if (row.taskSheet === target.taskSheet && row.sceneCards === target.sceneCards) continue;
