@@ -15,6 +15,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
   { key: "manuscript.chapter.diagnose@v2", load: () => require("../prompts/manuscript/manuscript.prompts").manuscriptDiagnosePrompt as UnknownPromptAsset },
   { key: "outline.volume_review@v1", load: () => require("../prompts/outline/volumeReview.prompt").outlineVolumeReviewPrompt as UnknownPromptAsset },
   { key: "novel.director.cast_dialogue@v1", load: () => require("../prompts/novel/character/castReviewDialogue.prompt").castReviewDialoguePrompt as UnknownPromptAsset },
+  { key: "novel.director.character_profile_dialogue@v1", load: () => require("../prompts/novel/character/characterProfileDialogue.prompt").characterProfileDialoguePrompt as UnknownPromptAsset },
   { key: "novel.director.final_inspection@v1", load: () => require("../prompts/novel/finalReview/inspection.prompt").finalInspectionPrompt as UnknownPromptAsset },
   { key: "novel.volume.summary_emphasis@v1", load: () => require("../prompts/novel/volume/summaryEmphasis.prompt").volumeSummaryEmphasisPrompt as UnknownPromptAsset },
   { key: "novel.director.prose_dialogue@v1", load: () => require("../prompts/novel/proseReview/dialogue.prompt").proseReviewDialoguePrompt as UnknownPromptAsset },

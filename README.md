@@ -44,6 +44,8 @@
   <a href="https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/issues">问题反馈</a>
 </p>
 
+<p align="center"><sub>This project is tested with BrowserStack.</sub></p>
+
 ---
 
 你只需要先有一个想法。这个工作台会帮你把方向、人物、世界和章节接起来，在创作过程中保留正文、设定与进度。长篇由自动导演持续推进，短篇走独立的完整成稿流程。它面向第一次写小说的人，也为需要维护长期资料、研究 AI 创作流程的作者与开发者提供更细的工具。
@@ -54,13 +56,23 @@
 
 ## 最新更新
 
-### 2026-11-24
+### 2026-11-25
+
+#### 新增
+
+- 在导演 V2 的角色详情中，可打开「与 AI 编辑角色资料」，逐项采纳性格、经历或外貌建议，再保存角色档案。
+
+#### 优化
+
+- 角色改名时可在保存前核对新旧姓名和影响范围。关闭查看或编辑窗口后，会回到刚才选择的角色。
+- 在 AI 实况中，可按用途区分全书主线、创作约定、世界设定、伏笔更新和世界片段。
+- 写章时，AI 可参考写法档案中的文笔样例，正文检查会提示沿用样例原句或专名的地方。
 
 #### 修复
 
-- 导演 V2 续写已有章节时会正确识别已确认的任务和场景。此前因“与确认稿不符”暂停的批次，内容一致时可从保存进度继续。
+- 开书时只有系统生成的占位卷，也可修改角色姓名。
 
-[Mac 源码启动说明](./desktop_mac/README.md) · [查看完整更新历史](docs/releases/release-notes.md) · [查看已发布的桌面安装包](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest)
+[Mac 源码启动说明](./desktop_mac/README.md) · [查看完整更新历史](docs/releases/release-notes.md) · [角色功能开发计划](docs/plans/character-system-upgrade-plan.md) · [查看已发布的桌面安装包](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest)
 
 正式桌面版以 GitHub Release 的 **v0.8.12** 发布页为准。五平台安装包齐备前，可从上方下载入口获取最近已发布的版本。历史版本中，`v0.8.4` 缺 Windows 包，`v0.8.3` 无安装包，`v0.8.2` 的标签也不对应可下载版本。
 
@@ -484,10 +496,10 @@ V2 内核位于 `server/src/modules/director/`，业务能力由应用层接入�
 
 ## License
 
-本项目采用双许可证授权模式：
+本项目默认基于 [GNU AGPL-3.0-only](./LICENSE) 授权，附加条款（署名、修改版标识、商标）见 [NOTICE](./NOTICE)。
 
-- 默认基于 GNU Affero General Public License v3.0（AGPLv3）授权，详见 [LICENSE](./LICENSE)；归属与附加说明见 [NOTICE](./NOTICE)。
-- 服务型商用：将本项目或其修改版本作为后端，以 SaaS、托管等形式向第三方提供服务，须通过作者获取商业授权许可。
+- 遵守 AGPL-3.0 即可免费使用，包括商用。以网络服务形式提供修改版时，须向用户公开修改后的源码，并保留 NOTICE 要求的署名。
+- 无法或不希望遵守上述义务的，可申请商业授权，详见 [COMMERCIAL.md](./COMMERCIAL.md)。
 - 新贡献默认按 [CLA.md](./CLA.md) 提交，可随项目按 AGPL-3.0-only 分发，也可纳入维护者另行提供的商业授权。
 
 [贡献与授权说明](./CONTRIBUTING.md)
