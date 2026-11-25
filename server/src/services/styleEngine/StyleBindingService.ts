@@ -10,6 +10,7 @@ import {
   mergeRuleObjects,
 } from "./helpers";
 import { sanitizeStyleContextForGeneration } from "./styleGenerationSanitizer";
+import { collectStyleSourceEntities, resolveWriterStyleExemplars } from "./exemplars";
 
 const TARGET_PRIORITY: Record<StyleBinding["targetType"], number> = {
   novel: 1,
@@ -339,8 +340,11 @@ export class StyleBindingService {
       styleAntiAiRuleIds: styleSpecificRules.map((rule) => rule.id),
     });
 
+    const rankedBindings = sortMatchedBindings(matchedBindings);
     return sanitizeStyleContextForGeneration({
-      matchedBindings: sortMatchedBindings(matchedBindings),
+      matchedBindings: rankedBindings,
+      exemplars: resolveWriterStyleExemplars(rankedBindings),
+      sourceEntities: collectStyleSourceEntities(rankedBindings),
       compiledBlocks,
       effectiveStyleProfileId: effectiveBinding?.styleProfileId ?? null,
       taskStyleProfileId: input.taskStyleProfileId?.trim() || null,

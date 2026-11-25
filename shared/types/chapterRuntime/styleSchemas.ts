@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runtimeStyleExemplarSchema } from "../styleEngine/exemplars.js";
 
 const styleBindingTargetTypeSchema = z.enum(["novel", "chapter", "task"]);
 const styleContractSectionKeySchema = z.enum(["narrative", "character", "language", "rhythm", "antiAi", "selfCheck"]);
@@ -94,6 +95,8 @@ export const runtimeStyleContextSchema = z.object({
     sanitizedAt: z.string(),
     strategy: z.enum(["deterministic", "llm"]),
   }).nullable().optional(),
+  exemplars: z.array(runtimeStyleExemplarSchema).optional(),
+  sourceEntities: z.array(z.string()).optional(),
 });
 
 export type RuntimeStyleContractSection = z.infer<typeof runtimeStyleContractSectionSchema>;

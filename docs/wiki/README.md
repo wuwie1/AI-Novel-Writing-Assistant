@@ -54,6 +54,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [Prompt Registry 与结构化输出](./prompts/prompt-registry-and-structured-output.md)
 - [结构化 AI 决策与确定性归一化边界](./prompts/structured-decision-authority.md)
 - [平台写法配置与正文 Prompt 可编辑合同](./prompts/platform-writing-profiles.md)
+- [文笔样例与本书停顿标点约定](./prompts/style-exemplars-and-pause-punctuation.md)
 
 ### RAG
 

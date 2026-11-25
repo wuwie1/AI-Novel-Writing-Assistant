@@ -1,4 +1,6 @@
 import type { LLMProvider } from "./llm";
+import type { PausePunctuationPolicy } from "./chapterProseContract";
+import type { RuntimeStyleExemplar, StyleExemplarSet } from "./styleEngine/exemplars.js";
 
 export type StyleSourceType =
   | "manual"
@@ -41,6 +43,8 @@ export interface LanguageRules {
   allowSwearing?: boolean | null;
   sentenceVariation?: string | null;
   allowUselessDetails?: boolean | null;
+  /** "natural" lets this book use ellipses and dashes in speech and thought; omitted means avoid. */
+  pausePunctuation?: PausePunctuationPolicy | null;
   summary?: string | null;
   [key: string]: unknown;
 }
@@ -268,6 +272,8 @@ export interface StyleProfile {
   languageRules: LanguageRules;
   rhythmRules: RhythmRules;
   antiAiRules: AntiAiRule[];
+  /** Reference passages that calibrate reading feel; rules alone cannot carry rhythm. */
+  styleExemplars: StyleExemplarSet;
   createdAt: string;
   updatedAt: string;
 }
@@ -545,6 +551,19 @@ export interface CompiledStylePromptBlocks {
   appliedRuleIds: string[];
 }
 
+export {
+  EMPTY_STYLE_EXEMPLAR_SET,
+  STYLE_EXEMPLAR_MAX_COUNT,
+  STYLE_EXEMPLAR_MAX_TEXT_LENGTH,
+  STYLE_EXEMPLAR_MIN_TEXT_LENGTH,
+  STYLE_EXEMPLAR_OVERLAP_MIN_CHARS,
+  WRITER_STYLE_EXEMPLAR_CHAR_BUDGET,
+  parseStyleExemplarSet,
+  runtimeStyleExemplarSchema,
+  styleExemplarSchema,
+  styleExemplarSetSchema,
+} from "./styleEngine/exemplars.js";
+export type { RuntimeStyleExemplar, StyleExemplar, StyleExemplarSet } from "./styleEngine/exemplars.js";
 export { styleRiskLayerSchema, styleRewriteGuardSchema, isStyleIssueRewritable } from "./styleEngine/diagnostics.js";
 export type { StyleRiskLayer, StyleRewriteGuard, StyleRewriteBaseline } from "./styleEngine/diagnostics.js";
 export { styleSignalPolicySchema, styleSignalScanSchema, createStyleSignalPolicy } from "./styleEngine/signals.js";
@@ -609,6 +628,10 @@ export interface ResolvedStyleContext {
   globalAntiAiRuleIds: string[];
   styleAntiAiRuleIds: string[];
   sanitizedGenerationProfile?: StyleSanitizedGenerationProfile | null;
+  /** Exemplars of the most specific bound profile that has any, masked and trimmed to the writer budget. */
+  exemplars?: RuntimeStyleExemplar[];
+  /** Names the bound profiles registered for their source works. They must not appear in new prose. */
+  sourceEntities?: string[];
 }
 
 export interface StyleSanitizedGenerationProfile {

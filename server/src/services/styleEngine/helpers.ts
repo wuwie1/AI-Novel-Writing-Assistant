@@ -9,6 +9,7 @@ import {
   type StyleTemplate,
   type StyleRuleSet,
 } from "@ai-novel/shared/types/styleEngine";
+import { parseStoredStyleExemplars } from "./exemplars";
 
 export function parseJsonObject<T extends Record<string, unknown>>(value?: string | null, fallback?: T): T {
   if (!value) {
@@ -238,6 +239,7 @@ export function mapStyleProfileRow(row: {
   characterRulesJson: string | null;
   languageRulesJson: string | null;
   rhythmRulesJson: string | null;
+  styleExemplarsJson?: string | null;
   antiAiBindings?: Array<{
     antiAiRule: {
       id: string;
@@ -288,6 +290,7 @@ export function mapStyleProfileRow(row: {
     languageRules: derived.ruleSet.languageRules,
     rhythmRules: derived.ruleSet.rhythmRules,
     antiAiRules: (row.antiAiBindings ?? []).map((binding) => mapAntiAiRuleRow(binding.antiAiRule)),
+    styleExemplars: parseStoredStyleExemplars(row.styleExemplarsJson),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

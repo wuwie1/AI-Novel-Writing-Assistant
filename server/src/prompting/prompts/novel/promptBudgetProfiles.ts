@@ -16,7 +16,10 @@ export const NOVEL_PROMPT_BUDGETS = {
   volumeChapterList: 1600,
   volumeChapterDetail: 1600,
   volumeRebalance: 1600,
-  chapterWriter: 2600,
+  // Budget units are characters / 4. Required writer blocks alone measured 2,900-3,900 on a
+  // live book, so 2,600 dropped every optional block; 4,200 keeps the required set, the style
+  // exemplars (at most 900) and the highest-priority optional blocks.
+  chapterWriter: 4200,
   chapterAcceptance: 1200,
   chapterArtifactDelta: 2600,
   chapterEditorWorkspaceDiagnosis: 1400,

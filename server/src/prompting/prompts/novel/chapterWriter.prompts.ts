@@ -2,7 +2,10 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { PromptAsset } from "../../core/promptTypes";
 import {renderCacheContextSections} from "../../core/cache";
 import { NOVEL_PROMPT_BUDGETS } from "./promptBudgetProfiles";
-import { CHAPTER_PROSE_QUALITY_RULES } from "@ai-novel/shared/types/chapterProseContract";
+import {
+  CHAPTER_PROSE_QUALITY_RULES,
+  CHAPTER_STYLE_CONTRACT_PRECEDENCE_RULE,
+} from "@ai-novel/shared/types/chapterProseContract";
 
 export interface ChapterWriterPromptInput {
   novelTitle: string;
@@ -22,7 +25,7 @@ export interface ChapterWriterPromptInput {
 
 export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, string> = {
   id: "novel.chapter.writer",
-  version: "v11",
+  version: "v12",
   cacheBoundary: {messageIndex:0,contentBlockIndex:0},
   taskType: "writer",
   mode: "text",
@@ -70,6 +73,7 @@ export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, 
     { group: "recent_chapters", priority: 86 },
     { group: "opening_constraints", priority: 80 },
     { group: "style_contract", required: true, priority: 74 },
+    { group: "style_exemplars", priority: 73 },
     { group: "continuation_constraints", priority: 72 },
     { group: "rag_context", priority: 60 },
   ],
@@ -285,6 +289,8 @@ export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, 
         "",
         "【风格与续写约束】",
         "如果存在 style contract 或 continuation constraints，必须优先满足，视为强约束。",
+        CHAPTER_STYLE_CONTRACT_PRECEDENCE_RULE + "下面的反模式替换同样让位。",
+        "如果写作上下文带有文笔样例（style_exemplars），正文的句段长短、对白比例、心理活动的口吻和信息交代的快慢向样例靠拢；只学读感，不搬样例的句子、专名和情节。",
         "",
         "【禁止事项】",
         "禁止引入未铺垫的重大转折。",
@@ -302,7 +308,7 @@ export const chapterWriterPrompt: PromptAsset<ChapterWriterPromptInput, string, 
         "",
         "【输出前自查】",
         "在生成正文前，先内部确认以下三点：",
-        "(1) 结尾是否形成了新的悬念或钩子？",
+        "(1) 结尾是否符合【结构要求】第 4 条的章末要求？",
         "(2) obligation contract 的所有必达项是否已在正文中可见兑现？",
         "(3) 是否违反了任何禁止规则（新角色、场景模式重复、未铺垫转折）？",
         "(4) 读者是否实际获得了 promisedReward，并能看见 keyTurn、netChange 和旧钩子承接？",

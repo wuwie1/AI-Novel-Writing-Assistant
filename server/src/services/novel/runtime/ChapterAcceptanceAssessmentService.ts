@@ -20,7 +20,7 @@ import {
 } from "../../../prompting/prompts/novel/chapterAcceptance.prompts";
 import { openConflictService } from "../../state/OpenConflictService";
 import { normalizeScore } from "../novelP0Utils";
-import { detectProseQuality } from "./proseQuality/ProseQualityDetector";
+import { detectProseQuality, resolveProseQualityOptions } from "./proseQuality/ProseQualityDetector";
 import { buildAcceptanceCacheIdentity, isAcceptanceStyleReviewEnabled, applyAcceptanceStyleContext, buildAcceptanceStyleReport,
   getAcceptanceStyleRuleIds, applyAcceptanceStyleRepairPolicy, buildAcceptanceStyleSignals, getAcceptanceNarrativePov, describeAcceptanceFailure,
   currentChapterReviewRetryBudget, createTransientChapterReviewRetryBudget, ReviewRetryPersistenceError } from "./acceptance";
@@ -278,7 +278,7 @@ export class ChapterAcceptanceAssessmentService {
     await retryBudget.recordResult(scope, !assessment.riskTags.some(tag => tag === "acceptance_gate_unavailable" || tag === "style_review_unavailable"));
     const styleReviewReport = buildAcceptanceStyleReport(input.contextPackage, assessment);
     const controlledAssessment = applyAcceptanceStyleRepairPolicy(input.contextPackage, assessment);
-    const proseQuality = detectProseQuality(input.content);
+    const proseQuality = detectProseQuality(input.content, resolveProseQualityOptions(input.contextPackage.styleContext));
     const proseIssues = proseQuality.findings.slice(0, 5).map((finding) => ({
       severity: finding.severity,
       category: "voice" as const,

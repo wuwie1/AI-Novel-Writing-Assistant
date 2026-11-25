@@ -18,6 +18,7 @@ import {
 import {
   buildProseQualityAuditReport,
   detectProseQuality,
+  resolveProseQualityOptions,
 } from "./proseQuality/ProseQualityDetector";
 import type { ChapterLifecycleService } from "./lifecycle";
 
@@ -107,7 +108,10 @@ export class ChapterContentFinalizationService {
       styleRewriteBaseline: input.styleRewriteBaseline,
     });
     await input.assertExecutionOwnership?.();
-    const proseQualityReport = detectProseQuality(finalContent);
+    const proseQualityReport = detectProseQuality(
+      finalContent,
+      resolveProseQualityOptions(input.contextPackage.styleContext),
+    );
     const proseQualityAuditReport = buildProseQualityAuditReport({
       novelId: input.novelId,
       chapterId: input.chapterId,

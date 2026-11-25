@@ -5,7 +5,10 @@ import { STYLE_DIAGNOSTIC_RULES, renderStyleSignalEvidence } from "../style/diag
 import type { PromptAsset } from "../../core/promptTypes";
 import {renderCacheContextSections} from "../../core/cache";
 import { NOVEL_PROMPT_BUDGETS } from "./promptBudgetProfiles";
-import { CHAPTER_PROSE_QUALITY_AUDIT_RULES } from "@ai-novel/shared/types/chapterProseContract";
+import {
+  CHAPTER_PROSE_QUALITY_AUDIT_RULES,
+  CHAPTER_STYLE_CONTRACT_PRECEDENCE_RULE,
+} from "@ai-novel/shared/types/chapterProseContract";
 import { repairVerificationSchema, buildRepairReviewChecklist, validateRepairReview, acceptanceStyleReviewSchema, acceptanceStyleReviewModelSchema, validateAcceptanceStyleReview, recoverAcceptanceStyleReview } from "./acceptance";
 export { ChapterRepairVerificationError } from "./acceptance";
 import { continuityCheckSchema, validateContinuityReview } from "./acceptance";
@@ -303,7 +306,7 @@ export const chapterAcceptanceAssessmentPrompt: PromptAsset<
   ChapterAcceptanceModelOutput
 > = {
   id: "novel.chapter.acceptance_assessment",
-  version: "v24",
+  version: "v25",
   cacheBoundary: {messageIndex:0,contentBlockIndex:0},
   taskType: "review",
   mode: "structured",
@@ -403,6 +406,7 @@ export const chapterAcceptanceAssessmentPrompt: PromptAsset<
       "正文退化检测边界：",
       "角色位置连续性：若上下文携带正文位置来源，逐角色核对最后确认位置与本章实际出场、移动经过、囚禁/伤势及合理时空衔接。视角切换不搬动未出场角色；回忆、梦境、计划和转述不当作当下出场，地点上下级细化不等于瞬移。明确位置冲突使用 continuity 问题并同时引用来源与当前原句，给出保留情节的现有局部修复指令；不能擅自新增逃脱场景或把局部错位升级为全局重规划。位置未知或没有出场本身不构成缺口。",
       ...CHAPTER_PROSE_QUALITY_AUDIT_RULES.map((rule, index) => `${index + 1}. ${rule}`),
+      `${CHAPTER_PROSE_QUALITY_AUDIT_RULES.length + 1}. ${CHAPTER_STYLE_CONTRACT_PRECEDENCE_RULE}写法合同允许自然使用停顿标点时，零散出现的省略号、破折号不记为问题，只在连续堆叠或明显过密时记录。`,
     ].join("\n")),
     new HumanMessage([
       `小说：${input.novelTitle}`,

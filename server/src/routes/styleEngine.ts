@@ -1,6 +1,7 @@
 import { styleRulePolicySchema, styleRulePolicyService } from "../services/styleEngine/policy/StyleRulePolicyService";
 import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
+import { styleExemplarSetSchema } from "@ai-novel/shared/types/styleEngine";
 import { z } from "zod";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { authMiddleware } from "../middleware/auth";
@@ -57,6 +58,7 @@ const manualProfileSchema = z.object({
   languageRules: z.record(z.string(), z.unknown()).optional(),
   rhythmRules: z.record(z.string(), z.unknown()).optional(),
   antiAiRuleIds: z.array(z.string().trim()).optional(),
+  styleExemplars: styleExemplarSetSchema.optional(),
 });
 
 const fromBookAnalysisSchema = z.object({

@@ -19,7 +19,7 @@ import {
 } from "./chapterEmptyContentError";
 import { runChapterRepairText } from "./repair/chapterRepairRuntime";
 import { shouldAttemptAutomaticRepair } from "./repair/ChapterRepairEligibility";
-import { detectNewSevereProseFindings } from "./proseQuality";
+import { detectNewSevereProseFindings, resolveProseQualityOptions } from "./proseQuality";
 import { ChapterPatchRepairFailedError } from "../chapterPatchRepairService";
 import {
   selectChapterRepairCandidate,
@@ -457,7 +457,11 @@ export async function runPipelineChapterWithRuntime(
     }
     // The issued repair still counts, but unchanged prose needs no paid re-acceptance.
     if (repairResult.content === content) break;
-    const newProseFindings = detectNewSevereProseFindings(content, repairResult.content);
+    const newProseFindings = detectNewSevereProseFindings(
+      content,
+      repairResult.content,
+      resolveProseQualityOptions(latestResult.runtimePackage.context.styleContext),
+    );
     if (newProseFindings.length > 0) {
       recoverableRepairFailure = {
         chapterId,

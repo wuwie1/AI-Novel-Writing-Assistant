@@ -2,10 +2,19 @@ import type {
   RuntimeAuditIssue,
   RuntimeAuditReport,
 } from "@ai-novel/shared/types/chapterRuntime";
+import {
+  resolvePausePunctuationPolicy,
+  type PausePunctuationPolicy,
+} from "@ai-novel/shared/types/chapterProseContract";
+import type { RuntimeStyleExemplar } from "@ai-novel/shared/types/styleEngine";
+import { contentOnly, findLeakedSourceEntities, findStyleExemplarOverlaps } from "../../../styleEngine/exemplars";
 
 export type ProseQualityIssueCode =
   | "prose_negative_flip"
   | "prose_dash_or_ellipsis"
+  | "prose_pause_punctuation_dense"
+  | "prose_exemplar_overlap"
+  | "prose_source_entity_leak"
   | "prose_period_stutter"
   | "prose_long_paragraph"
   | "prose_verbatim_repeat"
@@ -29,6 +38,14 @@ export interface ProseQualityReport {
   hasBlockingFindings: boolean;
 }
 
+/** Book-level expression choices the detector must respect. Omitted fields keep the general defaults. */
+export interface ProseQualityOptions {
+  pausePunctuation?: PausePunctuationPolicy;
+  styleExemplars?: Array<Pick<RuntimeStyleExemplar, "id" | "text">>;
+  /** Names registered for the source works of the bound style profiles. */
+  sourceEntities?: string[];
+}
+
 export interface ProseQualityAuditReportInput {
   novelId: string;
   chapterId: string;
@@ -47,12 +64,32 @@ const MAX_TOTAL_FINDINGS = 40;
 const TERMINAL_PUNCTUATION = /[。！？!?”"」』）)】》…]$/u;
 const NEGATIVE_FLIP_PATTERN = /(?:不是|并非|并不是|不算|不能说是|没有|不再是)[^。！？；;\n]{1,36}?[，,、]?\s*(?:而是|却是|反而是|更像是|只是)[^。！？；;\n]{1,36}/gu;
 const DASH_OR_ELLIPSIS_PATTERN = /——|—|--|……|…{2,}|\.{3,}/u;
+const PAUSE_MARK_PATTERN = /—+|-{2,}|…+|\.{3,}/gu;
+// A book that allows pause punctuation still should not lean on it: three marks in one
+// paragraph, or more than twelve per thousand characters across a chapter, reads as a tic.
+const PAUSE_MARKS_PER_PARAGRAPH_LIMIT = 3;
+const PAUSE_MARKS_PER_THOUSAND_LIMIT = 12;
+const PAUSE_MARKS_DENSITY_MIN_COUNT = 8;
 const AI_SELF_REFERENCE_PATTERN = /作为(?:一名|一个)?(?:AI|人工智能|语言模型)|我是(?:AI|人工智能|语言模型)|我无法(?:继续)?(?:创作|生成|提供|完成)|我不能(?:继续)?(?:创作|生成|提供|完成)|无法满足(?:该|这个)?请求|不能协助|as an AI|I (?:am|cannot|can't)[^。！？.!?\n]{0,40}AI/iu;
 const PLACEHOLDER_PATTERN = /TODO|TBD|待补充|此处省略|省略若干|略写|占位|PLACEHOLDER|\{\{[^}]{0,80}\}\}|\[[^\]]{0,40}待补[^\]]{0,40}\]/iu;
 const ENGINEERING_TERM_STRONG_PATTERN = /细纲|情节点|卷纲|功能标签|目标情绪|字数目标|章首钩子|章尾钩子|任务描述|任务单|scene\s*card|prompt|schema|runtime\s*package|上下文包|系统提示词|修复指令/iu;
 const ENGINEERING_TERM_SOFT_PATTERN = /本章|下一章|读者|伏笔|前文|后文|剧情推进|人物弧光|爽点|节奏点|钩子/u;
 
-export function detectProseQuality(content: string): ProseQualityReport {
+/** Reads the book's expression choices from the style context a chapter was generated with. */
+export function resolveProseQualityOptions(styleContext: {
+  compiledBlocks?: { mergedRules?: { languageRules?: Record<string, unknown> } } | null;
+  exemplars?: Array<Pick<RuntimeStyleExemplar, "id" | "text">>;
+  sourceEntities?: string[];
+} | null | undefined): ProseQualityOptions {
+  return {
+    pausePunctuation: resolvePausePunctuationPolicy(styleContext?.compiledBlocks?.mergedRules?.languageRules),
+    styleExemplars: styleContext?.exemplars ?? [],
+    sourceEntities: styleContext?.sourceEntities ?? [],
+  };
+}
+
+export function detectProseQuality(content: string, options: ProseQualityOptions = {}): ProseQualityReport {
+  const allowsPauseMarks = options.pausePunctuation === "natural";
   const segments = buildTextSegments(content);
   const findings: ProseQualityFinding[] = [];
   const counts = new Map<ProseQualityIssueCode, number>();
@@ -77,9 +114,14 @@ export function detectProseQuality(content: string): ProseQualityReport {
     findings.push(finding);
   };
 
+  // Reported first: acceptance forwards only the leading findings, and a source name in the
+  // book is the one defect here that no reader-facing judgement can excuse.
+  scanSourceEntityLeak(segments, options.sourceEntities ?? [], addFinding);
   for (const segment of segments) {
     scanNegativeFlip(segment, addFinding);
-    scanDashOrEllipsis(segment, addFinding);
+    if (!allowsPauseMarks) {
+      scanDashOrEllipsis(segment, addFinding);
+    }
     scanAiSelfReference(segment, addFinding);
     scanPlaceholderLeak(segment, addFinding);
     scanEngineeringTermLeak(segment, addFinding);
@@ -87,6 +129,10 @@ export function detectProseQuality(content: string): ProseQualityReport {
     scanLongParagraph(segment, addFinding);
   }
 
+  if (allowsPauseMarks) {
+    scanPausePunctuationDensity(segments, addFinding);
+  }
+  scanExemplarOverlap(content, segments, options.styleExemplars ?? [], addFinding);
   scanVerbatimRepeat(segments, addFinding);
   scanTruncation(content, segments, addFinding);
 
@@ -99,10 +145,14 @@ export function detectProseQuality(content: string): ProseQualityReport {
 }
 
 /** Only reject defects that the existing acceptance guard would newly classify as severe. */
-export function detectNewSevereProseFindings(original: string, candidate: string): ProseQualityFinding[] {
+export function detectNewSevereProseFindings(
+  original: string,
+  candidate: string,
+  options: ProseQualityOptions = {},
+): ProseQualityFinding[] {
   const isSevere = (finding: ProseQualityFinding) => finding.severity === "high" || finding.severity === "critical";
-  const originalCodes = new Set(detectProseQuality(original).findings.filter(isSevere).map(finding => finding.code));
-  return detectProseQuality(candidate).findings.filter(finding => isSevere(finding) && !originalCodes.has(finding.code));
+  const originalCodes = new Set(detectProseQuality(original, options).findings.filter(isSevere).map(finding => finding.code));
+  return detectProseQuality(candidate, options).findings.filter(finding => isSevere(finding) && !originalCodes.has(finding.code));
 }
 
 export function buildProseQualityAuditReport(
@@ -200,6 +250,95 @@ function scanDashOrEllipsis(
     excerpt: formatExcerpt(segment.text),
     fixSuggestion: "改写为自然的动作停顿、句读或人物反应，减少机械标点制造的情绪。",
   });
+}
+
+function scanPausePunctuationDensity(
+  segments: TextSegment[],
+  addFinding: (finding: ProseQualityFinding) => void,
+): void {
+  let totalMarks = 0;
+  let totalChars = 0;
+  for (const segment of segments) {
+    const marks = segment.text.match(PAUSE_MARK_PATTERN)?.length ?? 0;
+    totalMarks += marks;
+    totalChars += visibleLength(segment.text);
+    if (marks >= PAUSE_MARKS_PER_PARAGRAPH_LIMIT) {
+      addFinding({
+        code: "prose_pause_punctuation_dense",
+        severity: "medium",
+        line: segment.line,
+        column: 1,
+        message: "同一段里省略号、破折号连续出现，停顿靠标点堆出来。",
+        excerpt: formatExcerpt(segment.text),
+        fixSuggestion: "保留最要紧的一处停顿，其余改成动作、反应或直接把话说完。",
+      });
+    }
+  }
+  if (
+    totalMarks >= PAUSE_MARKS_DENSITY_MIN_COUNT
+    && totalChars > 0
+    && (totalMarks * 1000) / totalChars > PAUSE_MARKS_PER_THOUSAND_LIMIT
+  ) {
+    addFinding({
+      code: "prose_pause_punctuation_dense",
+      severity: "medium",
+      line: segments[0]?.line ?? 1,
+      column: 1,
+      message: `全章省略号、破折号共 ${totalMarks} 处，密度偏高，读起来像口头禅。`,
+      excerpt: `每千字约 ${Math.round((totalMarks * 1000) / totalChars)} 处`,
+      fixSuggestion: "只在迟疑、被打断或话没说完的地方保留，其余改回正常句读。",
+    });
+  }
+}
+
+function scanExemplarOverlap(
+  content: string,
+  segments: TextSegment[],
+  exemplars: Array<Pick<RuntimeStyleExemplar, "id" | "text">>,
+  addFinding: (finding: ProseQualityFinding) => void,
+): void {
+  if (exemplars.length === 0) {
+    return;
+  }
+  for (const overlap of findStyleExemplarOverlaps(content, exemplars)) {
+    const anchor = overlap.shared.split("…")[0].slice(0, 8);
+    const segment = segments.find((item) => contentOnly(item.text).includes(anchor));
+    addFinding({
+      code: "prose_exemplar_overlap",
+      severity: "high",
+      line: segment?.line ?? 1,
+      column: 1,
+      message: "正文搬用了文笔样例的句子，样例只能学读感。",
+      excerpt: formatExcerpt(overlap.shared),
+      fixSuggestion: "用本书自己的人物、物件和处境把这一处重写，保留节奏即可。",
+    });
+  }
+}
+
+function scanSourceEntityLeak(
+  segments: TextSegment[],
+  sourceEntities: string[],
+  addFinding: (finding: ProseQualityFinding) => void,
+): void {
+  if (sourceEntities.length === 0) {
+    return;
+  }
+  const leaked = findLeakedSourceEntities(segments.map((segment) => segment.text).join("\n"), sourceEntities);
+  for (const entity of leaked) {
+    const segment = segments.find((item) => item.text.includes(entity));
+    if (!segment) {
+      continue;
+    }
+    addFinding({
+      code: "prose_source_entity_leak",
+      severity: "critical",
+      line: segment.line,
+      column: segment.text.indexOf(entity) + 1,
+      message: `正文出现了参考作品的专名“${entity}”。`,
+      excerpt: formatExcerpt(segment.text),
+      fixSuggestion: "换成本书自己的人物、地点或称谓；参考作品只提供写法，不提供名字。",
+    });
+  }
 }
 
 function scanAiSelfReference(

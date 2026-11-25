@@ -10,6 +10,10 @@ import type {
   StyleRuleSet,
 } from "@ai-novel/shared/types/styleEngine";
 import { isStyleCompatibilityField } from "@ai-novel/shared/types/styleEngine";
+import {
+  NATURAL_PAUSE_PUNCTUATION_CONTRACT_LINE,
+  resolvePausePunctuationPolicy,
+} from "@ai-novel/shared/types/chapterProseContract";
 import { clamp } from "./helpers";
 
 type StyleSectionKey = keyof StyleRuleSet;
@@ -258,16 +262,24 @@ export class StyleCompiler {
         input.sectionWeights?.characterRules,
       ),
     });
+    // The pause-punctuation choice is a policy switch, so it is stated as a full sentence
+    // instead of the generic "key: must keep value" line.
+    const { pausePunctuation: _pausePunctuation, ...languageRuleEntries } = input.styleProfile.languageRules;
     const language = buildContractSection({
       key: "language",
       summary: input.styleProfile.languageRules.summary,
-      lines: renderObjectRules(
-        "languageRules",
-        "language",
-        input.styleProfile.languageRules,
-        weight,
-        input.sectionWeights?.languageRules,
-      ),
+      lines: [
+        ...renderObjectRules(
+          "languageRules",
+          "language",
+          languageRuleEntries,
+          weight,
+          input.sectionWeights?.languageRules,
+        ),
+        ...(resolvePausePunctuationPolicy(input.styleProfile.languageRules) === "natural"
+          ? [NATURAL_PAUSE_PUNCTUATION_CONTRACT_LINE]
+          : []),
+      ],
     });
     const rhythm = buildContractSection({
       key: "rhythm",

@@ -1,5 +1,6 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type {
+  StyleExemplarSet,
   StyleExtractionDraft,
   StyleExtractionPreset,
   StyleFeatureDecision,
@@ -60,6 +61,8 @@ interface ManualProfileInput {
   languageRules?: Record<string, unknown>;
   rhythmRules?: Record<string, unknown>;
   antiAiRuleIds?: string[];
+  /** Omitted keeps the stored exemplars; an empty set clears them. */
+  styleExemplars?: StyleExemplarSet;
 }
 
 interface LlmInput {
@@ -224,6 +227,7 @@ export class StyleProfileService {
         characterRulesJson: serializeJson(input.characterRules ?? {}),
         languageRulesJson: serializeJson(input.languageRules ?? {}),
         rhythmRulesJson: serializeJson(input.rhythmRules ?? {}),
+        styleExemplarsJson: input.styleExemplars ? serializeJson(input.styleExemplars) : undefined,
         antiAiBindings: input.antiAiRuleIds?.length
           ? {
               create: input.antiAiRuleIds.map((antiAiRuleId) => ({
@@ -281,6 +285,7 @@ export class StyleProfileService {
         rhythmRulesJson: hasExplicitRhythmRules
           ? serializeJson(input.rhythmRules ?? {})
           : (compiledRuleSet ? serializeJson(compiledRuleSet.rhythmRules) : undefined),
+        styleExemplarsJson: input.styleExemplars ? serializeJson(input.styleExemplars) : undefined,
         status: input.status,
       },
     });

@@ -2,6 +2,7 @@ import { readChapterStateSources, payoffVisibleBeforeChapter } from "../state/co
 import type { GenerationContextPackage } from "@ai-novel/shared/types/chapterRuntime";
 import { buildDirectorCompletionProfile } from "@ai-novel/shared/types/directorCompletion";
 import { buildCompressionLog } from "../../../prompting/core/contextBudget";
+import { NOVEL_PROMPT_BUDGETS } from "../../../prompting/prompts/novel/promptBudgetProfiles";
 import { prisma } from "../../../db/prisma";
 import { AppError } from "../../../middleware/errorHandler";
 import { ragServices } from "../../rag";
@@ -584,7 +585,7 @@ export class GenerationContextAssembler {
       tokenBudgetPolicy: {
         chapterBudgetProfile: "balanced" as const,
         stageTokenCap: {
-          writer: 2600,
+          writer: NOVEL_PROMPT_BUDGETS.chapterWriter,
           light_audit: 900,
           full_audit: 2600,
           repair: 2200,
@@ -695,7 +696,7 @@ export class GenerationContextAssembler {
     });
     const compressionLog = buildCompressionLog(
       contextPackage.chapterWriteContext ? getAllContextBlocks(contextPackage) : [],
-      2600,
+      NOVEL_PROMPT_BUDGETS.chapterWriter,
     );
     console.debug("[ctx-budget]", compressionLog);
 

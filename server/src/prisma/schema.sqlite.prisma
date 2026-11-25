@@ -1840,6 +1840,7 @@ model StyleProfile {
   characterRulesJson String?
   languageRulesJson  String?
   rhythmRulesJson    String?
+  styleExemplarsJson String?
   status             String   @default("active")
   antiAiBindings     StyleProfileAntiAiRule[]
   bindings           StyleBinding[]

@@ -21,6 +21,12 @@ function loadRuntimeSource(filename, imports) {
   return exports;
 }
 
+// The detector reads a book's expression choices through these two pure modules; neither reaches a DB or a model.
+const PROSE_QUALITY_IMPORTS = {
+  "@ai-novel/shared/types/chapterProseContract": require("@ai-novel/shared/types/chapterProseContract"),
+  "../../../styleEngine/exemplars": require("../../dist/services/styleEngine/exemplars"),
+};
+
 function createPipelineHarness({
   content = "original draft",
   scores = [90],
@@ -65,7 +71,7 @@ function createPipelineHarness({
     "../chapterPatchRepairService": { ChapterPatchRepairFailedError: class extends Error {} },
     "./selection/ChapterRepairCandidateSelection": selectionModule,
     "./repair/ChapterRepairEligibility": loadRuntimeSource("repair/ChapterRepairEligibility.ts", {}),
-    "./proseQuality": loadRuntimeSource("proseQuality/ProseQualityDetector.ts", {}),
+    "./proseQuality": loadRuntimeSource("proseQuality/ProseQualityDetector.ts", PROSE_QUALITY_IMPORTS),
     "./artifactSync/ChapterArtifactSyncResult": {
       ChapterArtifactSyncBoundaryError: class extends Error {
         constructor(result) { super(result.reason); this.result = result; }

@@ -1285,3 +1285,15 @@ test("chapter context only supplies mind and active dialogue guidance to actual 
   assert.doesNotMatch(guidanceBlock.content, /暂时避开冲突/);
   assert.ok(writeContext.characterHardFacts.some((fact) => fact.characterId === "char-1"));
 });
+
+test("style exemplars reach the writer as required reference text and stay out of review and repair", () => {
+  const contextPackage = createContextPackage();
+  contextPackage.styleContext = { ...createStyleContext(), exemplars: [{ id: "EX-001", sceneFunction: "归家家常对白", text: "〔甲〕推开门。\n“回来了？”", learn: ["短句接话"], doNotCarry: ["具体家务"] }] };
+  const write = buildChapterWriteContext({ bookContract: contextPackage.bookContract, macroConstraints: contextPackage.macroConstraints, volumeWindow: contextPackage.volumeWindow, contextPackage });
+  const block = buildChapterWriterContextBlocks(write).find((item) => item.id === "style_exemplars");
+  assert.deepEqual([block.group, block.required, block.allowSummary, block.reuseScope], ["style_exemplars", true, false, "book"]);
+  assert.match(block.content, /样例一｜场景功能：归家家常对白\n学什么：短句接话\n不带走：具体家务\n<<<样例正文\n〔甲〕推开门。\n“回来了？”\n样例正文>>>/);
+  for (const mode of ["review", "repair"]) assert.equal(buildChapterWriterContextBlocks(write, { mode }).some((item) => item.id === "style_exemplars"), false);
+  contextPackage.styleContext = createStyleContext();
+  assert.equal(buildChapterWriterContextBlocks(buildChapterWriteContext({ bookContract: contextPackage.bookContract, macroConstraints: contextPackage.macroConstraints, volumeWindow: contextPackage.volumeWindow, contextPackage })).some((item) => item.id === "style_exemplars"), false);
+});

@@ -69,7 +69,7 @@ keyMilestoneGuards: z.array(volumeKeyMilestoneGuardSchema).default([])
 
 ### 六、上下文预算观测
 
-**预算目标**：writer 阶段当前上下文预算以 `tokenBudgetPolicy.stageTokenCap.writer` 为准，默认值为 2600。高优先必选块应保持克制，避免必选约束本身吞掉过多预算。
+**预算目标**：writer 阶段当前上下文预算以 `tokenBudgetPolicy.stageTokenCap.writer` 为准，默认值取 `NOVEL_PROMPT_BUDGETS.chapterWriter`（4200）。高优先必选块应保持克制，避免必选约束本身吞掉过多预算。
 
 **观测方式**：`buildCompressionLog()` 只按 block priority 估算在预算内会保留哪些 block，并用 `summarizeContextBlock()` 模拟超预算 block 能否被截断摘要；摘要可放入时记录到 `summarized`，否则可选 block 记录到 `dropped`。它不改变 `selectContextBlocks()`、不触发真实生成路径的摘要、不影响生成结果。
 

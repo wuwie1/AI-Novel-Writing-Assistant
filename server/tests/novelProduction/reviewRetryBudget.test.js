@@ -78,7 +78,7 @@ for (const maxRetries of [0, 1, 3, 5]) {
 test('semantic correction and candidate verification share the same chapter allowance', async t => {
   const calls = models(t, () => '{"value":"wrong"}');
   const budget = createTransientChapterReviewRetryBudget({ maxRetries: 2, onExhausted: 'pause_for_manual' });
-  const asset = { id: 'novel.chapter.acceptance_assessment', version: 'v24', taskType: 'review', mode: 'structured',
+  const asset = { id: 'novel.chapter.acceptance_assessment', version: 'v25', taskType: 'review', mode: 'structured',
     contextPolicy: { maxTokensBudget: 100 }, outputSchema: z.object({ value: z.string() }),
     render: () => [new HumanMessage('offline evidence fixture')], semanticRetryPolicy: { maxAttempts: 1, sharedCorrectionBudget: 1 },
     postValidate: () => { throw new Error('evidence is not from the candidate'); } };

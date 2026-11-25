@@ -3,6 +3,7 @@ import type {
   ChapterReviewContext,
   ChapterWriteContext,
 } from "@ai-novel/shared/types/chapterRuntime";
+import type { RuntimeStyleExemplar } from "@ai-novel/shared/types/styleEngine";
 import { createContextBlock } from "../../../core/contextBudget";
 import type { PromptContextBlock } from "../../../core/promptTypes";
 import { buildWriterStyleContractText } from "../../../../services/styleEngine/styleContractText";
@@ -19,6 +20,25 @@ import {
 } from "../chapterLayeredContextShared";
 import { normalizeChapterWriteContext } from "./chapterContextPolicies";
 import { buildCompletedMilestonesBlock, buildPayoffReminderText } from "./chapterHistoricalContext";
+
+const EXEMPLAR_ORDINALS = "一二三四五六七八九十";
+
+/** Reference passages for reading feel. The passages are untrusted prose, fenced so they read as material. */
+export function buildStyleExemplarText(exemplars: RuntimeStyleExemplar[]): string {
+  return [
+    "【文笔样例】以下片段选自本书写法档案登记的参考作品，只用来校准读感：句子和段落的长短、对白与叙述的比例、心理活动的口吻和出现的位置、信息交代的快慢。",
+    "用法：先看本章各场景要完成什么，对照场景功能最接近的样例把握节奏和口吻；没有接近的样例时参考整体读感。",
+    "边界：不得复用样例里的句子、比喻、专名、人物关系、情节和设定。样例中的〔甲〕〔乙〕是原作人物的代称，与本书人物无关。本书的事实只以章节任务和人物资料为准。",
+    ...exemplars.map((exemplar, index) => [
+      `样例${EXEMPLAR_ORDINALS[index] ?? index + 1}｜场景功能：${exemplar.sceneFunction}`,
+      exemplar.learn.length > 0 ? `学什么：${exemplar.learn.join("；")}` : "",
+      exemplar.doNotCarry.length > 0 ? `不带走：${exemplar.doNotCarry.join("；")}` : "",
+      "<<<样例正文",
+      exemplar.text,
+      "样例正文>>>",
+    ].filter(Boolean).join("\n")),
+  ].join("\n\n");
+}
 
 export const WRITER_FORBIDDEN_GROUPS = [
   "full_outline",
@@ -240,6 +260,9 @@ export function buildChapterWriterContextBlocks(
   const includeRecentChapters = !isIncremental && (writeContext.recentChapterSummaries.length > 0
     || Boolean(writeContext.previousChapterContent?.trim()));
   const includeStyleContract = mode !== "incremental" && Boolean(writeContext.styleContract);
+  // Exemplars calibrate a fresh draft. Review and repair work from the chapter's own prose.
+  const styleExemplars = writeContext.styleExemplars ?? [];
+  const includeStyleExemplars = mode === "full" && styleExemplars.length > 0;
   const includeContinuationConstraints = mode === "full" && writeContext.continuationConstraints.length > 0;
   const wordRange = resolveTargetWordRange(writeContext.chapterMission.targetWordCount);
   const blocks: Array<PromptContextBlock | null> = [
@@ -526,6 +549,17 @@ export function buildChapterWriterContextBlocks(
         required: true,
         allowSummary: false,
         content: buildWriterStyleContractText(writeContext.styleContract, writeContext.bookContract?.narrativePov),
+      })
+      : null,
+    includeStyleExemplars
+      ? createContextBlock({
+        id: "style_exemplars",
+        reuseScope: "book",
+        group: "style_exemplars",
+        priority: 73,
+        required: true,
+        allowSummary: false,
+        content: buildStyleExemplarText(styleExemplars),
       })
       : null,
     includeContinuationConstraints

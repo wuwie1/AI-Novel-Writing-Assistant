@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { styleSignalPolicySchema } from "./styleEngine.js";
+import { runtimeStyleExemplarSchema } from "./styleEngine/exemplars.js";
 import { characterLocationStateSchema } from "./characterLocation";
 import {
   chapterScenePlanSchema,
@@ -514,6 +515,7 @@ export const chapterWriteContextSchema = z.object({
   previousChapterTail: z.string().nullable().optional(),
   openingAntiRepeatHint: z.string(),
   styleContract: runtimeStyleContractSchema.nullable().optional(),
+  styleExemplars: z.array(runtimeStyleExemplarSchema).optional(),
   styleConstraints: z.array(z.string()).default([]),
   continuationConstraints: z.array(z.string()).default([]),
   ragFacts: z.array(z.string()).default([]),

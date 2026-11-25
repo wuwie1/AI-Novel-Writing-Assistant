@@ -9,6 +9,7 @@ function fixture() {
     (path, ...handlers) => routes.set(`${method}:${path}`, handlers)]));
   const imports = {
     express: { Router: () => router }, zod: require('zod'),
+    '@ai-novel/shared/types/styleEngine': require('@ai-novel/shared/types/styleEngine'),
     '../services/styleEngine/policy/StyleRulePolicyService': {styleRulePolicySchema: require('zod').z.object({}), styleRulePolicyService: {}},
     '../llm/providerSchema': { llmProviderSchema: require('zod').z.enum(['deepseek']) },
     '../middleware/auth': { authMiddleware: () => {} },

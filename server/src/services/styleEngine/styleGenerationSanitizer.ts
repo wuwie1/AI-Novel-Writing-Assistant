@@ -4,6 +4,7 @@ import type {
   StyleSanitizedGenerationProfile,
 } from "@ai-novel/shared/types/styleEngine";
 import { buildWriterStyleContractText, WRITER_STYLE_CONTRACT_SECTIONS } from "./styleContractText";
+import { collectStyleSourceEntities, findLeakedSourceEntities } from "./exemplars";
 
 type StyleProfileLike = Partial<StyleProfile> & {
   name?: string | null;
@@ -195,7 +196,11 @@ export function sanitizeStyleContextForGeneration(
     contractText,
     ...context.matchedBindings.map((binding) => collectProfileText(binding.styleProfile)),
   ].filter(Boolean).join("\n");
-  const forbiddenEntities = extractEntityCandidates(sourceText);
+  // Names registered with the exemplars are known source entities; they take precedence over guesses.
+  const forbiddenEntities = Array.from(new Set([
+    ...collectStyleSourceEntities(context.matchedBindings),
+    ...extractEntityCandidates(sourceText),
+  ])).slice(0, MAX_FORBIDDEN_ENTITY_COUNT);
   const sanitizedContractText = redactForbiddenEntities(contractText, forbiddenEntities);
   const compiledBlocks = context.compiledBlocks ? {
     ...context.compiledBlocks,
@@ -234,12 +239,5 @@ export function detectForbiddenStyleEntities(
   content: string,
   styleContext: StyleContextWithSanitizedProfile | null | undefined,
 ): string[] {
-  const forbiddenEntities = styleContext?.sanitizedGenerationProfile?.forbiddenEntities ?? [];
-  if (!content.trim() || forbiddenEntities.length === 0) {
-    return [];
-  }
-  const leakedEntities = forbiddenEntities.filter((entity) => entity && content.includes(entity));
-  return leakedEntities.filter((entity) => (
-    !leakedEntities.some((other) => other !== entity && other.includes(entity))
-  ));
+  return findLeakedSourceEntities(content, styleContext?.sanitizedGenerationProfile?.forbiddenEntities ?? []);
 }

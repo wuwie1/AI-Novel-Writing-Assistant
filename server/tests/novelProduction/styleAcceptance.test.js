@@ -34,7 +34,7 @@ function service(result) {
     '../../../prompting/prompts/novel/chapterAcceptance.prompts': prompt,
     '../../state/OpenConflictService': { openConflictService: {} },
     '../novelP0Utils': { normalizeScore: score => score, ruleScore: () => output().score },
-    './proseQuality/ProseQualityDetector': { detectProseQuality: () => ({ findings: [] }) },
+    './proseQuality/ProseQualityDetector': { detectProseQuality: () => ({ findings: [] }), resolveProseQualityOptions: () => ({}) },
     './acceptance': acceptance,
   });
   return { instance: new ChapterAcceptanceAssessmentService(), requests };
@@ -336,7 +336,7 @@ test('finalization stores the unified acceptance style report without a second r
     '../director/runtime/DirectorAutomationLedgerEventService': {}, '../fact/factLedgerFilter': {}, '../fact/NovelFactService': {},
     './ChapterArtifactSyncService': {}, './ChapterQualityGateService': {},
     './chapterRuntimePackageBuilders': { buildRuntimePackage: input => ({ audit: { hasBlockingIssues: false }, styleReview: input.styleReview }) },
-    './proseQuality/ProseQualityDetector': { detectProseQuality: () => ({ findings: [] }), buildProseQualityAuditReport: () => null },
+    './proseQuality/ProseQualityDetector': { detectProseQuality: () => ({ findings: [] }), buildProseQualityAuditReport: () => null, resolveProseQualityOptions: () => ({}) },
   });
   const finalizer = new ChapterContentFinalizationService({ qualityGateService: { runAcceptanceGate: async () => ({
     assessment: output(), score: output().score, issues: [], auditReports: [], styleReviewReport: report,

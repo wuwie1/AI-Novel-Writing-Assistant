@@ -51,6 +51,7 @@ const CHAPTER_CONTEXT_GROUPS = [
   "recent_chapters",
   "opening_constraints",
   "style_contract",
+  "style_exemplars",
   "continuation_constraints",
   "payoff_ledger",
   "scene_plan",
